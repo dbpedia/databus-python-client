@@ -253,6 +253,8 @@ def create_dataset(
     # was not sure if there are edge cases BASE=http://databus.example.org/"base"/...
     group_id = _versionId.rsplit("/", 2)[0]
 
+    artifact_id = _versionId.rsplit("/", 1)[0]
+
     distribution_list = []
     for dst_string in distributions:
         __url = str(dst_string).split("|")[0]
@@ -302,6 +304,17 @@ def create_dataset(
             group_dict[k] = val
 
         graphs.append(group_dict)
+
+    # add the artifact graph
+
+    artifact_graph = {
+        "@id": artifact_id,
+        "@type": "Artifact",
+        "title": title,
+        "abstract": abstract,
+        "description": description
+    }
+    graphs.append(artifact_graph)
 
     # add the dataset graph
 
