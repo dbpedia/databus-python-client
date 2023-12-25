@@ -3,7 +3,6 @@ from typing import List, Dict, Tuple, Optional, Union
 import requests
 import hashlib
 import json
-from urllib.parse import urldefrag
 
 __debug = False
 
