@@ -38,6 +38,6 @@ def deploy(
 def download(
     localDir: str = typer.Option(..., help="local databus folder"),
     databus: str = typer.Option(..., help="databus URL"),
-    databusURIs: List[str] = typer.Argument(...,help="any kind of these: databus identifier, databus collection identifier, query file")
+    databusuris: List[str] = typer.Argument(...,help="any kind of these: databus identifier, databus collection identifier, query file")
 ):
-    client.download(localDir=localDir,endpoint=databus,databusURIs=databusURIs)
+    client.download(localDir=localDir,endpoint=databus,databusURIs=databusuris)
