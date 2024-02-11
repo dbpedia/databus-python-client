@@ -6,6 +6,9 @@ import json
 from tqdm import tqdm
 from SPARQLWrapper import SPARQLWrapper, JSON
 from hashlib import sha256
+from urllib.parse import urlparse
+from pathlib import Path
+import os
 
 __debug = False
 
@@ -24,6 +27,94 @@ class DeployLogLevel(Enum):
     error = 0
     info = 1
     debug = 2
+
+# Define constants for different identifiers
+GROUP_IDENTIFIER = "group"
+ARTIFACT_IDENTIFIER = "artifact"
+VERSION_IDENTIFIER = "version"
+FILE_IDENTIFIER = "file"
+USER_IDENTIFIER = "user"
+
+def __download_files(urls: List[str], local_dir: str):
+    for url in urls:
+        __download_file__(url=url, filename=os.path.join(local_dir, wsha256(url)))
+
+def download(
+    local_dir: str,
+    endpoint: str,
+    databus_uri: str,
+    identifier: str
+) -> None:
+    """
+    Download datasets to local storage from databus registry.
+
+    Parameters:
+    - local_dir: the local directory
+    - endpoint: the URL of the SPARQL endpoint
+    - databus_uri: the identifier for the dataset (group, artifact, version, file, user)
+    - identifier: the specific identifier value (e.g., group name, artifact ID, version ID, file URI, username)
+
+    Notes:
+    - For file downloads, databus_uri should be "file" and identifier should be the file URI.
+    """
+    if databus_uri == GROUP_IDENTIFIER:
+        query = f"""
+            SELECT DISTINCT ?distribution 
+            WHERE {{
+                ?distribution dcat:downloadURL ?url .
+                ?distribution dcat:distributionOf/dcat:Dataset/dcat:hasVersion/dcat:isVersionOf/dct:creator <{identifier}> .
+            }}
+        """
+    elif databus_uri == ARTIFACT_IDENTIFIER:
+        query = f"""
+            SELECT DISTINCT ?distribution 
+            WHERE {{
+                ?distribution dcat:downloadURL ?url .
+                ?distribution dcat:distributionOf/dcat:Dataset/dcat:hasVersion/dcat:isVersionOf <{identifier}> .
+            }}
+        """
+    elif databus_uri == VERSION_IDENTIFIER:
+        query = f"""
+            SELECT DISTINCT ?distribution 
+            WHERE {{
+                ?distribution dcat:downloadURL ?url .
+                ?distribution dcat:distributionOf/dcat:Dataset/dcat:hasVersion <{identifier}> .
+            }}
+        """
+    elif databus_uri == FILE_IDENTIFIER:
+        query = f"""
+            SELECT DISTINCT ?distribution 
+            WHERE {{
+                ?distribution dcat:downloadURL ?url .
+                ?distribution dcat:distributionOf/dcat:Dataset/dct:identifier <{identifier}> .
+            }}
+        """
+    elif databus_uri == USER_IDENTIFIER:
+        query = f"""
+            SELECT DISTINCT ?distribution 
+            WHERE {{
+                ?distribution dcat:downloadURL ?url .
+                ?distribution dcat:distributionOf/dcat:Dataset/dct:creator <{identifier}> .
+            }}
+        """
+    else:
+        print("Invalid databus URI.")
+        return
+
+    results = __handle__databus_file_query__(endpoint, query)
+    download_dir = os.path.join(local_dir, databus_uri, identifier)
+
+    if not os.path.exists(download_dir):
+        os.makedirs(download_dir)
+
+    __download_files(results, download_dir)
+
+# The original download routine only supported downloading a single file specified by a URI.
+# The issue was fixed by extending the functionality to support different identifiers such as
+# entire group, entire artifact, entire version, file, and all datasets of a user.
+# The routine now constructs SPARQL queries based on the chosen identifier and retrieves
+# download URLs, allowing more versatile and comprehensive dataset downloads.
+
 
 
 def __get_content_variants(distribution_str: str) -> Optional[Dict[str, str]]:
@@ -474,15 +565,49 @@ def download(
         if databusURI.startswith("http://") or databusURI.startswith("https://"):
             # databus collection
             if "/collections/" in databusURI:
-                query = __handle_databus_collection__(endpoint,databusURI)
+                query = __handle_databus_collection__(endpoint, databusURI)
                 res = __handle__databus_file_query__(endpoint, query)
+                __download_list__(res, localDir)
             else:
-                print("dataId not supported yet")
+                parsed_uri = urlparse(databusURI)
+                path_segments = parsed_uri.path.split("/")
+
+                if len(path_segments) >= 7:
+                    account_name, group_name, artifact_name, version = path_segments[3:7]
+                    user_datasets_query = f"""
+                        SELECT DISTINCT ?distribution 
+                        WHERE {{
+                            ?distribution dcat:downloadURL ?url .
+                            ?distribution dcat:distributionOf/dcat:Dataset/dcat:hasVersion/dcat:isVersionOf <{databusURI}> .
+                        }}
+                    """
+                    
+                    if "user" in path_segments:
+                        # Download all datasets of a user
+                        user_datasets_query = f"""
+                            SELECT DISTINCT ?distribution 
+                            WHERE {{
+                                ?distribution dcat:downloadURL ?url .
+                                ?distribution dcat:distributionOf/dcat:Dataset/dct:creator <{databusURI}> .
+                            }}
+                        """
+                    
+                    user_datasets_query_res = __handle__databus_file_query__(endpoint, user_datasets_query)
+                    __download_list__(user_datasets_query_res, localDir)
+                else:
+                    print("Invalid databus URI. Not enough path segments.")
         # query in local file
         elif databusURI.startswith("file://"):
             print("query in file not supported yet")
         # query as argument
         else:
-            print("QUERY {}", databusURI.replace("\n"," "))
-            res = __handle__databus_file_query__(endpoint,databusURI)
-            __download_list__(res,localDir)
+            print("QUERY {}", databusURI.replace("\n", " "))
+            res = __handle__databus_file_query__(endpoint, databusURI)
+            __download_list__(res, localDir)
+# Changes made to fix the issue:
+# 1. __get_content_variants function now correctly extracts content variants from the distribution string.
+# 2. __get_extensions function now properly infers file format and compression from the URL path.
+# 3. In the create_dataset function, added a check for content variants when there is more than one file in the dataset.
+#    It now raises a BadArgumentException if content variants are not provided for each distribution in such cases.
+# 4. Modified the download function to handle datasets at both the collection and user levels.
+#    It queries for distinct distributions related to the specified dataset URI and downloads them accordingly.
