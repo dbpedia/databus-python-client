@@ -6,6 +6,7 @@ import json
 from tqdm import tqdm
 from SPARQLWrapper import SPARQLWrapper, JSON
 from hashlib import sha256
+import os
 
 __debug = False
 
@@ -399,13 +400,15 @@ def __download_file__(url, filename):
     - url: the URL of the file to download
     - filename: the local file path where the file should be saved
     """
-    print("download "+url)
+
+    print("download "+url)    
+    os.makedirs(os.path.dirname(filename), exist_ok=True) # Create the necessary directories
     response = requests.get(url, stream=True)
     total_size_in_bytes= int(response.headers.get('content-length', 0))
     block_size = 1024 # 1 Kibibyte
 
     progress_bar = tqdm(total=total_size_in_bytes, unit='iB', unit_scale=True)
-    with open(filename, 'wb') as file:
+    with open(filename, 'wb') as file: 
         for data in response.iter_content(block_size):
             progress_bar.update(len(data))
             file.write(data)
@@ -473,11 +476,11 @@ def download(
         # dataID or databus collection
         if databusURI.startswith("http://") or databusURI.startswith("https://"):
             # databus collection
-            if "/collections/" in databusURI:
+            if "/collections/" in databusURI: #TODO "in" is not safe! there could be an artifact named collections, need to check for the correct part position in the URI
                 query = __handle_databus_collection__(endpoint,databusURI)
                 res = __handle__databus_file_query__(endpoint, query)
             else:
-                print("dataId not supported yet")
+                print("dataId not supported yet") #TODO add support for other DatabusIds here (artifact, group, etc.)
         # query in local file
         elif databusURI.startswith("file://"):
             print("query in file not supported yet")

@@ -12,9 +12,9 @@ SELECT ?x WHERE {
 TEST_COLLECTION="https://databus.dbpedia.org/dbpedia/collections/dbpedia-snapshot-2022-12"
 
 def test_with_query():
-  cl.download("target",DEFAULT_ENDPOINT,[TEST_QUERY]
+  cl.download("tmp",DEFAULT_ENDPOINT,[TEST_QUERY]
 
 )
   
 def test_with_collection():
-  cl.download("target",DEFAULT_ENDPOINT,[TEST_COLLECTION])
+  cl.download("tmp",DEFAULT_ENDPOINT,[TEST_COLLECTION])
