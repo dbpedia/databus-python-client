@@ -5,6 +5,27 @@
 python3 -m pip install databusclient
 ```
 
+## Upload to Nextcloud and Deploy to Databus
+Please add databus API_KEY to .env file
+
+The script uploads all given files and all files in the given folders to the given remote.
+Then registers them on the databus.
+### Example Call
+```bash
+cd databusclient 
+
+python deploy.py \
+--remote scads-nextcloud \
+--path test \
+--version-id https://databus.dbpedia.org/gg46ixav/test_group/test_artifact/2023-07-03 \
+--title "Test Dataset" \
+--abstract "This is a short abstract of the test dataset." \
+--description "This dataset was uploaded for testing the Nextcloud → Databus deployment pipeline." \
+--license https://dalicc.net/licenselibrary/Apache-2.0 \
+/home/theo/Work/SCADS.AI/Projects/CSVTest/newtestoutputfolder \
+/home/theo/Work/SCADS.AI/Projects/CSVTest/output.csv.bz2
+
+```
 ## CLI Usage
 ```bash
 databusclient --help

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 
 databusclient deploy \
-	--versionid "https://d8lr.tools.dbpedia.org/hopver/testGroup/testArtifact/1.0-alpha/" \
+	--version-id "https://databus.dbpedia.org/gg46ixav/test_group/test_artifact/2023-07-02" \
 	--title "Test Title" \
 	--abstract "Test Abstract" \
 	--description "Test Description" \
-	--license "http://dalicc.net/licenselibrary/AdaptivePublicLicense10" \
-	--apikey "$1" \
-	"https://raw.githubusercontent.com/dbpedia/databus/master/server/app/api/swagger.yml|type=swagger"
+	--license-uri "https://dalicc.net/licenselibrary/Apache-2.0" \
+	--apikey "f67f582e-bb33-4e82-ba1a-cbaa750be278" \
+	"https://raw.githubusercontent.com/dbpedia/databus/68f976e29e2db15472f1b664a6fd5807b88d1370/README.md"
