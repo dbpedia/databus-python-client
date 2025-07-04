@@ -15,6 +15,7 @@ Then registers them on the databus.
 cd databusclient 
 
 python deploy.py \
+--webdav-url https://cloud.scadsai.uni-leipzig.de/remote.php/webdav \
 --remote scads-nextcloud \
 --path test \
 --version-id https://databus.dbpedia.org/gg46ixav/test_group/test_artifact/2023-07-03 \

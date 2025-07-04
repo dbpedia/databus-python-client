@@ -64,8 +64,8 @@ def deploy_to_databus(
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Upload files to Nextcloud and deploy to DBpedia Databus.")
-
     parser.add_argument("files", nargs="+", help="Path(s) to file(s) or folder(s) to upload")
+    parser.add_argument("--webdav-url", required=True, help="URL to webdav cloud(e.g., 'https://cloud.scadsai.uni-leipzig.de/remote.php/webdav')")
     parser.add_argument("--remote", required=True, help="rclone remote name (e.g., 'nextcloud')")
     parser.add_argument("--path", required=True, help="Remote path on Nextcloud (e.g., 'datasets/mydataset')")
     parser.add_argument("--version-id", required=True, help="Databus version URI")
@@ -80,7 +80,7 @@ if __name__ == '__main__':
 
     args = parse_args()
 
-    metadata = upload_to_nextcloud(args.files, args.remote, args.path)
+    metadata = upload_to_nextcloud(args.files, args.remote, args.path, args.webdav_url)
 
     deploy_to_databus(
         metadata,

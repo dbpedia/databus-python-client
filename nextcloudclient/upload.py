@@ -3,8 +3,6 @@ import os
 import subprocess
 import posixpath
 
-BASE_URL = "https://cloud.scadsai.uni-leipzig.de"
-
 def compute_sha256_and_length(filepath):
     sha256 = hashlib.sha256()
     total_length = 0
@@ -26,7 +24,7 @@ def get_all_files(path):
             files.append(os.path.join(root, name))
     return files
 
-def upload_to_nextcloud(source_paths: str, remote_name: str, remote_path: str):
+def upload_to_nextcloud(source_paths: str, remote_name: str, remote_path: str, webdav_url: str):
     result = []
     for path in source_paths:
         if not os.path.exists(path):
@@ -46,7 +44,7 @@ def upload_to_nextcloud(source_paths: str, remote_name: str, remote_path: str):
             else:
                 remote_webdav_path = posixpath.join(remote_path, os.path.basename(file))
 
-            url = f"{BASE_URL}/remote.php/webdav/{remote_webdav_path}"
+            url = posixpath.join(webdav_url,remote_webdav_path)
 
             filename = file.split("/")[-1]
             result.append((filename, checksum, size, url))
