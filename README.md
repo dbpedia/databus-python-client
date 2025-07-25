@@ -5,6 +5,26 @@
 python3 -m pip install databusclient
 ```
 
+## Deploy to Databus
+Please add databus API_KEY to .env file
+Use metadata.json file to list all files which should be added to the databus
+
+The script registers all files on the databus.
+### Example Call
+```bash
+cd databusclient 
+
+python deploy.py \
+  --no-upload \
+  --metadata ./metadata.json \
+  --version-id https://databus.org/user/dataset/version/1.0 \
+  --title "Test Dataset" \
+  --abstract "This is a short abstract of the test dataset." \
+  --description "This dataset was uploaded for testing the Nextcloud → Databus deployment pipeline." \
+  --license https://dalicc.net/licenselibrary/Apache-2.0
+
+```
+
 ## Upload to Nextcloud and Deploy to Databus
 Please add databus API_KEY to .env file
 

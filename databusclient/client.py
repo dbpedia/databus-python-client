@@ -480,7 +480,9 @@ def download(
                 query = __handle_databus_collection__(endpoint,databusURI)
                 res = __handle__databus_file_query__(endpoint, query)
             else:
-                print("dataId not supported yet") #TODO add support for other DatabusIds here (artifact, group, etc.)
+                query = __handle_databus_collection__(endpoint,databusURI)
+                res = __handle__databus_file_query__(endpoint, query)
+                __download_list__(res,localDir)
         # query in local file
         elif databusURI.startswith("file://"):
             print("query in file not supported yet")
