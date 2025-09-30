@@ -403,26 +403,48 @@ def __download_file__(url, filename, vault_token_file=None, auth_url=None, clien
     - vault_token_file: Path to Vault refresh token file
     - auth_url: Keycloak token endpoint URL
     - client_id: Client ID for token exchange
+
+    Steps:
+    1. Try direct GET without Authorization header.
+    2. If server responds with WWW-Authenticate: Bearer, 401 Unauthorized) or url starts with "https://data.dbpedia.io/databus.dbpedia.org",
+       then fetch Vault access token and retry with Authorization header.
     """
 
-    print("download "+url)
+    print("Download file: "+url)
     os.makedirs(os.path.dirname(filename), exist_ok=True)  # Create the necessary directories
 
-    headers = {}
-    if vault_token_file and auth_url and client_id:
-        headers["Authorization"] = f"Bearer {__get_vault_access__(url, vault_token_file, auth_url, client_id)}"
+    # --- 1. Try without token ---
+    response = requests.get(url, stream=True, allow_redirects=False)
+    # print("Response code:", response.status_code)
+    # print(f"Status code: {response.status_code}")
+    # print(f"Headers: {response.headers}")
+    url = response.headers.get("Location")  # update URL to the final one after redirects
+    print("URL after redirects:", url)
+    # print(f"Full response: {response}")
+    # exit(0)
 
-    response = requests.get(url, headers=headers, stream=True)
-    response.raise_for_status()  # Raise an error for bad responses
+    if (response.status_code == 401 or "WWW-Authenticate" in response.headers or url.startswith("https://data.dbpedia.io/databus.dbpedia.org")):
+        print(f"Authentication required for {url}")
+        if not (vault_token_file):
+            raise RuntimeError("Authentication required but no vault_token provided")
+
+        # --- 2. Fetch Vault token ---
+        vault_token = __get_vault_access__(url, vault_token_file, auth_url, client_id)
+        headers = {"Authorization": f"Bearer {vault_token}"}
+
+        # --- 3. Retry with token ---
+        response = requests.get(url, headers=headers, stream=True)
+
+    response.raise_for_status()  # Raise if still failing
+
     total_size_in_bytes = int(response.headers.get('content-length', 0))
-    block_size = 1024  # 1 Kibibyte
+    block_size = 1024  # 1 KiB
 
     progress_bar = tqdm(total=total_size_in_bytes, unit='iB', unit_scale=True)
     with open(filename, 'wb') as file:
         for data in response.iter_content(block_size):
             progress_bar.update(len(data))
             file.write(data)
-
     progress_bar.close()
 
     if total_size_in_bytes != 0 and progress_bar.n != total_size_in_bytes:
@@ -510,15 +532,19 @@ def __handle_databus_file_query__(endpoint_url, query) -> List[str]:
 
 
 def __handle_databus_file_json__(json_str: str) -> List[str]:
-    downloadURLs = []
+    """
+    Parse the JSON-LD of a databus artifact version to extract download URLs.
+    Don't get downloadURLs directly from the JSON-LD, but follow the "file" links to count access to databus accurately.
+    """
+
+    databusIdUrl = []
     json_dict = json.loads(json_str)
     graph = json_dict.get("@graph", [])
     for node in graph:
         if node.get("@type") == "Part":
-            downloadURL = node.get("downloadURL")
-            if downloadURL:
-                downloadURLs.append(downloadURL)
-    return downloadURLs
+            id = node.get("file")
+            databusIdUrl.append(id)
+    return databusIdUrl
 
 
 def wsha256(raw: str):
@@ -555,7 +581,7 @@ def download(
     client_id=None
 ) -> None:
     """
-    Download datasets to local storage from databus registry. If vault options are provided, vault access will be used for downloading protected files.
+    Download datasets to local storage from databus registry. If download is on vault, vault token will be used for downloading protected files.
     ------
     localDir: the local directory
     endpoint: the databus endpoint URL
@@ -564,6 +590,12 @@ def download(
     auth_url: Keycloak token endpoint URL
     client_id: Client ID for token exchange
     """
+
+    # Auto-detect sparql endpoint from first databusURI if not given -> no need to specify endpoint (--databus)
+    if endpoint is None:
+        host = databusURIs[0].split("/")[2]
+        endpoint = f"https://{host}/sparql"
+    print(f"SPARQL endpoint {endpoint}")
 
     databusVersionPattern = re.compile(r"^https://(databus\.dbpedia\.org|databus\.dev\.dbpedia\.link)/[^/]+/[^/]+/[^/]+/[^/]+/?$")
 

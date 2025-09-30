@@ -36,12 +36,12 @@ def deploy(
 
 @app.command()
 def download(
-    localDir: str = typer.Option(..., help="local databus folder"),
-    databus: str = typer.Option(..., help="databus URL"),
     databusuris: List[str] = typer.Argument(..., help="any kind of these: databus identifier, databus collection identifier, query file"),
+    localDir: str = typer.Option("./tmp", help="local databus folder"),
+    databus: str = typer.Option(None, help="databus URL"),
     vault_token_file: str = typer.Option(None, help="Path to Vault refresh token file"),
-    auth_url: str = typer.Option(None, help="Keycloak token endpoint URL"),
-    client_id: str = typer.Option(None, help="Client ID for token exchange")
+    auth_url: str = typer.Option("https://auth.dbpedia.org/realms/dbpedia/protocol/openid-connect/token", help="Keycloak token endpoint URL"),
+    client_id: str = typer.Option("vault-token-exchange", help="Client ID for token exchange")
 ):
     """
     Download datasets from databus, optionally using vault access if vault options are provided.
