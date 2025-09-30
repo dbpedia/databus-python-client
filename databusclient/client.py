@@ -7,6 +7,7 @@ from tqdm import tqdm
 from SPARQLWrapper import SPARQLWrapper, JSON
 from hashlib import sha256
 import os
+import re
 
 __debug = False
 
@@ -392,32 +393,93 @@ def deploy(
         print(resp.text)
 
 
-def __download_file__(url, filename):
+def __download_file__(url, filename, vault_token_file=None, auth_url=None, client_id=None) -> None:
     """
     Download a file from the internet with a progress bar using tqdm.
 
     Parameters:
     - url: the URL of the file to download
     - filename: the local file path where the file should be saved
+    - vault_token_file: Path to Vault refresh token file
+    - auth_url: Keycloak token endpoint URL
+    - client_id: Client ID for token exchange
     """
 
-    print("download "+url)    
-    os.makedirs(os.path.dirname(filename), exist_ok=True) # Create the necessary directories
-    response = requests.get(url, stream=True)
-    total_size_in_bytes= int(response.headers.get('content-length', 0))
-    block_size = 1024 # 1 Kibibyte
+    print("download "+url)
+    os.makedirs(os.path.dirname(filename), exist_ok=True)  # Create the necessary directories
+
+    headers = {}
+    if vault_token_file and auth_url and client_id:
+        headers["Authorization"] = f"Bearer {__get_vault_access__(url, vault_token_file, auth_url, client_id)}"
+
+    response = requests.get(url, headers=headers, stream=True)
+    response.raise_for_status()  # Raise an error for bad responses
+    total_size_in_bytes = int(response.headers.get('content-length', 0))
+    block_size = 1024  # 1 Kibibyte
 
     progress_bar = tqdm(total=total_size_in_bytes, unit='iB', unit_scale=True)
-    with open(filename, 'wb') as file: 
+    with open(filename, 'wb') as file:
         for data in response.iter_content(block_size):
             progress_bar.update(len(data))
             file.write(data)
+
     progress_bar.close()
+
     if total_size_in_bytes != 0 and progress_bar.n != total_size_in_bytes:
         print("ERROR, something went wrong")
 
 
-def __query_sparql__(endpoint_url, query)-> dict:
+def __get_vault_access__(download_url: str,
+                         token_file: str,
+                         auth_url: str,
+                         client_id: str) -> str:
+    """
+    Get Vault access token for a protected databus download.
+    """
+    # 1. Load refresh token
+    refresh_token = os.environ.get("REFRESH_TOKEN")
+    if not refresh_token:
+        if not os.path.exists(token_file):
+            raise FileNotFoundError(f"Vault token file not found: {token_file}")
+        with open(token_file, "r") as f:
+            refresh_token = f.read().strip()
+    if len(refresh_token) < 80:
+        print(f"Warning: token from {token_file} is short (<80 chars)")
+
+    # 2. Refresh token -> access token
+    resp = requests.post(auth_url, data={
+        "client_id": client_id,
+        "grant_type": "refresh_token",
+        "refresh_token": refresh_token
+    })
+    resp.raise_for_status()
+    access_token = resp.json()["access_token"]
+
+    # 3. Extract host as audience
+    # Remove protocol prefix
+    if download_url.startswith("https://"):
+        host_part = download_url[len("https://"):]
+    elif download_url.startswith("http://"):
+        host_part = download_url[len("http://"):]
+    else:
+        host_part = download_url
+    audience = host_part.split("/")[0]  # host is before first "/"
+
+    # 4. Access token -> Vault token
+    resp = requests.post(auth_url, data={
+        "client_id": client_id,
+        "grant_type": "urn:ietf:params:oauth:grant-type:token-exchange",
+        "subject_token": access_token,
+        "audience": audience
+    })
+    resp.raise_for_status()
+    vault_token = resp.json()["access_token"]
+
+    print(f"Using Vault access token for {download_url}")
+    return vault_token
+
+
+def __query_sparql__(endpoint_url, query) -> dict:
     """
     Query a SPARQL endpoint and return results in JSON format.
 
@@ -436,8 +498,8 @@ def __query_sparql__(endpoint_url, query)-> dict:
     return results
 
 
-def __handle__databus_file_query__(endpoint_url, query) -> List[str]:
-    result_dict = __query_sparql__(endpoint_url,query)
+def __handle_databus_file_query__(endpoint_url, query) -> List[str]:
+    result_dict = __query_sparql__(endpoint_url, query)
     for binding in result_dict['results']['bindings']:
         if len(binding.keys()) > 1:
             print("Error multiple bindings in query response")
@@ -447,45 +509,84 @@ def __handle__databus_file_query__(endpoint_url, query) -> List[str]:
         yield value
 
 
+def __handle_databus_file_json__(json_str: str) -> List[str]:
+    downloadURLs = []
+    json_dict = json.loads(json_str)
+    graph = json_dict.get("@graph", [])
+    for node in graph:
+        if node.get("@type") == "Part":
+            downloadURL = node.get("downloadURL")
+            if downloadURL:
+                downloadURLs.append(downloadURL)
+    return downloadURLs
+
+
 def wsha256(raw: str):
     return sha256(raw.encode('utf-8')).hexdigest()
 
 
-def __handle_databus_collection__(endpoint, uri: str)-> str:
+def __handle_databus_collection__(uri: str) -> str:
     headers = {"Accept": "text/sparql"}
     return requests.get(uri, headers=headers).text
 
 
-def __download_list__(urls: List[str], localDir: str):
+def __handle_databus_artifact_version__(uri: str) -> str:
+    headers = {"Accept": "application/ld+json"}
+    return requests.get(uri, headers=headers).text
+
+
+def __download_list__(urls: List[str],
+                      localDir: str,
+                      vault_token_file: str = None,
+                      auth_url: str = None,
+                      client_id: str = None) -> None:
     for url in urls:
-        __download_file__(url=url,filename=localDir+"/"+wsha256(url))
+        file = url.split("/")[-1]
+        filename = os.path.join(localDir, file)
+        __download_file__(url=url, filename=filename, vault_token_file=vault_token_file, auth_url=auth_url, client_id=client_id)
 
 
 def download(
     localDir: str,
     endpoint: str,
-    databusURIs: List[str]
+    databusURIs: List[str],
+    vault_token_file=None,
+    auth_url=None,
+    client_id=None
 ) -> None:
     """
-    Download datasets to local storage from databus registry
+    Download datasets to local storage from databus registry. If vault options are provided, vault access will be used for downloading protected files.
     ------
     localDir: the local directory
+    endpoint: the databus endpoint URL
     databusURIs: identifiers to access databus registered datasets
+    vault_token_file: Path to Vault refresh token file
+    auth_url: Keycloak token endpoint URL
+    client_id: Client ID for token exchange
     """
+
+    databusVersionPattern = re.compile(r"^https://(databus\.dbpedia\.org|databus\.dev\.dbpedia\.link)/[^/]+/[^/]+/[^/]+/[^/]+/?$")
+
     for databusURI in databusURIs:
         # dataID or databus collection
         if databusURI.startswith("http://") or databusURI.startswith("https://"):
             # databus collection
-            if "/collections/" in databusURI: #TODO "in" is not safe! there could be an artifact named collections, need to check for the correct part position in the URI
-                query = __handle_databus_collection__(endpoint,databusURI)
-                res = __handle__databus_file_query__(endpoint, query)
+            if "/collections/" in databusURI:  # TODO "in" is not safe! there could be an artifact named collections, need to check for the correct part position in the URI
+                query = __handle_databus_collection__(databusURI)
+                res = __handle_databus_file_query__(endpoint, query)
+                __download_list__(res, localDir)
+            # databus artifact version // https://(databus.dbpedia.org|databus.dev.dbpedia.link)/$ACCOUNT/$GROUP/$ARTIFACT/$VERSION
+            elif databusVersionPattern.match(databusURI):
+                json_str = __handle_databus_artifact_version__(databusURI)
+                res = __handle_databus_file_json__(json_str)
+                __download_list__(res, localDir, vault_token_file=vault_token_file, auth_url=auth_url, client_id=client_id)
             else:
-                print("dataId not supported yet") #TODO add support for other DatabusIds here (artifact, group, etc.)
+                print("dataId not supported yet")  # TODO add support for other DatabusIds here (artifact, group, etc.)
         # query in local file
         elif databusURI.startswith("file://"):
             print("query in file not supported yet")
         # query as argument
         else:
-            print("QUERY {}", databusURI.replace("\n"," "))
-            res = __handle__databus_file_query__(endpoint,databusURI)
-            __download_list__(res,localDir)
+            print("QUERY {}", databusURI.replace("\n", " "))
+            res = __handle_databus_file_query__(endpoint, databusURI)
+            __download_list__(res, localDir)
