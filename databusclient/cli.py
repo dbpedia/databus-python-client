@@ -37,8 +37,8 @@ def deploy(
 @app.command()
 def download(
     databusuris: List[str] = typer.Argument(..., help="any kind of these: databus identifier, databus collection identifier, query file"),
-    localDir: str = typer.Option("./tmp", help="local databus folder"),
-    databus: str = typer.Option(None, help="databus URL"),
+    localDir: str = typer.Option(None , help="local databus folder"), # if not given, databus folder structure is created in current working directory
+    databus: str = typer.Option(None, help="databus URL"), # if not given, inferred on first databusuri (e.g. https://databus.dbpedia.org/sparql)
     vault_token_file: str = typer.Option(None, help="Path to Vault refresh token file"),
     auth_url: str = typer.Option("https://auth.dbpedia.org/realms/dbpedia/protocol/openid-connect/token", help="Keycloak token endpoint URL"),
     client_id: str = typer.Option("vault-token-exchange", help="Client ID for token exchange")

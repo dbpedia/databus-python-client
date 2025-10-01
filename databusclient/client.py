@@ -413,26 +413,27 @@ def __download_file__(url, filename, vault_token_file=None, auth_url=None, clien
     print("Download file: "+url)
     os.makedirs(os.path.dirname(filename), exist_ok=True)  # Create the necessary directories
 
-    # --- 1. Try without token ---
-    response = requests.get(url, stream=True, allow_redirects=False)
-    # print("Response code:", response.status_code)
-    # print(f"Status code: {response.status_code}")
-    # print(f"Headers: {response.headers}")
+    # --- 1. Get redirect URL by requesting HEAD ---
+    response = requests.head(url, stream=True)
     url = response.headers.get("Location")  # update URL to the final one after redirects
+    # print(f"Status code: {response.status_code} \nResponse code: {response.status_code}\nHeaders: {response.headers}")
     print("URL after redirects:", url)
-    # print(f"Full response: {response}")
-    # exit(0)
 
-    if (response.status_code == 401 or "WWW-Authenticate" in response.headers or url.startswith("https://data.dbpedia.io/databus.dbpedia.org")):
+    # --- 2. Try direct GET ---
+    response = requests.get(url, stream=True, allow_redirects=False)  # no redirects here, we want to see if auth is required
+    www = response.headers.get('WWW-Authenticate', '')  # get WWW-Authenticate header if present to check for Bearer auth
+    # print(f"Status code: {response.status_code} \nResponse code: {response.status_code}\nHeaders: {response.headers}")
+
+    if (response.status_code == 401 or "bearer" in www.lower()):
         print(f"Authentication required for {url}")
         if not (vault_token_file):
             raise RuntimeError("Authentication required but no vault_token provided")
 
-        # --- 2. Fetch Vault token ---
+        # --- 3. Fetch Vault token ---
         vault_token = __get_vault_access__(url, vault_token_file, auth_url, client_id)
         headers = {"Authorization": f"Bearer {vault_token}"}
 
-        # --- 3. Retry with token ---
+        # --- 4. Retry with token ---
         response = requests.get(url, headers=headers, stream=True)
 
     response.raise_for_status()  # Raise if still failing
@@ -567,9 +568,21 @@ def __download_list__(urls: List[str],
                       auth_url: str = None,
                       client_id: str = None) -> None:
     for url in urls:
+        if localDir is None:
+            host, account, group, artifact, version, file = __get_databus_id_parts__(url)
+            localDir = os.path.join(os.getcwd(), account, group, artifact, version if version is not None else "latest")
+            print(f"Local directory not given, using {localDir}")
+
         file = url.split("/")[-1]
         filename = os.path.join(localDir, file)
         __download_file__(url=url, filename=filename, vault_token_file=vault_token_file, auth_url=auth_url, client_id=client_id)
+
+
+def __get_databus_id_parts__(uri: str) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str], Optional[str], Optional[str]]:
+    uri = uri.removeprefix("https://").removeprefix("http://")
+    parts = uri.strip("/").split("/")
+    parts += [None] * (6 - len(parts))  # pad with None if less than 6 parts
+    return tuple(parts[:6])  # return only the first 6 parts
 
 
 def download(
@@ -591,15 +604,14 @@ def download(
     client_id: Client ID for token exchange
     """
 
-    # Auto-detect sparql endpoint from first databusURI if not given -> no need to specify endpoint (--databus)
-    if endpoint is None:
-        host = databusURIs[0].split("/")[2]
-        endpoint = f"https://{host}/sparql"
-    print(f"SPARQL endpoint {endpoint}")
-
-    databusVersionPattern = re.compile(r"^https://(databus\.dbpedia\.org|databus\.dev\.dbpedia\.link)/[^/]+/[^/]+/[^/]+/[^/]+/?$")
-
     for databusURI in databusURIs:
+        host, account, group, artifact, version, file = __get_databus_id_parts__(databusURI)
+
+        # Auto-detect sparql endpoint from databusURI if not given -> no need to specify endpoint (--databus)
+        if endpoint is None:
+            endpoint = f"https://{host}/sparql"
+        print(f"SPARQL endpoint {endpoint}")
+
         # dataID or databus collection
         if databusURI.startswith("http://") or databusURI.startswith("https://"):
             # databus collection
@@ -608,12 +620,20 @@ def download(
                 res = __handle_databus_file_query__(endpoint, query)
                 __download_list__(res, localDir)
             # databus artifact version // https://(databus.dbpedia.org|databus.dev.dbpedia.link)/$ACCOUNT/$GROUP/$ARTIFACT/$VERSION
-            elif databusVersionPattern.match(databusURI):
+            elif file is not None:
+                print("fileId not supported yet")  # TODO
+            elif version is not None:
                 json_str = __handle_databus_artifact_version__(databusURI)
                 res = __handle_databus_file_json__(json_str)
                 __download_list__(res, localDir, vault_token_file=vault_token_file, auth_url=auth_url, client_id=client_id)
+            elif artifact is not None:
+                print("artifactId not supported yet")  # TODO
+            elif group is not None:
+                print("groupId not supported yet")  # TODO
+            elif account is not None:
+                print("accountId not supported yet")  # TODO
             else:
-                print("dataId not supported yet")  # TODO add support for other DatabusIds here (artifact, group, etc.)
+                print("dataId not supported yet")  # TODO add support for other DatabusIds
         # query in local file
         elif databusURI.startswith("file://"):
             print("query in file not supported yet")
