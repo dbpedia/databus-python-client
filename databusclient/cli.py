@@ -38,19 +38,12 @@ def deploy(
 def download(
     databusuris: List[str] = typer.Argument(..., help="any kind of these: databus identifier, databus collection identifier, query file"),
     localDir: str = typer.Option(None , help="local databus folder"), # if not given, databus folder structure is created in current working directory
-    databus: str = typer.Option(None, help="databus URL"), # if not given, inferred on first databusuri (e.g. https://databus.dbpedia.org/sparql)
-    vault_token_file: str = typer.Option(None, help="Path to Vault refresh token file"),
-    auth_url: str = typer.Option("https://auth.dbpedia.org/realms/dbpedia/protocol/openid-connect/token", help="Keycloak token endpoint URL"),
-    client_id: str = typer.Option("vault-token-exchange", help="Client ID for token exchange")
+    databus: str = typer.Option(None, help="databus URL"), # if not given, inferred on databusuri (e.g. https://databus.dbpedia.org/sparql)
+    token: str = typer.Option(None, help="Path to Vault refresh token file"),
+    authUrl: str = typer.Option("https://auth.dbpedia.org/realms/dbpedia/protocol/openid-connect/token", help="Keycloak token endpoint URL"),
+    clientId: str = typer.Option("vault-token-exchange", help="Client ID for token exchange")
 ):
     """
     Download datasets from databus, optionally using vault access if vault options are provided.
     """
-    # Validate vault options: either all three are provided or none
-    vault_opts = [vault_token_file, auth_url, client_id]
-    if any(vault_opts) and not all(vault_opts):
-        raise typer.BadParameter(
-            "If one of --vault-token-file, --auth-url, or --client-id is specified, all three must be specified."
-        )
-
-    client.download(localDir=localDir, endpoint=databus, databusURIs=databusuris, vault_token_file=vault_token_file, auth_url=auth_url, client_id=client_id)
+    client.download(localDir=localDir, endpoint=databus, databusURIs=databusuris, vault_token_file=vaultTokenFile, auth_url=authUrl, client_id=clientId)

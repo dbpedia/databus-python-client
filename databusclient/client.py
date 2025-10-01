@@ -415,19 +415,20 @@ def __download_file__(url, filename, vault_token_file=None, auth_url=None, clien
 
     # --- 1. Get redirect URL by requesting HEAD ---
     response = requests.head(url, stream=True)
-    url = response.headers.get("Location")  # update URL to the final one after redirects
-    # print(f"Status code: {response.status_code} \nResponse code: {response.status_code}\nHeaders: {response.headers}")
-    print("URL after redirects:", url)
+
+    # Check for redirect and update URL if necessary
+    if response.headers.get("Location") and response.status_code in [301, 302, 303, 307, 308]:
+        url = response.headers.get("Location")
+        print("Redirects url: ", url)
 
     # --- 2. Try direct GET ---
     response = requests.get(url, stream=True, allow_redirects=False)  # no redirects here, we want to see if auth is required
     www = response.headers.get('WWW-Authenticate', '')  # get WWW-Authenticate header if present to check for Bearer auth
-    # print(f"Status code: {response.status_code} \nResponse code: {response.status_code}\nHeaders: {response.headers}")
 
     if (response.status_code == 401 or "bearer" in www.lower()):
         print(f"Authentication required for {url}")
         if not (vault_token_file):
-            raise RuntimeError("Authentication required but no vault_token provided")
+            raise ValueError("Vault token file not given for protected download")
 
         # --- 3. Fetch Vault token ---
         vault_token = __get_vault_access__(url, vault_token_file, auth_url, client_id)
@@ -449,7 +450,7 @@ def __download_file__(url, filename, vault_token_file=None, auth_url=None, clien
     progress_bar.close()
 
     if total_size_in_bytes != 0 and progress_bar.n != total_size_in_bytes:
-        print("ERROR, something went wrong")
+        raise 
 
 
 def __get_vault_access__(download_url: str,
@@ -575,7 +576,9 @@ def __download_list__(urls: List[str],
 
         file = url.split("/")[-1]
         filename = os.path.join(localDir, file)
+        print("\n")
         __download_file__(url=url, filename=filename, vault_token_file=vault_token_file, auth_url=auth_url, client_id=client_id)
+        print("\n")
 
 
 def __get_databus_id_parts__(uri: str) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str], Optional[str], Optional[str]]:
@@ -607,29 +610,33 @@ def download(
     for databusURI in databusURIs:
         host, account, group, artifact, version, file = __get_databus_id_parts__(databusURI)
 
-        # Auto-detect sparql endpoint from databusURI if not given -> no need to specify endpoint (--databus)
-        if endpoint is None:
-            endpoint = f"https://{host}/sparql"
-        print(f"SPARQL endpoint {endpoint}")
-
         # dataID or databus collection
         if databusURI.startswith("http://") or databusURI.startswith("https://"):
+            # Auto-detect sparql endpoint from databusURI if not given -> no need to specify endpoint (--databus)
+            if endpoint is None:
+                endpoint = f"https://{host}/sparql"
+            print(f"SPARQL endpoint {endpoint}")
+            
             # databus collection
             if "/collections/" in databusURI:  # TODO "in" is not safe! there could be an artifact named collections, need to check for the correct part position in the URI
                 query = __handle_databus_collection__(databusURI)
                 res = __handle_databus_file_query__(endpoint, query)
                 __download_list__(res, localDir)
-            # databus artifact version // https://(databus.dbpedia.org|databus.dev.dbpedia.link)/$ACCOUNT/$GROUP/$ARTIFACT/$VERSION
+            # databus file
             elif file is not None:
-                print("fileId not supported yet")  # TODO
+                __download_list__([databusURI], localDir, vault_token_file=vault_token_file, auth_url=auth_url, client_id=client_id)
+            # databus artifact version
             elif version is not None:
                 json_str = __handle_databus_artifact_version__(databusURI)
                 res = __handle_databus_file_json__(json_str)
                 __download_list__(res, localDir, vault_token_file=vault_token_file, auth_url=auth_url, client_id=client_id)
+            # databus artifact
             elif artifact is not None:
                 print("artifactId not supported yet")  # TODO
+            # databus group
             elif group is not None:
                 print("groupId not supported yet")  # TODO
+            # databus account
             elif account is not None:
                 print("accountId not supported yet")  # TODO
             else:
@@ -640,5 +647,7 @@ def download(
         # query as argument
         else:
             print("QUERY {}", databusURI.replace("\n", " "))
+            if endpoint is None: # endpoint is required for queries (--databus)
+                raise ValueError("No endpoint given for query")
             res = __handle_databus_file_query__(endpoint, databusURI)
             __download_list__(res, localDir)
