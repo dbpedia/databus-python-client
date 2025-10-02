@@ -533,10 +533,12 @@ def __handle_databus_file_query__(endpoint_url, query) -> List[str]:
         yield value
 
 
-def __handle_databus_file_json__(json_str: str) -> List[str]:
+def __handle_databus_artifact_version__(json_str: str) -> List[str]:
     """
     Parse the JSON-LD of a databus artifact version to extract download URLs.
     Don't get downloadURLs directly from the JSON-LD, but follow the "file" links to count access to databus accurately.
+
+    Returns a list of download URLs.
     """
 
     databusIdUrl = []
@@ -549,6 +551,48 @@ def __handle_databus_file_json__(json_str: str) -> List[str]:
     return databusIdUrl
 
 
+def __get_databus_latest_version_of_artifact__(json_str: str) -> str:
+    """
+    Parse the JSON-LD of a databus artifact to extract URLs of the latest version.
+
+    Returns download URL of latest version of the artifact.
+    """
+    json_dict = json.loads(json_str)
+    versions = json_dict.get("databus:hasVersion")
+    
+    # Single version case {}
+    if isinstance(versions, dict):
+        versions = [versions]
+    # Multiple versions case [{}, {}]
+
+    version_urls = [v["@id"] for v in versions if "@id" in v]
+    if not version_urls:
+        raise ValueError("No versions found in artifact JSON-LD")
+
+    version_urls.sort(reverse=True)  # Sort versions in descending order
+    return version_urls[0]  # Return the latest version URL
+
+
+def __get_databus_artifacts_of_group__(json_str: str) -> List[str]:
+    """
+    Parse the JSON-LD of a databus group to extract URLs of all artifacts.
+
+    Returns a list of artifact URLs.
+    """
+    json_dict = json.loads(json_str)
+    artifacts = json_dict.get("databus:hasArtifact", [])
+    
+    result = []
+    for item in artifacts:
+        uri = item.get("@id")
+        if not uri:
+            continue
+        _, _, _, _, version, _ = __get_databus_id_parts__(uri)
+        if version is None:
+            result.append(uri)
+    return result
+
+
 def wsha256(raw: str):
     return sha256(raw.encode('utf-8')).hexdigest()
 
@@ -558,7 +602,7 @@ def __handle_databus_collection__(uri: str) -> str:
     return requests.get(uri, headers=headers).text
 
 
-def __handle_databus_artifact_version__(uri: str) -> str:
+def __get_json_ld_from_databus__(uri: str) -> str:
     headers = {"Accept": "application/ld+json"}
     return requests.get(uri, headers=headers).text
 
@@ -607,6 +651,7 @@ def download(
     client_id: Client ID for token exchange
     """
 
+    # TODO: make pretty
     for databusURI in databusURIs:
         host, account, group, artifact, version, file = __get_databus_id_parts__(databusURI)
 
@@ -627,15 +672,31 @@ def download(
                 __download_list__([databusURI], localDir, vault_token_file=token, auth_url=auth_url, client_id=client_id)
             # databus artifact version
             elif version is not None:
-                json_str = __handle_databus_artifact_version__(databusURI)
-                res = __handle_databus_file_json__(json_str)
+                json_str = __get_json_ld_from_databus__(databusURI)
+                res = __handle_databus_artifact_version__(json_str)
                 __download_list__(res, localDir, vault_token_file=token, auth_url=auth_url, client_id=client_id)
             # databus artifact
             elif artifact is not None:
-                print("artifactId not supported yet")  # TODO
+                json_str = __get_json_ld_from_databus__(databusURI)
+                latest = __get_databus_latest_version_of_artifact__(json_str)
+                print(f"No version given, using latest version: {latest}")
+                json_str = __get_json_ld_from_databus__(latest)
+                res = __handle_databus_artifact_version__(json_str)
+                __download_list__(res, localDir, vault_token_file=token, auth_url=auth_url, client_id=client_id)
+                
             # databus group
             elif group is not None:
-                print("groupId not supported yet")  # TODO
+                json_str = __get_json_ld_from_databus__(databusURI)
+                artifacts = __get_databus_artifacts_of_group__(json_str)
+                for artifact_uri in artifacts:
+                    print(f"Processing artifact {artifact_uri}")
+                    json_str = __get_json_ld_from_databus__(artifact_uri)
+                    latest = __get_databus_latest_version_of_artifact__(json_str)
+                    print(f"No version given, using latest version: {latest}")
+                    json_str = __get_json_ld_from_databus__(latest)
+                    res = __handle_databus_artifact_version__(json_str)
+                    __download_list__(res, localDir, vault_token_file=token, auth_url=auth_url, client_id=client_id)
+
             # databus account
             elif account is not None:
                 print("accountId not supported yet")  # TODO

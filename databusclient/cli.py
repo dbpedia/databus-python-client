@@ -63,7 +63,7 @@ def app():
 
 @app.command()
 @click.option(
-    "--version-id",
+    "--versionid",
     required=True,
     help="Target databus version/dataset identifier of the form "
          "<https://databus.dbpedia.org/$ACCOUNT/$GROUP/$ARTIFACT/$VERSION>",
@@ -71,7 +71,7 @@ def app():
 @click.option("--title", required=True, help="Dataset title")
 @click.option("--abstract", required=True, help="Dataset abstract max 200 chars")
 @click.option("--description", required=True, help="Dataset description")
-@click.option("--license-uri", required=True, help="License (see dalicc.net)")
+@click.option("--license", required=True, help="License (see dalicc.net)")
 @click.option("--apikey", required=True, help="API key")
 @click.argument(
     "distributions",
