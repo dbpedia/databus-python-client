@@ -1,12 +1,11 @@
-FROM python:3.11-slim
+FROM python:3.10-slim
 
 WORKDIR /app
 
-# Copy everything first (pyproject.toml, README.md, and source code)
 COPY . .
 
-# Install the package + dependencies
+# Install dependencies
 RUN pip install .
 
-# Default command
-ENTRYPOINT ["python", "-m", "databusclient"]
+# Use ENTRYPOINT for the CLI
+ENTRYPOINT ["databusclient"]

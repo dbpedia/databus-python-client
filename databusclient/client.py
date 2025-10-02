@@ -592,7 +592,7 @@ def download(
     localDir: str,
     endpoint: str,
     databusURIs: List[str],
-    vault_token_file=None,
+    token=None,
     auth_url=None,
     client_id=None
 ) -> None:
@@ -602,7 +602,7 @@ def download(
     localDir: the local directory
     endpoint: the databus endpoint URL
     databusURIs: identifiers to access databus registered datasets
-    vault_token_file: Path to Vault refresh token file
+    token: Path to Vault refresh token file
     auth_url: Keycloak token endpoint URL
     client_id: Client ID for token exchange
     """
@@ -624,12 +624,12 @@ def download(
                 __download_list__(res, localDir)
             # databus file
             elif file is not None:
-                __download_list__([databusURI], localDir, vault_token_file=vault_token_file, auth_url=auth_url, client_id=client_id)
+                __download_list__([databusURI], localDir, vault_token_file=token, auth_url=auth_url, client_id=client_id)
             # databus artifact version
             elif version is not None:
                 json_str = __handle_databus_artifact_version__(databusURI)
                 res = __handle_databus_file_json__(json_str)
-                __download_list__(res, localDir, vault_token_file=vault_token_file, auth_url=auth_url, client_id=client_id)
+                __download_list__(res, localDir, vault_token_file=token, auth_url=auth_url, client_id=client_id)
             # databus artifact
             elif artifact is not None:
                 print("artifactId not supported yet")  # TODO
