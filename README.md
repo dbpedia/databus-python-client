@@ -23,7 +23,7 @@ Options:
 
 Commands:
   deploy
-  downoad
+  download
 ```
 
 ## Docker Image Usage
@@ -43,7 +43,7 @@ Arguments:
                     content variants of a distribution, fileExt and Compression can be set, if not they are inferred from the path  [required]
 
 Options:
-  --versionid TEXT    Target databus version/dataset identifier of the form <h
+  --version-id TEXT   Target databus version/dataset identifier of the form <h
                       ttps://databus.dbpedia.org/$ACCOUNT/$GROUP/$ARTIFACT/$VE
                       RSION>  [required]
   --title TEXT        Dataset title  [required]
@@ -55,11 +55,11 @@ Options:
 ```
 Examples of using deploy command
 ```
-databusclient deploy --versionid https://databus.dbpedia.org/user1/group1/artifact1/2022-05-18 --title title1 --abstract abstract1 --description description1 --license http://dalicc.net/licenselibrary/AdaptivePublicLicense10 --apikey MYSTERIOUS 'https://raw.githubusercontent.com/dbpedia/databus/master/server/app/api/swagger.yml|type=swagger'  
+databusclient deploy --version-id https://databus.dbpedia.org/user1/group1/artifact1/2022-05-18 --title title1 --abstract abstract1 --description description1 --license http://dalicc.net/licenselibrary/AdaptivePublicLicense10 --apikey MYSTERIOUS 'https://raw.githubusercontent.com/dbpedia/databus/master/server/app/api/swagger.yml|type=swagger'  
 ```
 
 ```
-databusclient deploy --versionid https://dev.databus.dbpedia.org/denis/group1/artifact1/2022-05-18 --title "Client Testing" --abstract "Testing the client...." --description "Testing the client...." --license http://dalicc.net/licenselibrary/AdaptivePublicLicense10 --apikey MYSTERIOUS 'https://raw.githubusercontent.com/dbpedia/databus/master/server/app/api/swagger.yml|type=swagger'  
+databusclient deploy --version-id https://dev.databus.dbpedia.org/denis/group1/artifact1/2022-05-18 --title "Client Testing" --abstract "Testing the client...." --description "Testing the client...." --license http://dalicc.net/licenselibrary/AdaptivePublicLicense10 --apikey MYSTERIOUS 'https://raw.githubusercontent.com/dbpedia/databus/master/server/app/api/swagger.yml|type=swagger'  
 ```
 
 A few more notes for CLI usage:
@@ -70,11 +70,11 @@ A few more notes for CLI usage:
 
 ### Download command
 ```
-python3 -m databusclient downoad --help
+databusclient download --help
 ```
 
 ```
-Usage: python3 -m databusclient download [OPTIONS] DATABUSURIS...
+Usage: databusclient download [OPTIONS] DATABUSURIS...
 
 Arguments:
   DATABUSURIS...  databus uris to download from https://databus.dbpedia.org,
@@ -102,34 +102,34 @@ Examples of using download command
 
 **File**: download of a single file
 ```
-python3 -m databusclient download https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals/2022.12.01/mappingbased-literals_lang=az.ttl.bz2
+databusclient download https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals/2022.12.01/mappingbased-literals_lang=az.ttl.bz2
 ```
 
 **Version**: download of all files of a specific version
 ```
-python3 -m databusclient download https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals/2022.12.01
+databusclient download https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals/2022.12.01
 ```
 
 **Artifact**: download of all files with latest version of an artifact
 ```
-python3 -m databusclient download https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals
+databusclient download https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals
 ``` 
 
 **Group**: download of all files with lates version of all artifacts of a group
 ```
-python3 -m databusclient download https://databus.dbpedia.org/dbpedia/mappings
+databusclient download https://databus.dbpedia.org/dbpedia/mappings
 ```
 
 If no `--localdir` is provided, the current working directory is used as base directory. The downloaded files will be stored in the working directory in a folder structure according to the databus structure, i.e. `./$ACCOUNT/$GROUP/$ARTIFACT/$VERSION/`.
 
 **Collcetion**: download of all files within a collection
 ```
-python3 -m databusclient download https://databus.dbpedia.org/dbpedia/collections/dbpedia-snapshot-2022-12
+databusclient download https://databus.dbpedia.org/dbpedia/collections/dbpedia-snapshot-2022-12
 ```
 
 **Query**: download of all files returned by a query (sparql endpoint must be provided with `--databus`)
 ```
-python3 -m databusclient download 'PREFIX dcat: <http://www.w3.org/ns/dcat#> SELECT ?x WHERE { ?sub dcat:downloadURL ?x . } LIMIT 10' --databus https://databus.dbpedia.org/sparql
+databusclient download 'PREFIX dcat: <http://www.w3.org/ns/dcat#> SELECT ?x WHERE { ?sub dcat:downloadURL ?x . } LIMIT 10' --databus https://databus.dbpedia.org/sparql
 ```
 
 #### Authentication with vault
@@ -138,7 +138,7 @@ For downloading files from the vault, you need to provide a vault token. See [ge
 
 Example:
 ```
-python3 -m databusclient download https://databus.dbpedia.org/dbpedia-enterprise/live-fusion-snapshots/fusion/2025-08-23 --token vault-token.dat
+databusclient download https://databus.dbpedia.org/dbpedia-enterprise/live-fusion-snapshots/fusion/2025-08-23 --token vault-token.dat
 ```
 
 If vault authentication is required for downloading a file, the client will use the token. If no vault authentication is required, the token will not be used.

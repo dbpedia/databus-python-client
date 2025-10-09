@@ -410,12 +410,12 @@ def __download_file__(url, filename, vault_token_file=None, auth_url=None, clien
        then fetch Vault access token and retry with Authorization header.
     """
 
-    print("Download file: "+url)
-    os.makedirs(os.path.dirname(filename), exist_ok=True)  # Create the necessary directories
-
+    print(f"Download file: {url}")
+    dirpath = os.path.dirname(filename)
+    if dirpath:
+        os.makedirs(dirpath, exist_ok=True)  # Create the necessary directories
     # --- 1. Get redirect URL by requesting HEAD ---
     response = requests.head(url, stream=True)
-
     # Check for redirect and update URL if necessary
     if response.headers.get("Location") and response.status_code in [301, 302, 303, 307, 308]:
         url = response.headers.get("Location")
@@ -450,7 +450,7 @@ def __download_file__(url, filename, vault_token_file=None, auth_url=None, clien
     progress_bar.close()
 
     if total_size_in_bytes != 0 and progress_bar.n != total_size_in_bytes:
-        raise 
+        raise IOError("Downloaded size does not match Content-Length header")
 
 
 def __get_vault_access__(download_url: str,
@@ -666,7 +666,7 @@ def download(
             if "/collections/" in databusURI:  # TODO "in" is not safe! there could be an artifact named collections, need to check for the correct part position in the URI
                 query = __handle_databus_collection__(databusURI)
                 res = __handle_databus_file_query__(endpoint, query)
-                __download_list__(res, localDir)
+                __download_list__(res, localDir, vault_token_file=token, auth_url=auth_url, client_id=client_id)
             # databus file
             elif file is not None:
                 __download_list__([databusURI], localDir, vault_token_file=token, auth_url=auth_url, client_id=client_id)
@@ -711,4 +711,4 @@ def download(
             if endpoint is None: # endpoint is required for queries (--databus)
                 raise ValueError("No endpoint given for query")
             res = __handle_databus_file_query__(endpoint, databusURI)
-            __download_list__(res, localDir)
+            __download_list__(res, localDir, vault_token_file=token, auth_url=auth_url, client_id=client_id)

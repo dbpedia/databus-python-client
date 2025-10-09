@@ -12,7 +12,7 @@ def app():
 
 @app.command()
 @click.option(
-    "--versionid",
+    "--version-id", "version_id",
     required=True,
     help="Target databus version/dataset identifier of the form "
          "<https://databus.dbpedia.org/$ACCOUNT/$GROUP/$ARTIFACT/$VERSION>",
@@ -20,19 +20,19 @@ def app():
 @click.option("--title", required=True, help="Dataset title")
 @click.option("--abstract", required=True, help="Dataset abstract max 200 chars")
 @click.option("--description", required=True, help="Dataset description")
-@click.option("--license", required=True, help="License (see dalicc.net)")
+@click.option("--license", "license_url", required=True, help="License (see dalicc.net)")
 @click.option("--apikey", required=True, help="API key")
 @click.argument(
     "distributions",
     nargs=-1,
     required=True,
 )
-def deploy(version_id, title, abstract, description, license_uri, apikey, distributions: List[str]):
+def deploy(version_id, title, abstract, description, license_url, apikey, distributions: List[str]):
     """
     Deploy a dataset version with the provided metadata and distributions.
     """
     click.echo(f"Deploying dataset version: {version_id}")
-    dataid = client.create_dataset(version_id, title, abstract, description, license_uri, distributions)
+    dataid = client.create_dataset(version_id, title, abstract, description, license_url, distributions)
     client.deploy(dataid=dataid, api_key=apikey)
 
 
