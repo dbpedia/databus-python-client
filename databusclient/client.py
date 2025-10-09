@@ -437,7 +437,14 @@ def __download_file__(url, filename, vault_token_file=None, auth_url=None, clien
         # --- 4. Retry with token ---
         response = requests.get(url, headers=headers, stream=True)
 
-    response.raise_for_status()  # Raise if still failing
+    try:
+        response.raise_for_status()  # Raise if still failing
+    except requests.exceptions.HTTPError as e:
+        if response.status_code == 404:
+            print(f"WARNING: Skipping file {url} because it was not found (404).")
+            return
+        else:
+            raise e
 
     total_size_in_bytes = int(response.headers.get('content-length', 0))
     block_size = 1024  # 1 KiB
@@ -559,7 +566,7 @@ def __get_databus_latest_version_of_artifact__(json_str: str) -> str:
     """
     json_dict = json.loads(json_str)
     versions = json_dict.get("databus:hasVersion")
-    
+
     # Single version case {}
     if isinstance(versions, dict):
         versions = [versions]
@@ -581,7 +588,7 @@ def __get_databus_artifacts_of_group__(json_str: str) -> List[str]:
     """
     json_dict = json.loads(json_str)
     artifacts = json_dict.get("databus:hasArtifact", [])
-    
+
     result = []
     for item in artifacts:
         uri = item.get("@id")
@@ -661,7 +668,7 @@ def download(
             if endpoint is None:
                 endpoint = f"https://{host}/sparql"
             print(f"SPARQL endpoint {endpoint}")
-            
+
             # databus collection
             if "/collections/" in databusURI:  # TODO "in" is not safe! there could be an artifact named collections, need to check for the correct part position in the URI
                 query = __handle_databus_collection__(databusURI)
@@ -683,7 +690,7 @@ def download(
                 json_str = __get_json_ld_from_databus__(latest)
                 res = __handle_databus_artifact_version__(json_str)
                 __download_list__(res, localDir, vault_token_file=token, auth_url=auth_url, client_id=client_id)
-                
+
             # databus group
             elif group is not None:
                 json_str = __get_json_ld_from_databus__(databusURI)
@@ -708,7 +715,7 @@ def download(
         # query as argument
         else:
             print("QUERY {}", databusURI.replace("\n", " "))
-            if endpoint is None: # endpoint is required for queries (--databus)
+            if endpoint is None:  # endpoint is required for queries (--databus)
                 raise ValueError("No endpoint given for query")
             res = __handle_databus_file_query__(endpoint, databusURI)
             __download_list__(res, localDir, vault_token_file=token, auth_url=auth_url, client_id=client_id)

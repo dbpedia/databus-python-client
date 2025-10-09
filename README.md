@@ -122,7 +122,7 @@ databusclient download https://databus.dbpedia.org/dbpedia/mappings
 
 If no `--localdir` is provided, the current working directory is used as base directory. The downloaded files will be stored in the working directory in a folder structure according to the databus structure, i.e. `./$ACCOUNT/$GROUP/$ARTIFACT/$VERSION/`.
 
-**Collcetion**: download of all files within a collection
+**Collection**: download of all files within a collection
 ```
 databusclient download https://databus.dbpedia.org/dbpedia/collections/dbpedia-snapshot-2022-12
 ```
