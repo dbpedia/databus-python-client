@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 databusclient deploy \
-	--version-id "https://databus.dbpedia.org/gg46ixav/test_group/test_artifact/2023-07-02" \
+	--version-id "https://d8lr.tools.dbpedia.org/hopver/testGroup/testArtifact/1.0-alpha/" \
 	--title "Test Title" \
 	--abstract "Test Abstract" \
 	--description "Test Description" \
