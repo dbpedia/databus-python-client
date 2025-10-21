@@ -14,14 +14,10 @@ tqdm = "^4.42.1"
 SPARQLWrapper = "^2.0.0"
 python-dotenv = "^1.1.1"
 
-
-[tool.poetry.dev-dependencies]
-black = "^22.6.0"
-rdflib = "^7.2.1"
-
 [tool.poetry.group.dev.dependencies]
 black = "^22.6.0"
 pytest = "^7.1.3"
+rdflib = "^7.2.1"
 
 [tool.poetry.scripts]
 databusclient = "databusclient.cli:app"
