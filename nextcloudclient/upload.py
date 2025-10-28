@@ -35,6 +35,8 @@ def upload_to_nextcloud(source_paths: list[str], remote_name: str, remote_path: 
         basename = os.path.basename(abs_path)
         files = get_all_files(abs_path)
 
+        tmp_results = []
+
         for file in files:
             checksum,size  = compute_sha256_and_length(file)
 
@@ -47,7 +49,7 @@ def upload_to_nextcloud(source_paths: list[str], remote_name: str, remote_path: 
             url = posixpath.join(webdav_url,remote_webdav_path)
 
             filename = file.split("/")[-1]
-            result.append((filename, checksum, size, url))
+            tmp_results.append((filename, checksum, size, url))
 
         if os.path.isdir(path):
             destination = f"{remote_name}:{remote_path}/{basename}"
@@ -59,6 +61,7 @@ def upload_to_nextcloud(source_paths: list[str], remote_name: str, remote_path: 
         print(f"Upload: {path} → {destination}")
         try:
             subprocess.run(command, check=True)
+            result.append(tmp_results)
             print("✅ Uploaded successfully.\n")
         except subprocess.CalledProcessError as e:
             print(f"❌ Error uploading {path}: {e}\n")
