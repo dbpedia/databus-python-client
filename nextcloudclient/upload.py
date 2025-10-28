@@ -24,7 +24,7 @@ def get_all_files(path):
             files.append(os.path.join(root, name))
     return files
 
-def upload_to_nextcloud(source_paths: str, remote_name: str, remote_path: str, webdav_url: str):
+def upload_to_nextcloud(source_paths: list[str], remote_name: str, remote_path: str, webdav_url: str):
     result = []
     for path in source_paths:
         if not os.path.exists(path):
