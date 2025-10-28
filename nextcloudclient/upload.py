@@ -2,6 +2,8 @@ import hashlib
 import os
 import subprocess
 import posixpath
+from urllib.parse import urljoin, quote
+
 
 def compute_sha256_and_length(filepath):
     sha256 = hashlib.sha256()
@@ -42,20 +44,24 @@ def upload_to_nextcloud(source_paths: list[str], remote_name: str, remote_path: 
 
             if os.path.isdir(path):
                 rel_file = os.path.relpath(file, abs_path)
+                # Normalize to POSIX for WebDAV/URLs
+                rel_file = rel_file.replace(os.sep, "/")
                 remote_webdav_path = posixpath.join(remote_path, basename, rel_file)
             else:
                 remote_webdav_path = posixpath.join(remote_path, os.path.basename(file))
 
-            url = posixpath.join(webdav_url,remote_webdav_path)
+            # Preserve scheme/host and percent-encode path segments
+            url = urljoin(webdav_url.rstrip("/") + "/", quote(remote_webdav_path.lstrip("/"), safe="/"))
 
             filename = os.path.basename(file)
             tmp_results.append((filename, checksum, size, url))
 
+        dest_subpath = posixpath.join(remote_path.lstrip("/"), basename)
         if os.path.isdir(path):
-            destination = f"{remote_name}:{remote_path}/{basename}"
+            destination = f"{remote_name}:{dest_subpath}"
             command = ["rclone", "copy", abs_path, destination, "--progress"]
         else:
-            destination = f"{remote_name}:{remote_path}/{basename}"
+            destination = f"{remote_name}:{dest_subpath}"
             command = ["rclone", "copyto", abs_path, destination, "--progress"]
 
         print(f"Upload: {path} → {destination}")
@@ -65,6 +71,7 @@ def upload_to_nextcloud(source_paths: list[str], remote_name: str, remote_path: 
             print("✅ Uploaded successfully.\n")
         except subprocess.CalledProcessError as e:
             print(f"❌ Error uploading {path}: {e}\n")
-
+        except FileNotFoundError:
+            print("❌ rclone not found on PATH. Install rclone and retry.")
 
     return result
