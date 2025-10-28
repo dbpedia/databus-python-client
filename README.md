@@ -71,9 +71,7 @@ Use metadata.json file to list all files which should be added to the databus
 The script registers all files on the databus.
 ### Example Call
 ```bash
-cd databusclient 
-
-python deploy.py \
+python -m databusclient.deploy \
   --no-upload \
   --metadata ./metadata.json \
   --version-id https://databus.org/user/dataset/version/1.0 \
@@ -91,9 +89,7 @@ The script uploads all given files and all files in the given folders to the giv
 Then registers them on the databus.
 ### Example Call
 ```bash
-cd databusclient 
-
-python deploy.py \
+python -m databusclient.deploy \
 --webdav-url https://cloud.scadsai.uni-leipzig.de/remote.php/webdav \
 --remote scads-nextcloud \
 --path test \
