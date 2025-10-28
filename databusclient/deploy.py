@@ -8,7 +8,6 @@ from dotenv import load_dotenv
 
 from nextcloudclient.upload import upload_to_nextcloud
 
-
 def deploy_to_databus(
     metadata,
     version_id,
@@ -25,6 +24,9 @@ def deploy_to_databus(
     distributions = []
     counter = 0
     for filename, checksum, size, url in metadata:
+        # Expect a SHA-256 hex digest (64 chars). Reject others.
+        if not isinstance(checksum, str) or len(checksum) != 64:
+            raise ValueError(f"Invalid checksum for {filename}: expected SHA-256 hex (64 chars), got '{checksum}'")
         parts = filename.split(".")
         if len(parts) == 1:
             file_format = "none"
