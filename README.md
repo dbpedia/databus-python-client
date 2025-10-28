@@ -102,8 +102,8 @@ python deploy.py \
 --abstract "This is a short abstract of the test dataset." \
 --description "This dataset was uploaded for testing the Nextcloud → Databus deployment pipeline." \
 --license https://dalicc.net/licenselibrary/Apache-2.0 \
-/home/theo/Work/SCADS.AI/Projects/CSVTest/newtestoutputfolder \
-/home/theo/Work/SCADS.AI/Projects/CSVTest/output.csv.bz2
+/home/CSVTest/newtestoutputfolder \
+/home/CSVTest/output.csv.bz2
 
 ```
 ## CLI Usage
