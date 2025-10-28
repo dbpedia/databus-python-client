@@ -61,7 +61,7 @@ def upload_to_nextcloud(source_paths: list[str], remote_name: str, remote_path: 
         print(f"Upload: {path} → {destination}")
         try:
             subprocess.run(command, check=True)
-            result.append(tmp_results)
+            result.extend(tmp_results)
             print("✅ Uploaded successfully.\n")
         except subprocess.CalledProcessError as e:
             print(f"❌ Error uploading {path}: {e}\n")
