@@ -15,6 +15,21 @@ def set_verbose(verbose: bool) -> None:
     """Enable or disable verbose output for HTTP requests and responses"""
     global __debug
     __debug = verbose
+    
+def verbose_log(title: str, **kwargs) -> None:
+    """Logs verbose information if debugging is enabled.
+    Usage: verbose_log("HTTP GET Request", URL=url, Status=response.status_code, Headers=dict(response.headers))
+    """
+    if not __debug:
+        return
+
+    print(f"\n--- VERBOSE: {title} ---")
+    for k, v in kwargs.items():
+        if k.lower().startswith("responsebody") and isinstance(v, str) and len(v) > 500:
+            print(f"{k}: {v[:500]}...")
+        else:
+            print(f"{k}: {v}")
+    print(f"--- End of {title} ---\n")
 
 class DeployError(Exception):
     """Raised if deploy fails"""
@@ -390,17 +405,18 @@ def deploy(
         print(data)
         print("----------------------------------")
 
+    if __debug:
+        verbose_log("HTTP POST Request",
+        URL=api_uri,
+        Headers=dict(headers),
+        Status=resp.status_code,
+        ResponseHeaders=dict(resp.headers),
+        ResponseBody=resp.text
+        )
+        
     if resp.status_code != 200:
         raise DeployError(f"Could not deploy dataset to databus. Reason: '{resp.text}'")
 
-        if __debug:
-            print(f"\n--- VERBOSE: HTTP POST Request ---")
-            print(f"URL: {api_uri}")
-            print(f"Headers: {headers}")
-            print(f"Status Code: {resp.status_code}")
-            print(f"Response Headers: {dict(resp.headers)}")
-            print(f"Response Body: {resp.text[:500]}...") 
-            print("--- End of HTTP Response ---\n")
 
 
 def __download_file__(url, filename, vault_token_file=None, auth_url=None, client_id=None) -> None:
@@ -426,12 +442,13 @@ def __download_file__(url, filename, vault_token_file=None, auth_url=None, clien
         os.makedirs(dirpath, exist_ok=True)  # Create the necessary directories
     # --- 1. Get redirect URL by requesting HEAD ---
     response = requests.head(url, stream=True)
+   
     if __debug:
-       print(f"\n--- VERBOSE: HTTP HEAD Request ---")
-       print(f"URL: {url}")
-       print(f"Status Code: {response.status_code}")
-       print(f"Response Headers: {dict(response.headers)}")
-       print("--- End of HTTP HEAD Response ---\n")
+        verbose_log("HTTP HEAD Request",
+        URL=url,
+        Status=response.status_code,
+        Headers=dict(response.headers),
+        )
         
     # Check for redirect and update URL if necessary
     if response.headers.get("Location") and response.status_code in [301, 302, 303, 307, 308]:
@@ -443,12 +460,13 @@ def __download_file__(url, filename, vault_token_file=None, auth_url=None, clien
     www = response.headers.get('WWW-Authenticate', '')  # get WWW-Authenticate header if present to check for Bearer auth
 
     if __debug:
-        print(f"\n--- VERBOSE: HTTP GET Request ---")
-        print(f"URL: {url}")
-        print(f"Status Code: {response.status_code}")
-        print(f"WWW-Authenticate Header: {www}")
-        print(f"Response Headers: {dict(response.headers)}")
-        print("--- End of HTTP GET Response ---\n")
+        verbose_log(
+            "HTTP GET Request",
+            URL=url,
+            Status=response.status_code,
+            WWW_Authenticate=www,
+            ResponseHeaders=dict(response.headers),
+        )
     
     if (response.status_code == 401 or "bearer" in www.lower()):
         print(f"Authentication required for {url}")
@@ -463,12 +481,13 @@ def __download_file__(url, filename, vault_token_file=None, auth_url=None, clien
         response = requests.get(url, headers=headers, stream=True)
         
         if __debug:
-            print(f"\n--- VERBOSE: HTTP GET Request (with Vault token) ---")
-            print(f"URL: {url}")
-            print(f"Authorization: Bearer {vault_token[:20]}...")
-            print(f"Status Code: {response.status_code}")
-            print(f"Response Headers: {dict(response.headers)}")
-            print("--- End of HTTP GET Response ---\n")
+            verbose_log(
+                "HTTP GET Request (with Vault token)",
+                URL=url,
+                Authorization=f"Bearer {vault_token[:20]}..." if isinstance(vault_token, str) else "Bearer <token>",
+                Status=response.status_code,
+                ResponseHeaders=dict(response.headers),
+            )
 
     try:
         response.raise_for_status()  # Raise if still failing
@@ -518,11 +537,12 @@ def __get_vault_access__(download_url: str,
     })
     
     if __debug:
-        print(f"\n--- VERBOSE: Token Refresh Request ---")
-        print(f"URL: {auth_url}")
-        print(f"Status Code: {resp.status_code}")
-        print(f"Response: {resp.json() if resp.status_code == 200 else resp.text}")
-        print("--- End of Token Refresh ---\n")
+        verbose_log(
+            "Token Refresh Request",
+            URL=auth_url,
+            Status=resp.status_code,
+            Response=(resp.json() if resp.status_code == 200 else resp.text),
+        )
     
     resp.raise_for_status()
     access_token = resp.json()["access_token"]
@@ -546,11 +566,12 @@ def __get_vault_access__(download_url: str,
     })
     
     if __debug:
-        print(f"\n--- VERBOSE: Vault Token Exchange Request ---")
-        print(f"URL: {auth_url}")
-        print(f"Audience: {audience}")
-        print(f"Status Code: {resp.status_code}")
-        print("--- End of Vault Token Exchange ---\n")
+        verbose_log(
+            "Vault Token Exchange Request",
+            URL=auth_url,
+            Audience=audience,
+            Status=resp.status_code,
+        )
     
     resp.raise_for_status()
     vault_token = resp.json()["access_token"]
