@@ -98,3 +98,17 @@ def test_empty_cvs():
     }
 
     assert dataset == correct_dataset
+
+def test_verbose_flag():
+    """Test that set_verbose function exists and works"""
+    from databusclient import client
+    
+    # Test function exists
+    assert hasattr(client, 'set_verbose')
+    
+    # Test it can be called
+    client.set_verbose(True)
+    assert client.__debug is True
+    
+    client.set_verbose(False)
+    assert client.__debug is False

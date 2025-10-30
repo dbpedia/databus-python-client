@@ -8,3 +8,15 @@ databusclient deploy \
 	--license "http://dalicc.net/licenselibrary/AdaptivePublicLicense10" \
 	--apikey "$1" \
 	"https://raw.githubusercontent.com/dbpedia/databus/master/server/app/api/swagger.yml|type=swagger"
+
+
+# Same test with verbose flag
+databusclient deploy \
+	--version-id "https://d8lr.tools.dbpedia.org/hopver/testGroup/testArtifact/1.0-alpha/" \
+	--title "Test Title" \
+	--abstract "Test Abstract" \
+	--description "Test Description" \
+	--license "http://dalicc.net/licenselibrary/AdaptivePublicLicense10" \
+	--apikey "$1" \
+	--verbose \
+	"https://raw.githubusercontent.com/dbpedia/databus/master/server/app/api/swagger.yml|type=swagger"
