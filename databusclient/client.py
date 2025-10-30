@@ -11,6 +11,25 @@ import re
 
 __debug = False
 
+def set_verbose(verbose: bool) -> None:
+    """Enable or disable verbose output for HTTP requests and responses"""
+    global __debug
+    __debug = verbose
+    
+def verbose_log(title: str, **kwargs) -> None:
+    """Logs verbose information if debugging is enabled.
+    Usage: verbose_log("HTTP GET Request", URL=url, Status=response.status_code, Headers=dict(response.headers))
+    """
+    if not __debug:
+        return
+
+    print(f"\n--- VERBOSE: {title} ---")
+    for k, v in kwargs.items():
+        if k.lower().startswith("responsebody") and isinstance(v, str) and len(v) > 500:
+            print(f"{k}: {v[:500]}...")
+        else:
+            print(f"{k}: {v}")
+    print(f"--- End of {title} ---\n")
 
 class DeployError(Exception):
     """Raised if deploy fails"""
@@ -384,13 +403,20 @@ def deploy(
         dataset_uri = dataid["@graph"][0]["@id"]
         print(f"Trying submitting data to {dataset_uri}:")
         print(data)
+        print("----------------------------------")
 
+    if __debug:
+        verbose_log("HTTP POST Request",
+        URL=api_uri,
+        Headers=dict(headers),
+        Status=resp.status_code,
+        ResponseHeaders=dict(resp.headers),
+        ResponseBody=resp.text
+        )
+        
     if resp.status_code != 200:
         raise DeployError(f"Could not deploy dataset to databus. Reason: '{resp.text}'")
 
-    if debug or __debug:
-        print("---------")
-        print(resp.text)
 
 
 def __download_file__(url, filename, vault_token_file=None, auth_url=None, client_id=None) -> None:
@@ -416,6 +442,14 @@ def __download_file__(url, filename, vault_token_file=None, auth_url=None, clien
         os.makedirs(dirpath, exist_ok=True)  # Create the necessary directories
     # --- 1. Get redirect URL by requesting HEAD ---
     response = requests.head(url, stream=True)
+   
+    if __debug:
+        verbose_log("HTTP HEAD Request",
+        URL=url,
+        Status=response.status_code,
+        Headers=dict(response.headers),
+        )
+        
     # Check for redirect and update URL if necessary
     if response.headers.get("Location") and response.status_code in [301, 302, 303, 307, 308]:
         url = response.headers.get("Location")
@@ -425,6 +459,15 @@ def __download_file__(url, filename, vault_token_file=None, auth_url=None, clien
     response = requests.get(url, stream=True, allow_redirects=False)  # no redirects here, we want to see if auth is required
     www = response.headers.get('WWW-Authenticate', '')  # get WWW-Authenticate header if present to check for Bearer auth
 
+    if __debug:
+        verbose_log(
+            "HTTP GET Request",
+            URL=url,
+            Status=response.status_code,
+            WWW_Authenticate=www,
+            ResponseHeaders=dict(response.headers),
+        )
+    
     if (response.status_code == 401 or "bearer" in www.lower()):
         print(f"Authentication required for {url}")
         if not (vault_token_file):
@@ -436,6 +479,15 @@ def __download_file__(url, filename, vault_token_file=None, auth_url=None, clien
 
         # --- 4. Retry with token ---
         response = requests.get(url, headers=headers, stream=True)
+        
+        if __debug:
+            verbose_log(
+                "HTTP GET Request (with Vault token)",
+                URL=url,
+                Authorization=f"Bearer {vault_token[:20]}..." if isinstance(vault_token, str) else "Bearer <token>",
+                Status=response.status_code,
+                ResponseHeaders=dict(response.headers),
+            )
 
     try:
         response.raise_for_status()  # Raise if still failing
@@ -483,6 +535,15 @@ def __get_vault_access__(download_url: str,
         "grant_type": "refresh_token",
         "refresh_token": refresh_token
     })
+    
+    if __debug:
+        verbose_log(
+            "Token Refresh Request",
+            URL=auth_url,
+            Status=resp.status_code,
+            Response=(resp.json() if resp.status_code == 200 else resp.text),
+        )
+    
     resp.raise_for_status()
     access_token = resp.json()["access_token"]
 
@@ -503,6 +564,15 @@ def __get_vault_access__(download_url: str,
         "subject_token": access_token,
         "audience": audience
     })
+    
+    if __debug:
+        verbose_log(
+            "Vault Token Exchange Request",
+            URL=auth_url,
+            Audience=audience,
+            Status=resp.status_code,
+        )
+    
     resp.raise_for_status()
     vault_token = resp.json()["access_token"]
 
