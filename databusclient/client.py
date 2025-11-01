@@ -28,6 +28,13 @@ class DeployLogLevel(Enum):
     debug = 2
 
 
+class ShaValidationMode(Enum):
+    """Controls how SHA256 validation is handled during download."""
+    OFF = "off"
+    WARNING = "warning"
+    ERROR = "error"
+
+
 def __get_content_variants(distribution_str: str) -> Optional[Dict[str, str]]:
     args = distribution_str.split("|")
 
@@ -393,7 +400,15 @@ def deploy(
         print(resp.text)
 
 
-def __download_file__(url, filename, vault_token_file=None, auth_url=None, client_id=None) -> None:
+def __download_file__(
+    url,
+    filename,
+    vault_token_file=None,
+    auth_url=None,
+    client_id=None,
+    expected_sha256=None,
+    validation_mode: ShaValidationMode = ShaValidationMode.WARNING,
+) -> None:
     """
     Download a file from the internet with a progress bar using tqdm.
 
@@ -403,11 +418,8 @@ def __download_file__(url, filename, vault_token_file=None, auth_url=None, clien
     - vault_token_file: Path to Vault refresh token file
     - auth_url: Keycloak token endpoint URL
     - client_id: Client ID for token exchange
-
-    Steps:
-    1. Try direct GET without Authorization header.
-    2. If server responds with WWW-Authenticate: Bearer, 401 Unauthorized) or url starts with "https://data.dbpedia.io/databus.dbpedia.org",
-       then fetch Vault access token and retry with Authorization header.
+    - expected_sha256: The expected SHA256 checksum for validation
+    - validation_mode: Enum (OFF, WARNING, ERROR) to control validation behavior
     """
 
     print(f"Download file: {url}")
@@ -417,15 +429,25 @@ def __download_file__(url, filename, vault_token_file=None, auth_url=None, clien
     # --- 1. Get redirect URL by requesting HEAD ---
     response = requests.head(url, stream=True)
     # Check for redirect and update URL if necessary
-    if response.headers.get("Location") and response.status_code in [301, 302, 303, 307, 308]:
+    if response.headers.get("Location") and response.status_code in [
+        301,
+        302,
+        303,
+        307,
+        308,
+    ]:
         url = response.headers.get("Location")
         print("Redirects url: ", url)
 
     # --- 2. Try direct GET ---
-    response = requests.get(url, stream=True, allow_redirects=False)  # no redirects here, we want to see if auth is required
-    www = response.headers.get('WWW-Authenticate', '')  # get WWW-Authenticate header if present to check for Bearer auth
+    response = requests.get(
+        url, stream=True, allow_redirects=False
+    )  # no redirects here, we want to see if auth is required
+    www = response.headers.get(
+        "WWW-Authenticate", ""
+    )  # get WWW-Authenticate header if present to check for Bearer auth
 
-    if (response.status_code == 401 or "bearer" in www.lower()):
+    if response.status_code == 401 or "bearer" in www.lower():
         print(f"Authentication required for {url}")
         if not (vault_token_file):
             raise ValueError("Vault token file not given for protected download")
@@ -446,24 +468,46 @@ def __download_file__(url, filename, vault_token_file=None, auth_url=None, clien
         else:
             raise e
 
-    total_size_in_bytes = int(response.headers.get('content-length', 0))
+    total_size_in_bytes = int(response.headers.get("content-length", 0))
     block_size = 1024  # 1 KiB
 
-    progress_bar = tqdm(total=total_size_in_bytes, unit='iB', unit_scale=True)
-    with open(filename, 'wb') as file:
+    progress_bar = tqdm(total=total_size_in_bytes, unit="iB", unit_scale=True)
+    with open(filename, "wb") as file:
         for data in response.iter_content(block_size):
             progress_bar.update(len(data))
             file.write(data)
     progress_bar.close()
+    import hashlib
+
+    def compute_sha256(filepath):
+        sha256 = hashlib.sha256()
+        with open(filepath, "rb") as f:
+            for chunk in iter(lambda: f.read(4096), b""):
+                sha256.update(chunk)
+        return sha256.hexdigest()
+
+    # Validate checksum if expected hash is provided and validation is not OFF
+    if expected_sha256 and validation_mode != ShaValidationMode.OFF:
+        actual_sha256 = compute_sha256(filename)
+        if actual_sha256 != expected_sha256:
+            mismatch_msg = f"SHA256 mismatch for {filename}\nExpected: {expected_sha256}\nActual:   {actual_sha256}"
+            if validation_mode == ShaValidationMode.ERROR:
+                raise ValueError(mismatch_msg)
+            elif validation_mode == ShaValidationMode.WARNING:
+                print(f"\nWARNING: {mismatch_msg}\n")
+                # Don't raise, just print and continue
+        else:
+            print(f"SHA256 validated for {filename}")
+    elif expected_sha256 and validation_mode == ShaValidationMode.OFF:
+        print(f"Skipping SHA256 validation for {filename} (mode=OFF)")
 
     if total_size_in_bytes != 0 and progress_bar.n != total_size_in_bytes:
         raise IOError("Downloaded size does not match Content-Length header")
 
 
-def __get_vault_access__(download_url: str,
-                         token_file: str,
-                         auth_url: str,
-                         client_id: str) -> str:
+def __get_vault_access__(
+    download_url: str, token_file: str, auth_url: str, client_id: str
+) -> str:
     """
     Get Vault access token for a protected databus download.
     """
@@ -478,31 +522,37 @@ def __get_vault_access__(download_url: str,
         print(f"Warning: token from {token_file} is short (<80 chars)")
 
     # 2. Refresh token -> access token
-    resp = requests.post(auth_url, data={
-        "client_id": client_id,
-        "grant_type": "refresh_token",
-        "refresh_token": refresh_token
-    })
+    resp = requests.post(
+        auth_url,
+        data={
+            "client_id": client_id,
+            "grant_type": "refresh_token",
+            "refresh_token": refresh_token,
+        },
+    )
     resp.raise_for_status()
     access_token = resp.json()["access_token"]
 
     # 3. Extract host as audience
     # Remove protocol prefix
     if download_url.startswith("https://"):
-        host_part = download_url[len("https://"):]
+        host_part = download_url[len("https://") :]
     elif download_url.startswith("http://"):
-        host_part = download_url[len("http://"):]
+        host_part = download_url[len("http://") :]
     else:
         host_part = download_url
     audience = host_part.split("/")[0]  # host is before first "/"
 
     # 4. Access token -> Vault token
-    resp = requests.post(auth_url, data={
-        "client_id": client_id,
-        "grant_type": "urn:ietf:params:oauth:grant-type:token-exchange",
-        "subject_token": access_token,
-        "audience": audience
-    })
+    resp = requests.post(
+        auth_url,
+        data={
+            "client_id": client_id,
+            "grant_type": "urn:ietf:params:oauth:grant-type:token-exchange",
+            "subject_token": access_token,
+            "audience": audience,
+        },
+    )
     resp.raise_for_status()
     vault_token = resp.json()["access_token"]
 
@@ -522,40 +572,68 @@ def __query_sparql__(endpoint_url, query) -> dict:
     - Dictionary containing the query results
     """
     sparql = SPARQLWrapper(endpoint_url)
-    sparql.method = 'POST'
+    sparql.method = "POST"
     sparql.setQuery(query)
     sparql.setReturnFormat(JSON)
     results = sparql.query().convert()
     return results
 
 
-def __handle_databus_file_query__(endpoint_url, query) -> List[str]:
+def __handle_databus_file_query__(
+    endpoint_url, query
+) -> List[Tuple[str, Optional[str]]]:
     result_dict = __query_sparql__(endpoint_url, query)
-    for binding in result_dict['results']['bindings']:
-        if len(binding.keys()) > 1:
-            print("Error multiple bindings in query response")
-            break
+    for binding in result_dict["results"]["bindings"]:
+        # Attempt to find file URL and sha
+        file_url = None
+        sha = None
+
+        # Try common variable names for the file URL
+        if "file" in binding:
+            file_url = binding["file"]["value"]
+        elif "downloadURL" in binding:
+            file_url = binding["downloadURL"]["value"]
+        elif len(binding.keys()) >= 1:  # Fallback to original-like behavior
+            file_url = binding[next(iter(binding.keys()))]["value"]
+
+        # Try common variable names for the checksum
+        if "sha" in binding:
+            sha = binding["sha"]["value"]
+        elif "sha256sum" in binding:
+            sha = binding["sha256sum"]["value"]
+
+        if file_url:
+            yield (file_url, sha)
         else:
-            value = binding[next(iter(binding.keys()))]['value']
-        yield value
+            print(f"Warning: Could not determine file URL from query binding: {binding}")
 
 
-def __handle_databus_artifact_version__(json_str: str) -> List[str]:
+def __handle_databus_artifact_version__(
+    json_str: str,
+) -> List[Tuple[str, Optional[str]]]:
     """
-    Parse the JSON-LD of a databus artifact version to extract download URLs.
+    Parse the JSON-LD of a databus artifact version to extract download URLs and SHA256 sums.
     Don't get downloadURLs directly from the JSON-LD, but follow the "file" links to count access to databus accurately.
 
-    Returns a list of download URLs.
+    Returns a list of (download_url, sha256sum) tuples.
     """
 
-    databusIdUrl = []
+    databus_files = []
     json_dict = json.loads(json_str)
     graph = json_dict.get("@graph", [])
     for node in graph:
         if node.get("@type") == "Part":
-            id = node.get("file")
-            databusIdUrl.append(id)
-    return databusIdUrl
+            # Use the 'file' link as per the original comment
+            url = node.get("file")
+            if not url:
+                continue
+
+            # Extract the sha256sum from the same node
+            # This key is used in your create_dataset function
+            sha = node.get("sha256sum")
+
+            databus_files.append((url, sha))
+    return databus_files
 
 
 def __get_databus_latest_version_of_artifact__(json_str: str) -> str:
@@ -601,7 +679,7 @@ def __get_databus_artifacts_of_group__(json_str: str) -> List[str]:
 
 
 def wsha256(raw: str):
-    return sha256(raw.encode('utf-8')).hexdigest()
+    return sha256(raw.encode("utf-8")).hexdigest()
 
 
 def __handle_databus_collection__(uri: str) -> str:
@@ -614,25 +692,44 @@ def __get_json_ld_from_databus__(uri: str) -> str:
     return requests.get(uri, headers=headers).text
 
 
-def __download_list__(urls: List[str],
-                      localDir: str,
-                      vault_token_file: str = None,
-                      auth_url: str = None,
-                      client_id: str = None) -> None:
-    for url in urls:
+def __download_list__(
+    files_to_download: List[Tuple[str, Optional[str]]],
+    localDir: str,
+    validation_mode: ShaValidationMode,
+    vault_token_file: str = None,
+    auth_url: str = None,
+    client_id: str = None,
+) -> None:
+    for url, expected_sha in files_to_download:
         if localDir is None:
             host, account, group, artifact, version, file = __get_databus_id_parts__(url)
-            localDir = os.path.join(os.getcwd(), account, group, artifact, version if version is not None else "latest")
+            localDir = os.path.join(
+                os.getcwd(),
+                account,
+                group,
+                artifact,
+                version if version is not None else "latest",
+            )
             print(f"Local directory not given, using {localDir}")
 
         file = url.split("/")[-1]
         filename = os.path.join(localDir, file)
         print("\n")
-        __download_file__(url=url, filename=filename, vault_token_file=vault_token_file, auth_url=auth_url, client_id=client_id)
+        __download_file__(
+            url=url,
+            filename=filename,
+            vault_token_file=vault_token_file,
+            auth_url=auth_url,
+            client_id=client_id,
+            expected_sha256=expected_sha,  # <-- Pass the SHA hash here
+            validation_mode=validation_mode,  # <-- Pass the validation mode
+        )
         print("\n")
 
 
-def __get_databus_id_parts__(uri: str) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str], Optional[str], Optional[str]]:
+def __get_databus_id_parts__(
+    uri: str,
+) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str], Optional[str], Optional[str]]:
     uri = uri.removeprefix("https://").removeprefix("http://")
     parts = uri.strip("/").split("/")
     parts += [None] * (6 - len(parts))  # pad with None if less than 6 parts
@@ -645,7 +742,8 @@ def download(
     databusURIs: List[str],
     token=None,
     auth_url=None,
-    client_id=None
+    client_id=None,
+    validation_mode: ShaValidationMode = ShaValidationMode.WARNING,
 ) -> None:
     """
     Download datasets to local storage from databus registry. If download is on vault, vault token will be used for downloading protected files.
@@ -656,11 +754,14 @@ def download(
     token: Path to Vault refresh token file
     auth_url: Keycloak token endpoint URL
     client_id: Client ID for token exchange
+    validation_mode: Enum (OFF, WARNING, ERROR) to control validation behavior. Defaults to WARNING.
     """
 
     # TODO: make pretty
     for databusURI in databusURIs:
-        host, account, group, artifact, version, file = __get_databus_id_parts__(databusURI)
+        host, account, group, artifact, version, file = __get_databus_id_parts__(
+            databusURI
+        )
 
         # dataID or databus collection
         if databusURI.startswith("http://") or databusURI.startswith("https://"):
@@ -673,15 +774,37 @@ def download(
             if "/collections/" in databusURI:  # TODO "in" is not safe! there could be an artifact named collections, need to check for the correct part position in the URI
                 query = __handle_databus_collection__(databusURI)
                 res = __handle_databus_file_query__(endpoint, query)
-                __download_list__(res, localDir, vault_token_file=token, auth_url=auth_url, client_id=client_id)
+                __download_list__(
+                    res,
+                    localDir,
+                    validation_mode,
+                    vault_token_file=token,
+                    auth_url=auth_url,
+                    client_id=client_id,
+                )
             # databus file
             elif file is not None:
-                __download_list__([databusURI], localDir, vault_token_file=token, auth_url=auth_url, client_id=client_id)
+                # Pass (url, None) to match the new signature
+                __download_list__(
+                    [(databusURI, None)],
+                    localDir,
+                    validation_mode,
+                    vault_token_file=token,
+                    auth_url=auth_url,
+                    client_id=client_id,
+                )
             # databus artifact version
             elif version is not None:
                 json_str = __get_json_ld_from_databus__(databusURI)
                 res = __handle_databus_artifact_version__(json_str)
-                __download_list__(res, localDir, vault_token_file=token, auth_url=auth_url, client_id=client_id)
+                __download_list__(
+                    res,
+                    localDir,
+                    validation_mode,
+                    vault_token_file=token,
+                    auth_url=auth_url,
+                    client_id=client_id,
+                )
             # databus artifact
             elif artifact is not None:
                 json_str = __get_json_ld_from_databus__(databusURI)
@@ -689,7 +812,14 @@ def download(
                 print(f"No version given, using latest version: {latest}")
                 json_str = __get_json_ld_from_databus__(latest)
                 res = __handle_databus_artifact_version__(json_str)
-                __download_list__(res, localDir, vault_token_file=token, auth_url=auth_url, client_id=client_id)
+                __download_list__(
+                    res,
+                    localDir,
+                    validation_mode,
+                    vault_token_file=token,
+                    auth_url=auth_url,
+                    client_id=client_id,
+                )
 
             # databus group
             elif group is not None:
@@ -702,7 +832,14 @@ def download(
                     print(f"No version given, using latest version: {latest}")
                     json_str = __get_json_ld_from_databus__(latest)
                     res = __handle_databus_artifact_version__(json_str)
-                    __download_list__(res, localDir, vault_token_file=token, auth_url=auth_url, client_id=client_id)
+                    __download_list__(
+                        res,
+                        localDir,
+                        validation_mode,
+                        vault_token_file=token,
+                        auth_url=auth_url,
+                        client_id=client_id,
+                    )
 
             # databus account
             elif account is not None:
@@ -718,4 +855,11 @@ def download(
             if endpoint is None:  # endpoint is required for queries (--databus)
                 raise ValueError("No endpoint given for query")
             res = __handle_databus_file_query__(endpoint, databusURI)
-            __download_list__(res, localDir, vault_token_file=token, auth_url=auth_url, client_id=client_id)
+            __download_list__(
+                res,
+                localDir,
+                validation_mode,
+                vault_token_file=token,
+                auth_url=auth_url,
+                client_id=client_id,
+            )
