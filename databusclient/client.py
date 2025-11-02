@@ -12,6 +12,15 @@ import re
 __debug = False
 
 
+def __compute_file_sha256(filepath: str) -> str:
+    """Computes the SHA256 hex digest for a file."""
+    sha256_hash = hashlib.sha256()
+    with open(filepath, "rb") as f:
+        for chunk in iter(lambda: f.read(4096), b""):
+            sha256_hash.update(chunk)
+    return sha256_hash.hexdigest()
+
+
 class DeployError(Exception):
     """Raised if deploy fails"""
 
@@ -486,18 +495,10 @@ def __download_file__(
             progress_bar.update(len(data))
             file.write(data)
     progress_bar.close()
-    import hashlib
-
-    def compute_sha256(filepath):
-        sha256 = hashlib.sha256()
-        with open(filepath, "rb") as f:
-            for chunk in iter(lambda: f.read(4096), b""):
-                sha256.update(chunk)
-        return sha256.hexdigest()
 
     # Validate checksum if expected hash is provided and validation is not OFF
     if expected_sha256 and validation_mode != ShaValidationMode.OFF:
-        actual_sha256 = compute_sha256(filename)
+        actual_sha256 = __compute_file_sha256(filename)
         if actual_sha256 != expected_sha256:
             mismatch_msg = f"SHA256 mismatch for {filename}\nExpected: {expected_sha256}\nActual:   {actual_sha256}"
             if validation_mode == ShaValidationMode.ERROR:
@@ -507,8 +508,6 @@ def __download_file__(
                 # Don't raise, just print and continue
         else:
             print(f"SHA256 validated for {filename}")
-    elif expected_sha256 and validation_mode == ShaValidationMode.OFF:
-        print(f"Skipping SHA256 validation for {filename} (mode=OFF)")
 
     if total_size_in_bytes != 0 and progress_bar.n != total_size_in_bytes:
         raise IOError("Downloaded size does not match Content-Length header")
@@ -733,7 +732,7 @@ def __download_list__(
             auth_url=auth_url,
             client_id=client_id,
             expected_sha256=expected_sha,  # <-- Pass the SHA hash here
-            validation_mode=validation_mode, # <-- Pass the validation mode here
+            validation_mode=validation_mode,  # <-- Pass the validation mode here
         )
         print("\n")
 
