@@ -29,10 +29,11 @@ class DeployLogLevel(Enum):
 
 
 class ShaValidationMode(Enum):
-    """Controls how SHA256 validation is handled during download."""
-    OFF = "off"
-    WARNING = "warning"
-    ERROR = "error"
+    """Controls the SHA256 validation behavior"""
+
+    OFF = 0  # Skip validation
+    WARNING = 1  # Print a warning on mismatch
+    ERROR = 2  # Raise an error on mismatch
 
 
 def __get_content_variants(distribution_str: str) -> Optional[Dict[str, str]]:
@@ -323,7 +324,7 @@ def create_dataset(
         "@type": "Artifact",
         "title": title,
         "abstract": abstract,
-        "description": description
+        "description": description,
     }
     graphs.append(artifact_graph)
 
@@ -457,7 +458,15 @@ def __download_file__(
         headers = {"Authorization": f"Bearer {vault_token}"}
 
         # --- 4. Retry with token ---
+        # This request correctly allows redirects (default)
         response = requests.get(url, headers=headers, stream=True)
+
+    # Handle 3xx redirects for non-authed requests (e.g., S3 presigned URLs)
+    elif response.is_redirect:
+        redirect_url = response.headers.get("Location")
+        print(f"Following redirect to {redirect_url}")
+        # Make a new request that *does* follow any further redirects
+        response = requests.get(redirect_url, stream=True, allow_redirects=True)
 
     try:
         response.raise_for_status()  # Raise if still failing
@@ -695,14 +704,16 @@ def __get_json_ld_from_databus__(uri: str) -> str:
 def __download_list__(
     files_to_download: List[Tuple[str, Optional[str]]],
     localDir: str,
-    validation_mode: ShaValidationMode,
     vault_token_file: str = None,
     auth_url: str = None,
     client_id: str = None,
+    validation_mode: ShaValidationMode = ShaValidationMode.WARNING,
 ) -> None:
     for url, expected_sha in files_to_download:
         if localDir is None:
-            host, account, group, artifact, version, file = __get_databus_id_parts__(url)
+            host, account, group, artifact, version, file = __get_databus_id_parts__(
+                url
+            )
             localDir = os.path.join(
                 os.getcwd(),
                 account,
@@ -722,7 +733,7 @@ def __download_list__(
             auth_url=auth_url,
             client_id=client_id,
             expected_sha256=expected_sha,  # <-- Pass the SHA hash here
-            validation_mode=validation_mode,  # <-- Pass the validation mode
+            validation_mode=validation_mode, # <-- Pass the validation mode here
         )
         print("\n")
 
@@ -754,7 +765,7 @@ def download(
     token: Path to Vault refresh token file
     auth_url: Keycloak token endpoint URL
     client_id: Client ID for token exchange
-    validation_mode: Enum (OFF, WARNING, ERROR) to control validation behavior. Defaults to WARNING.
+    validation_mode: (OFF, WARNING, ERROR) controls SHA256 validation behavior. Default is WARNING.
     """
 
     # TODO: make pretty
@@ -777,10 +788,10 @@ def download(
                 __download_list__(
                     res,
                     localDir,
-                    validation_mode,
                     vault_token_file=token,
                     auth_url=auth_url,
                     client_id=client_id,
+                    validation_mode=validation_mode,
                 )
             # databus file
             elif file is not None:
@@ -788,10 +799,10 @@ def download(
                 __download_list__(
                     [(databusURI, None)],
                     localDir,
-                    validation_mode,
                     vault_token_file=token,
                     auth_url=auth_url,
                     client_id=client_id,
+                    validation_mode=validation_mode,
                 )
             # databus artifact version
             elif version is not None:
@@ -800,10 +811,10 @@ def download(
                 __download_list__(
                     res,
                     localDir,
-                    validation_mode,
                     vault_token_file=token,
                     auth_url=auth_url,
                     client_id=client_id,
+                    validation_mode=validation_mode,
                 )
             # databus artifact
             elif artifact is not None:
@@ -815,10 +826,10 @@ def download(
                 __download_list__(
                     res,
                     localDir,
-                    validation_mode,
                     vault_token_file=token,
                     auth_url=auth_url,
                     client_id=client_id,
+                    validation_mode=validation_mode,
                 )
 
             # databus group
@@ -835,10 +846,10 @@ def download(
                     __download_list__(
                         res,
                         localDir,
-                        validation_mode,
                         vault_token_file=token,
                         auth_url=auth_url,
                         client_id=client_id,
+                        validation_mode=validation_mode,
                     )
 
             # databus account
@@ -858,8 +869,8 @@ def download(
             __download_list__(
                 res,
                 localDir,
-                validation_mode,
                 vault_token_file=token,
                 auth_url=auth_url,
                 client_id=client_id,
+                validation_mode=validation_mode,
             )
