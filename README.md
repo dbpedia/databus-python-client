@@ -262,14 +262,14 @@ databusclient upload-and-deploy \
 --webdav-url https://cloud.scadsai.uni-leipzig.de/remote.php/webdav \
 --remote scads-nextcloud \
 --path test \
---version-id https://databus.dbpedia.org/gg46ixav/test_group/test_artifact/2023-07-03 \
+--version-id https://databus.org/user/dataset/version/1.0 \
 --title "Test Dataset" \
 --abstract "This is a short abstract of the test dataset." \
 --description "This dataset was uploaded for testing the Nextcloud → Databus deployment pipeline." \
 --license https://dalicc.net/licenselibrary/Apache-2.0 \
---api-key "API-KEY"
-/home/CSVTest/newtestoutputfolder \
-/home/CSVTest/output.csv.bz2
+--apikey "API-KEY" \
+/home/test \
+/home/test_folder/test
 ```
 
 
@@ -295,20 +295,21 @@ Options:
   --help              Show this message and exit.
 ```
 
-Use the metadata.json file to list all files which should be added to the databus.
+Use the metadata.json file (see [databusclient/metadata.json](databusclient/metadata.json)) to list all files which should be added to the databus.
 The script registers all files on the databus.
 
 
 #### Examples of using deploy command
 
 ```bash
-databusclient upload-with-metadata \
-  --metadata ./metadata.json \
+databusclient deploy-with-metadata \
+  --metadata /home/metadata.json \
   --version-id https://databus.org/user/dataset/version/1.0 \
   --title "Test Dataset" \
   --abstract "This is a short abstract of the test dataset." \
   --description "This dataset was uploaded for testing the Nextcloud → Databus deployment pipeline." \
-  --license https://dalicc.net/licenselibrary/Apache-2.0
+  --license https://dalicc.net/licenselibrary/Apache-2.0 \
+  --apikey "API-KEY"
 
 ```
 
