@@ -205,6 +205,40 @@ def create_distribution(
 
     return f"{url}|{meta_string}"
 
+def create_distributions_from_metadata(metadata):
+    distributions = []
+    counter = 0
+    for entry in metadata:
+        filename = entry["filename"]
+        checksum = entry["checksum"]
+        size = entry["size"]
+        url = entry["url"]
+        # Expect a SHA-256 hex digest (64 chars). Reject others.
+        if not isinstance(checksum, str) or len(checksum) != 64:
+            raise ValueError(f"Invalid checksum for {filename}: expected SHA-256 hex (64 chars), got '{checksum}'")
+        parts = filename.split(".")
+        if len(parts) == 1:
+            file_format = "none"
+            compression = "none"
+        elif len(parts) == 2:
+            file_format = parts[-1]
+            compression = "none"
+        else:
+            file_format = parts[-2]
+            compression = parts[-1]
+
+        distributions.append(
+            create_distribution(
+                url=url,
+                cvs={"count": f"{counter}"},
+                file_format=file_format,
+                compression=compression,
+                sha256_length_tuple=(checksum, size)
+            )
+        )
+        counter += 1
+    return distributions
+
 
 def create_dataset(
     version_id: str,
@@ -391,6 +425,25 @@ def deploy(
     if debug or __debug:
         print("---------")
         print(resp.text)
+
+
+def deploy_from_metadata(metadata, version_id, title, abstract, description, license_url, apikey):
+    distributions = create_distributions_from_metadata(metadata)
+
+    dataset = create_dataset(
+        version_id=version_id,
+        title=title,
+        abstract=abstract,
+        description=description,
+        license_url=license_url,
+        distributions=distributions
+    )
+
+    print(f"Deploying dataset version: {version_id}")
+    deploy(dataset, apikey)
+
+    metadata_string = ",\n".join([entry[-1] for entry in metadata])
+    print(f"Successfully deployed\n{metadata_string}\nto databus {version_id}")
 
 
 def __download_file__(url, filename, vault_token_file=None, auth_url=None, client_id=None) -> None:

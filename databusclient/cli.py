@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 import json
-import os
 
 import click
 from typing import List
@@ -41,6 +40,78 @@ def deploy(version_id, title, abstract, description, license_url, apikey, distri
 
 
 @app.command()
+@click.option(
+    "--metadata", "metadata_file",
+    required=True,
+    type=click.Path(exists=True),
+    help="Path to metadata JSON file",
+)
+@click.option(
+    "--version-id", "version_id",
+    required=True,
+    help="Target databus version/dataset identifier of the form "
+         "<https://databus.dbpedia.org/$ACCOUNT/$GROUP/$ARTIFACT/$VERSION>",
+)
+@click.option("--title", required=True, help="Dataset title")
+@click.option("--abstract", required=True, help="Dataset abstract max 200 chars")
+@click.option("--description", required=True, help="Dataset description")
+@click.option("--license", "license_url", required=True, help="License (see dalicc.net)")
+@click.option("--apikey", required=True, help="API key")
+def deploy_with_metadata(metadata_file, version_id, title, abstract, description, license_url, apikey):
+    """
+    Deploy to DBpedia Databus using metadata json file.
+    """
+
+    with open(metadata_file, 'r') as f:
+        metadata = json.load(f)
+
+    client.deploy_from_metadata(metadata, version_id, title, abstract, description, license_url, apikey)
+
+
+@app.command()
+@click.option(
+    "--webdav-url", "webdav_url",
+    required=True,
+    help="WebDAV URL (e.g., https://cloud.example.com/remote.php/webdav)",
+)
+@click.option(
+    "--remote",
+    required=True,
+    help="rclone remote name (e.g., 'nextcloud')",
+)
+@click.option(
+    "--path",
+    required=True,
+    help="Remote path on Nextcloud (e.g., 'datasets/mydataset')",
+)
+@click.option(
+    "--version-id", "version_id",
+    required=True,
+    help="Target databus version/dataset identifier of the form "
+         "<https://databus.dbpedia.org/$ACCOUNT/$GROUP/$ARTIFACT/$VERSION>",
+)
+@click.option("--title", required=True, help="Dataset title")
+@click.option("--abstract", required=True, help="Dataset abstract max 200 chars")
+@click.option("--description", required=True, help="Dataset description")
+@click.option("--license", "license_url", required=True, help="License (see dalicc.net)")
+@click.option("--apikey", required=True, help="API key")
+@click.argument(
+    "files",
+    nargs=-1,
+    type=click.Path(exists=True),
+)
+def upload_and_deploy(webdav_url, remote, path, version_id, title, abstract, description, license_url, apikey,
+                      files: List[str]):
+    """
+    Upload files to Nextcloud and deploy to DBpedia Databus.
+    """
+
+    click.echo(f"Uploading data to nextcloud: {remote}")
+    metadata = upload.upload_to_nextcloud(files, remote, path, webdav_url)
+    client.deploy_from_metadata(metadata, version_id, title, abstract, description, license_url, apikey)
+
+
+@app.command()
 @click.argument("databusuris", nargs=-1, required=True)
 @click.option("--localdir", help="Local databus folder (if not given, databus folder structure is created in current working directory)")
 @click.option("--databus", help="Databus URL (if not given, inferred from databusuri, e.g. https://databus.dbpedia.org/sparql)")
@@ -59,117 +130,6 @@ def download(databusuris: List[str], localdir, databus, token, authurl, clientid
         auth_url=authurl,
         client_id=clientid,
     )
-
-
-@app.command()
-@click.option(
-    "--webdav-url", "webdav_url",
-    help="WebDAV URL (e.g., https://cloud.example.com/remote.php/webdav)",
-)
-@click.option(
-    "--remote",
-    help="rclone remote name (e.g., 'nextcloud')",
-)
-@click.option(
-    "--path",
-    help="Remote path on Nextcloud (e.g., 'datasets/mydataset')",
-)
-@click.option(
-    "--no-upload", "no_upload",
-    is_flag=True,
-    help="Skip file upload and use existing metadata",
-)
-@click.option(
-    "--metadata",
-    type=click.Path(exists=True),
-    help="Path to metadata JSON file (required if --no-upload is used)",
-)
-
-@click.option(
-    "--version-id", "version_id",
-    required=True,
-    help="Target databus version/dataset identifier of the form "
-         "<https://databus.dbpedia.org/$ACCOUNT/$GROUP/$ARTIFACT/$VERSION>",
-)
-@click.option("--title", required=True, help="Dataset title")
-@click.option("--abstract", required=True, help="Dataset abstract max 200 chars")
-@click.option("--description", required=True, help="Dataset description")
-@click.option("--license", "license_url", required=True, help="License (see dalicc.net)")
-@click.option("--apikey", required=True, help="API key")
-
-@click.argument(
-    "files",
-    nargs=-1,
-    type=click.Path(exists=True),
-)
-def upload_and_deploy(webdav_url, remote, path, no_upload, metadata, version_id, title, abstract, description, license_url, apikey, files: List[str]):
-    """
-    Upload files to Nextcloud and deploy to DBpedia Databus.
-    """
-
-    if no_upload:
-        if not metadata:
-            raise click.ClickException("--metadata is required when using --no-upload")
-        if not os.path.isfile(metadata):
-            raise click.ClickException(f"Error: Metadata file not found: {metadata}")
-        with open(metadata, 'r') as f:
-            metadata = json.load(f)
-    else:
-        if not (webdav_url and remote and path):
-            raise click.ClickException("Error: --webdav-url, --remote, and --path are required unless --no-upload is used")
-
-        click.echo(f"Uploading data to nextcloud: {remote}")
-        metadata = upload.upload_to_nextcloud(files, remote, path, webdav_url)
-
-
-    click.echo(f"Creating {len(metadata)} distributions")
-    distributions = []
-    counter = 0
-    for entry in metadata:
-        filename = entry["filename"]
-        checksum = entry["checksum"]
-        size = entry["size"]
-        url = entry["url"]
-        # Expect a SHA-256 hex digest (64 chars). Reject others.
-        if not isinstance(checksum, str) or len(checksum) != 64:
-            raise ValueError(f"Invalid checksum for {filename}: expected SHA-256 hex (64 chars), got '{checksum}'")
-        parts = filename.split(".")
-        if len(parts) == 1:
-            file_format = "none"
-            compression = "none"
-        elif len(parts) == 2:
-            file_format = parts[-1]
-            compression = "none"
-        else:
-            file_format = parts[-2]
-            compression = parts[-1]
-
-        distributions.append(
-            client.create_distribution(
-                url=url,
-                cvs={"count": f"{counter}"},
-                file_format=file_format,
-                compression=compression,
-                sha256_length_tuple=(checksum, size)
-            )
-        )
-        counter += 1
-
-    dataset = client.create_dataset(
-        version_id=version_id,
-        title=title,
-        abstract=abstract,
-        description=description,
-        license_url=license_url,
-        distributions=distributions
-    )
-
-    click.echo(f"Deploying dataset version: {version_id}")
-
-    deploy(dataset, apikey)
-    metadata_string = ",\n".join([entry[-1] for entry in metadata])
-
-    click.echo(f"Successfully deployed\n{metadata_string}\nto databus {version_id}")
 
 
 if __name__ == "__main__":
