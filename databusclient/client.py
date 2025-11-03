@@ -212,6 +212,8 @@ def create_distributions_from_metadata(metadata):
         filename = entry["filename"]
         checksum = entry["checksum"]
         size = entry["size"]
+        if not isinstance(size, int) or size <= 0:
+            raise ValueError(f"Invalid size for {filename}: expected positive integer, got {size}")
         url = entry["url"]
         # Expect a SHA-256 hex digest (64 chars). Reject others.
         if not isinstance(checksum, str) or len(checksum) != 64:
