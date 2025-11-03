@@ -205,10 +205,33 @@ def create_distribution(
 
     return f"{url}|{meta_string}"
 
-def create_distributions_from_metadata(metadata):
+def create_distributions_from_metadata(metadata: List[Dict[str, Union[str, int]]]) -> List[str]:
+    """
+    Create distributions from metadata entries.
+
+    Parameters
+    ----------
+    metadata : List[Dict[str, Union[str, int]]]
+        List of metadata entries, each containing:
+        - filename: str - Name of the file
+        - checksum: str - SHA-256 hex digest (64 characters)
+        - size: int - File size in bytes (positive integer)
+        - url: str - Download URL for the file
+
+    Returns
+    -------
+    List[str]
+        List of distribution identifier strings for use with create_dataset
+    """
     distributions = []
     counter = 0
     for entry in metadata:
+        # Validate required keys
+        required_keys = ["filename", "checksum", "size", "url"]
+        missing_keys = [key for key in required_keys if key not in entry]
+        if missing_keys:
+            raise ValueError(f"Metadata entry missing required keys: {missing_keys}")
+
         filename = entry["filename"]
         checksum = entry["checksum"]
         size = entry["size"]
@@ -443,7 +466,35 @@ def deploy(
         print(resp.text)
 
 
-def deploy_from_metadata(metadata, version_id, title, abstract, description, license_url, apikey):
+def deploy_from_metadata(
+    metadata: List[Dict[str, Union[str, int]]],
+    version_id: str,
+    title: str,
+    abstract: str,
+    description: str,
+    license_url: str,
+    apikey: str
+) -> None:
+    """
+    Deploy a dataset from metadata entries.
+
+    Parameters
+    ----------
+    metadata : List[Dict[str, Union[str, int]]]
+        List of file metadata entries (see create_distributions_from_metadata)
+    version_id : str
+        Dataset version ID in the form $DATABUS_BASE/$ACCOUNT/$GROUP/$ARTIFACT/$VERSION
+    title : str
+        Dataset title
+    abstract : str
+        Short description of the dataset
+    description : str
+        Long description (Markdown supported)
+    license_url : str
+        License URI
+    apikey : str
+        API key for authentication
+    """
     distributions = create_distributions_from_metadata(metadata)
 
     dataset = create_dataset(
@@ -458,8 +509,10 @@ def deploy_from_metadata(metadata, version_id, title, abstract, description, lic
     print(f"Deploying dataset version: {version_id}")
     deploy(dataset, apikey)
 
-    metadata_string = ",\n".join(entry["url"] for entry in metadata)
-    print(f"Successfully deployed\n{metadata_string}\nto databus {version_id}")
+    print(f"Successfully deployed to {version_id}")
+    print(f"Deployed {len(metadata)} file(s):")
+    for entry in metadata:
+        print(f"  - {entry['filename']}")
 
 
 def __download_file__(url, filename, vault_token_file=None, auth_url=None, client_id=None) -> None:
