@@ -64,44 +64,6 @@ docker run --rm -v $(pwd):/data dbpedia/databus-python-client download https://d
 A docker image is available at [dbpedia/databus-python-client](https://hub.docker.com/r/dbpedia/databus-python-client). See [download section](#usage-of-docker-image) for details.
 
 
-## Deploy to Databus
-Please add databus API_KEY to .env file
-Use metadata.json file to list all files which should be added to the databus
-
-The script registers all files on the databus.
-### Example Call
-```bash
-python -m databusclient.deploy \
-  --no-upload \
-  --metadata ./metadata.json \
-  --version-id https://databus.org/user/dataset/version/1.0 \
-  --title "Test Dataset" \
-  --abstract "This is a short abstract of the test dataset." \
-  --description "This dataset was uploaded for testing the Nextcloud → Databus deployment pipeline." \
-  --license https://dalicc.net/licenselibrary/Apache-2.0
-
-```
-
-## Upload to Nextcloud and Deploy to Databus
-Please add databus API_KEY to .env file
-
-The script uploads all given files and all files in the given folders to the given remote.
-Then registers them on the databus.
-### Example Call
-```bash
-python -m databusclient.deploy \
---webdav-url https://cloud.scadsai.uni-leipzig.de/remote.php/webdav \
---remote scads-nextcloud \
---path test \
---version-id https://databus.dbpedia.org/gg46ixav/test_group/test_artifact/2023-07-03 \
---title "Test Dataset" \
---abstract "This is a short abstract of the test dataset." \
---description "This dataset was uploaded for testing the Nextcloud → Databus deployment pipeline." \
---license https://dalicc.net/licenselibrary/Apache-2.0 \
-/home/CSVTest/newtestoutputfolder \
-/home/CSVTest/output.csv.bz2
-
-```
 ## CLI Usage
 
 **Installation**
@@ -258,6 +220,98 @@ If using vault authentication, make sure the token file is available in the cont
 ```
 docker run --rm -v $(pwd):/data dbpedia/databus-python-client download https://databus.dbpedia.org/dbpedia-enterprise/live-fusion-snapshots/fusion/2025-08-23/fusion_props=all_subjectns=commons-wikimedia-org_vocab=all.ttl.gz --token vault-token.dat
 ```
+
+### Upload-and-deploy command
+```
+databusclient upload-and-deploy --help
+```
+```
+Usage: databusclient upload-and-deploy [OPTIONS] [FILES]...
+
+  Upload files to Nextcloud and deploy to DBpedia Databus.
+
+Arguments:
+  FILES...  files in the form of List[path], where every path must exist locally, which will be uploaded and deployed
+
+Options:
+  --webdav-url TEXT   WebDAV URL (e.g.,
+                      https://cloud.example.com/remote.php/webdav)
+  --remote TEXT       rclone remote name (e.g., 'nextcloud')
+  --path TEXT         Remote path on Nextcloud (e.g., 'datasets/mydataset')
+  --no-upload         Skip file upload and use existing metadata
+  --metadata PATH     Path to metadata JSON file (required if --no-upload is
+                      used)
+  --version-id TEXT   Target databus version/dataset identifier of the form <h
+                      ttps://databus.dbpedia.org/$ACCOUNT/$GROUP/$ARTIFACT/$VE
+                      RSION>  [required]
+  --title TEXT        Dataset title  [required]
+  --abstract TEXT     Dataset abstract max 200 chars  [required]
+  --description TEXT  Dataset description  [required]
+  --license TEXT      License (see dalicc.net)  [required]
+  --apikey TEXT       API key  [required]
+  --help              Show this message and exit.
+```
+The script uploads all given files and all files in the given folders to the given remote.
+Then registers them on the databus.
+
+
+#### Example of using upload-and-deploy command
+
+```bash
+databusclient upload-and-deploy \
+--webdav-url https://cloud.scadsai.uni-leipzig.de/remote.php/webdav \
+--remote scads-nextcloud \
+--path test \
+--version-id https://databus.dbpedia.org/gg46ixav/test_group/test_artifact/2023-07-03 \
+--title "Test Dataset" \
+--abstract "This is a short abstract of the test dataset." \
+--description "This dataset was uploaded for testing the Nextcloud → Databus deployment pipeline." \
+--license https://dalicc.net/licenselibrary/Apache-2.0 \
+--api-key "API-KEY"
+/home/CSVTest/newtestoutputfolder \
+/home/CSVTest/output.csv.bz2
+```
+
+
+### deploy command with metadata
+```
+databusclient deploy-with-metadata --help
+```
+```
+Usage: databusclient deploy-with-metadata [OPTIONS]
+
+  Deploy to DBpedia Databus using metadata json file.
+
+Options:
+  --metadata PATH     Path to metadata JSON file  [required]
+  --version-id TEXT   Target databus version/dataset identifier of the form <h
+                      ttps://databus.dbpedia.org/$ACCOUNT/$GROUP/$ARTIFACT/$VE
+                      RSION>  [required]
+  --title TEXT        Dataset title  [required]
+  --abstract TEXT     Dataset abstract max 200 chars  [required]
+  --description TEXT  Dataset description  [required]
+  --license TEXT      License (see dalicc.net)  [required]
+  --apikey TEXT       API key  [required]
+  --help              Show this message and exit.
+```
+
+Use the metadata.json file to list all files which should be added to the databus.
+The script registers all files on the databus.
+
+
+#### Examples of using deploy command
+
+```bash
+databusclient upload-with-metadata \
+  --metadata ./metadata.json \
+  --version-id https://databus.org/user/dataset/version/1.0 \
+  --title "Test Dataset" \
+  --abstract "This is a short abstract of the test dataset." \
+  --description "This dataset was uploaded for testing the Nextcloud → Databus deployment pipeline." \
+  --license https://dalicc.net/licenselibrary/Apache-2.0
+
+```
+
 
 ## Module Usage
 
