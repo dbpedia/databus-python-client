@@ -442,7 +442,7 @@ def deploy_from_metadata(metadata, version_id, title, abstract, description, lic
     print(f"Deploying dataset version: {version_id}")
     deploy(dataset, apikey)
 
-    metadata_string = ",\n".join([entry[-1] for entry in metadata])
+    metadata_string = ",\n".join(entry["url"] for entry in metadata)
     print(f"Successfully deployed\n{metadata_string}\nto databus {version_id}")
 
 
