@@ -215,9 +215,10 @@ def create_distributions_from_metadata(metadata):
         if not isinstance(size, int) or size <= 0:
             raise ValueError(f"Invalid size for {filename}: expected positive integer, got {size}")
         url = entry["url"]
-        # Expect a SHA-256 hex digest (64 chars). Reject others.
-        if not isinstance(checksum, str) or len(checksum) != 64:
-            raise ValueError(f"Invalid checksum for {filename}: expected SHA-256 hex (64 chars), got '{checksum}'")
+        # Validate SHA-256 hex digest (64 hex chars)
+        if not isinstance(checksum, str) or len(checksum) != 64 or not all(
+            c in '0123456789abcdefABCDEF' for c in checksum):
+                raise ValueError(f"Invalid checksum for {filename}")
         # Known compression extensions
         COMPRESSION_EXTS = {"gz", "bz2", "xz", "zip", "7z", "tar", "lz", "zst"}
 
