@@ -1,13 +1,13 @@
 [
   {
     "filename": "example.ttl",
-    "checksum": "6e340b9cffb37a989ca544e6bb780a2c7e5d7dcb",
+    "checksum": "0929436d44bba110fc7578c138ed770ae9f548e195d19c2f00d813cca24b9f39",
     "size": 12345,
     "url": "https://cloud.example.com/remote.php/webdav/datasets/mydataset/example.ttl"
   },
   {
     "filename": "example.csv.gz",
-    "checksum": "3f786850e387550fdab836ed7e6dc881de23001b",
+    "checksum": "2238acdd7cf6bc8d9c9963a9f6014051c754bf8a04aacc5cb10448e2da72c537",
     "size": 54321,
     "url": "https://cloud.example.com/remote.php/webdav/datasets/mydataset/example.csv.gz"
   }
