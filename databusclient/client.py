@@ -377,7 +377,7 @@ def create_dataset(
     graphs.append(dataset_graph)
 
     dataset = {
-        "@context": "https://databus.dbpedia.org/res/context.jsonld",
+        "@context": "https://downloads.dbpedia.org/databus/context.jsonld",
         "@graph": graphs,
     }
     return dataset
