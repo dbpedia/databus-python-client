@@ -1,4 +1,7 @@
 #!/usr/bin/env python3
+import json
+import os
+
 import click
 from typing import List
 from databusclient import client
@@ -58,7 +61,7 @@ def download(databusuris: List[str], localdir, databus, token, authurl, clientid
     )
 
 
-@app.command(help="Upload files to Nextcloud and deploy to DBpedia Databus.")
+@app.command()
 @click.option(
     "--webdav-url", "webdav_url",
     help="WebDAV URL (e.g., https://cloud.example.com/remote.php/webdav)",
@@ -101,22 +104,19 @@ def download(databusuris: List[str], localdir, databus, token, authurl, clientid
 )
 def upload_and_deploy(webdav_url, remote, path, no_upload, metadata, version_id, title, abstract, description, license_url, apikey, files: List[str]):
     """
-    Deploy a dataset version with the provided metadata and distributions.
+    Upload files to Nextcloud and deploy to DBpedia Databus.
     """
 
     if no_upload:
         if not metadata:
-            click.echo(click.style("Error: --metadata is required when using --no-upload", fg="red"))
-            sys.exit(1)
+            raise click.ClickException("--metadata is required when using --no-upload")
         if not os.path.isfile(metadata):
-            click.echo(click.style(f"Error: Metadata file not found: {metadata}", fg="red"))
-            sys.exit(1)
+            raise click.ClickException(f"Error: Metadata file not found: {metadata}")
         with open(metadata, 'r') as f:
             metadata = json.load(f)
     else:
         if not (webdav_url and remote and path):
-            click.echo(click.style("Error: --webdav-url, --remote, and --path are required unless --no-upload is used", fg="red"))
-            sys.exit(1)
+            raise click.ClickException("Error: --webdav-url, --remote, and --path are required unless --no-upload is used")
 
         click.echo(f"Uploading data to nextcloud: {remote}")
         metadata = upload.upload_to_nextcloud(files, remote, path, webdav_url)
@@ -145,7 +145,7 @@ def upload_and_deploy(webdav_url, remote, path, no_upload, metadata, version_id,
             compression = parts[-1]
 
         distributions.append(
-            create_distribution(
+            client.create_distribution(
                 url=url,
                 cvs={"count": f"{counter}"},
                 file_format=file_format,
@@ -155,7 +155,7 @@ def upload_and_deploy(webdav_url, remote, path, no_upload, metadata, version_id,
         )
         counter += 1
 
-    dataset = create_dataset(
+    dataset = client.create_dataset(
         version_id=version_id,
         title=title,
         abstract=abstract,
@@ -166,7 +166,7 @@ def upload_and_deploy(webdav_url, remote, path, no_upload, metadata, version_id,
 
     click.echo(f"Deploying dataset version: {version_id}")
 
-    deploy(dataset, api_key)
+    deploy(dataset, apikey)
     metadata_string = ",\n".join([entry[-1] for entry in metadata])
 
     click.echo(f"Successfully deployed\n{metadata_string}\nto databus {version_id}")
