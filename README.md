@@ -223,10 +223,10 @@ docker run --rm -v $(pwd):/data dbpedia/databus-python-client download https://d
 
 
 ### Upload-and-deploy command
-```
+```bash
 databusclient upload-and-deploy --help
 ```
-```
+```text
 Usage: databusclient upload-and-deploy [OPTIONS] [FILES]...
 
   Upload files to Nextcloud and deploy to DBpedia Databus.
@@ -275,10 +275,10 @@ databusclient upload-and-deploy \
 
 
 ### deploy-with-metadata command
-```
+```bash
 databusclient deploy-with-metadata --help
 ```
-```
+```text
 Usage: databusclient deploy-with-metadata [OPTIONS]
 
   Deploy to DBpedia Databus using metadata json file.
@@ -300,7 +300,7 @@ Use the metadata.json file (see [databusclient/metadata.json](databusclient/meta
 The script registers all files on the databus.
 
 
-#### Examples of using deploy command
+#### Examples of using deploy-with-metadata command
 
 ```bash
 databusclient deploy-with-metadata \
