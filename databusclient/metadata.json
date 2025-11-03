@@ -1,14 +1,14 @@
 [
-  [
-    "example.ttl",
-    "6e340b9cffb37a989ca544e6bb780a2c7e5d7dcb",
-    12345,
-    "https://cloud.example.com/remote.php/webdav/datasets/mydataset/example.ttl"
-  ],
-  [
-    "example.csv.gz",
-    "3f786850e387550fdab836ed7e6dc881de23001b",
-    54321,
-    "https://cloud.example.com/remote.php/webdav/datasets/mydataset/example.csv.gz"
-  ]
+  {
+    "filename": "example.ttl",
+    "checksum": "6e340b9cffb37a989ca544e6bb780a2c7e5d7dcb",
+    "size": 12345,
+    "url": "https://cloud.example.com/remote.php/webdav/datasets/mydataset/example.ttl"
+  },
+  {
+    "filename": "example.csv.gz",
+    "checksum": "3f786850e387550fdab836ed7e6dc881de23001b",
+    "size": 54321,
+    "url": "https://cloud.example.com/remote.php/webdav/datasets/mydataset/example.csv.gz"
+  }
 ]

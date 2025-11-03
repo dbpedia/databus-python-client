@@ -54,7 +54,12 @@ def upload_to_nextcloud(source_paths: list[str], remote_name: str, remote_path: 
             url = urljoin(webdav_url.rstrip("/") + "/", quote(remote_webdav_path.lstrip("/"), safe="/"))
 
             filename = os.path.basename(file)
-            tmp_results.append((filename, checksum, size, url))
+            tmp_results.append({
+                "filename": filename,
+                "checksum": checksum,
+                "size": size,
+                "url": url,
+            })
 
         dest_subpath = posixpath.join(remote_path.lstrip("/"), basename)
         if os.path.isdir(path):

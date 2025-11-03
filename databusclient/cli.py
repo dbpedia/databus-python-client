@@ -125,7 +125,11 @@ def upload_and_deploy(webdav_url, remote, path, no_upload, metadata, version_id,
     click.echo(f"Creating {len(metadata)} distributions")
     distributions = []
     counter = 0
-    for filename, checksum, size, url in metadata:
+    for entry in metadata:
+        filename = entry["filename"]
+        checksum = entry["checksum"]
+        size = entry["size"]
+        url = entry["url"]
         # Expect a SHA-256 hex digest (64 chars). Reject others.
         if not isinstance(checksum, str) or len(checksum) != 64:
             raise ValueError(f"Invalid checksum for {filename}: expected SHA-256 hex (64 chars), got '{checksum}'")
