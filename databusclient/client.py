@@ -216,6 +216,9 @@ def create_distributions_from_metadata(metadata):
         # Expect a SHA-256 hex digest (64 chars). Reject others.
         if not isinstance(checksum, str) or len(checksum) != 64:
             raise ValueError(f"Invalid checksum for {filename}: expected SHA-256 hex (64 chars), got '{checksum}'")
+        # Known compression extensions
+        COMPRESSION_EXTS = {"gz", "bz2", "xz", "zip", "7z", "tar", "lz", "zst"}
+
         parts = filename.split(".")
         if len(parts) == 1:
             file_format = "none"
@@ -224,8 +227,18 @@ def create_distributions_from_metadata(metadata):
             file_format = parts[-1]
             compression = "none"
         else:
-            file_format = parts[-2]
-            compression = parts[-1]
+            # Check if last part is a known compression
+
+            if parts[-1] in COMPRESSION_EXTS:
+                compression = parts[-1]
+                # Handle compound extensions like .tar.gz
+                if len(parts) > 2 and parts[-2] in COMPRESSION_EXTS:
+                    file_format = parts[-3] if len(parts) > 3 else "file"
+                else:
+                    file_format = parts[-2]
+            else:
+                file_format = parts[-1]
+                compression = "none"
 
         distributions.append(
             create_distribution(
@@ -688,7 +701,7 @@ def __download_list__(urls: List[str],
 def __get_databus_id_parts__(uri: str) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str], Optional[str], Optional[str]]:
     uri = uri.removeprefix("https://").removeprefix("http://")
     parts = uri.strip("/").split("/")
-    parts += [None] * (6 - len(parts))  # pad with None if less than 6 parts
+    parts += [None] * (6 - len(parts))  # pad fwith None if less than 6 parts
     return tuple(parts[:6])  # return only the first 6 parts
 
 
