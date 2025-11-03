@@ -221,6 +221,7 @@ If using vault authentication, make sure the token file is available in the cont
 docker run --rm -v $(pwd):/data dbpedia/databus-python-client download https://databus.dbpedia.org/dbpedia-enterprise/live-fusion-snapshots/fusion/2025-08-23/fusion_props=all_subjectns=commons-wikimedia-org_vocab=all.ttl.gz --token vault-token.dat
 ```
 
+
 ### Upload-and-deploy command
 ```
 databusclient upload-and-deploy --help
@@ -273,7 +274,7 @@ databusclient upload-and-deploy \
 ```
 
 
-### deploy command with metadata
+### deploy-with-metadata command
 ```
 databusclient deploy-with-metadata --help
 ```
@@ -310,12 +311,10 @@ databusclient deploy-with-metadata \
   --description "This dataset was uploaded for testing the Nextcloud → Databus deployment pipeline." \
   --license https://dalicc.net/licenselibrary/Apache-2.0 \
   --apikey "API-KEY"
-
 ```
 
 
 ## Module Usage
-
 ### Step 1: Create lists of distributions for the dataset
 
 ```python
