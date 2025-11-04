@@ -248,8 +248,8 @@ def create_distributions_from_metadata(metadata: List[Dict[str, Union[str, int]]
             create_distribution(
                 url=url,
                 cvs={"count": f"{counter}"},
-                file_format=None,
-                compression=None,
+                file_format=entry.get("file_format"),
+                compression=entry.get("compression"),
                 sha256_length_tuple=(checksum, size)
             )
         )
