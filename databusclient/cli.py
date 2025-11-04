@@ -54,7 +54,7 @@ def deploy(version_id, title, abstract, description, license_url, apikey,
         if invalid:
             raise click.UsageError(f"The following input files or folders do not exist: {', '.join(invalid)}")
 
-        click.echo(f"[MODE] Upload & Deploy to DBpedia Databus via Nextcloud")
+        click.echo("[MODE] Upload & Deploy to DBpedia Databus via Nextcloud")
         click.echo(f"→ Uploading to: {remote}:{path}")
         metadata = upload.upload_to_nextcloud(inputs, remote, path, webdav_url)
         client.deploy_from_metadata(metadata, version_id, title, abstract, description, license_url, apikey)
@@ -78,7 +78,7 @@ def deploy(version_id, title, abstract, description, license_url, apikey,
                 + "\nExpected format example:\n"
                   "https://example.com/file.ttl|format=ttl|gzip|abcdef123456789:12345"
             )
-        click.echo(f"[MODE] Classic deploy with distributions")
+        click.echo("[MODE] Classic deploy with distributions")
         dataid = client.create_dataset(version_id, title, abstract, description, license_url, inputs)
         client.deploy(dataid=dataid, api_key=apikey)
         return
