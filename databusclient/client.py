@@ -279,6 +279,25 @@ def create_distributions_from_metadata(metadata: List[Dict[str, Union[str, int]]
     return distributions
 
 
+def validate_distributions(distros: List[str]) -> List[str]:
+    """
+    Check that all distributions follow the pattern:
+    url|key=value|[format]|[compression]|[sha256:len]
+
+    Parameters
+    ----------
+    List[str]
+        List of distribution identifiers to validate
+
+    Returns
+    -------
+    List[str]
+        List of invalid distribution identifier strings
+    """
+    pattern = re.compile(r"^https?://[^|]+\|.+$")
+    return [d for d in distros if not pattern.match(d)]
+
+
 def create_dataset(
     version_id: str,
     title: str,

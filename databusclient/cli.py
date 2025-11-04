@@ -1,5 +1,7 @@
 #!/usr/bin/env python3
 import json
+import os
+import re
 
 import click
 from typing import List
@@ -25,90 +27,68 @@ def app():
 @click.option("--description", required=True, help="Dataset description")
 @click.option("--license", "license_url", required=True, help="License (see dalicc.net)")
 @click.option("--apikey", required=True, help="API key")
-@click.argument(
-    "distributions",
-    nargs=-1,
-    required=True,
-)
-def deploy(version_id, title, abstract, description, license_url, apikey, distributions: List[str]):
-    """
-    Deploy a dataset version with the provided metadata and distributions.
-    """
-    click.echo(f"Deploying dataset version: {version_id}")
-    dataid = client.create_dataset(version_id, title, abstract, description, license_url, distributions)
-    client.deploy(dataid=dataid, api_key=apikey)
 
+@click.option("--metadata", "metadata_file", type=click.Path(exists=True),
+              help="Path to metadata JSON file (for metadata mode)")
+@click.option("--webdav-url", "webdav_url", help="WebDAV URL (e.g., https://cloud.example.com/remote.php/webdav)")
+@click.option("--remote", help="rclone remote name (e.g., 'nextcloud')")
+@click.option("--path", help="Remote path on Nextcloud (e.g., 'datasets/mydataset')")
 
-@app.command()
-@click.option(
-    "--metadata", "metadata_file",
-    required=True,
-    type=click.Path(exists=True),
-    help="Path to metadata JSON file",
-)
-@click.option(
-    "--version-id", "version_id",
-    required=True,
-    help="Target databus version/dataset identifier of the form "
-         "<https://databus.dbpedia.org/$ACCOUNT/$GROUP/$ARTIFACT/$VERSION>",
-)
-@click.option("--title", required=True, help="Dataset title")
-@click.option("--abstract", required=True, help="Dataset abstract max 200 chars")
-@click.option("--description", required=True, help="Dataset description")
-@click.option("--license", "license_url", required=True, help="License (see dalicc.net)")
-@click.option("--apikey", required=True, help="API key")
-def deploy_with_metadata(metadata_file, version_id, title, abstract, description, license_url, apikey):
+@click.argument("inputs", nargs=-1)
+def deploy(version_id, title, abstract, description, license_url, apikey,
+           metadata_file, webdav_url, remote, path, inputs: List[str]):
     """
-    Deploy to DBpedia Databus using metadata json file.
+    Flexible deploy to databus command:\n
+    - Classic dataset deployment\n
+    - Metadata-based deployment\n
+    - Upload & deploy via Nextcloud
     """
 
-    with open(metadata_file, 'r') as f:
-        metadata = json.load(f)
+    # === Mode 1: Upload & Deploy (Nextcloud) ===
+    if webdav_url and remote and path:
+        if not inputs:
+            raise click.UsageError("Please provide files to upload when using WebDAV/Nextcloud mode.")
 
-    client.deploy_from_metadata(metadata, version_id, title, abstract, description, license_url, apikey)
+        #Check that all given paths exist and are files or directories.#
+        invalid = [f for f in inputs if not os.path.exists(f)]
+        if invalid:
+            raise click.UsageError(f"The following input files or folders do not exist: {', '.join(invalid)}")
 
+        click.echo(f"[MODE] Upload & Deploy to DBpedia Databus via Nextcloud")
+        click.echo(f"→ Uploading to: {remote}:{path}")
+        metadata = upload.upload_to_nextcloud(inputs, remote, path, webdav_url)
+        client.deploy_from_metadata(metadata, version_id, title, abstract, description, license_url, apikey)
+        return
 
-@app.command()
-@click.option(
-    "--webdav-url", "webdav_url",
-    required=True,
-    help="WebDAV URL (e.g., https://cloud.example.com/remote.php/webdav)",
-)
-@click.option(
-    "--remote",
-    required=True,
-    help="rclone remote name (e.g., 'nextcloud')",
-)
-@click.option(
-    "--path",
-    required=True,
-    help="Remote path on Nextcloud (e.g., 'datasets/mydataset')",
-)
-@click.option(
-    "--version-id", "version_id",
-    required=True,
-    help="Target databus version/dataset identifier of the form "
-         "<https://databus.dbpedia.org/$ACCOUNT/$GROUP/$ARTIFACT/$VERSION>",
-)
-@click.option("--title", required=True, help="Dataset title")
-@click.option("--abstract", required=True, help="Dataset abstract max 200 chars")
-@click.option("--description", required=True, help="Dataset description")
-@click.option("--license", "license_url", required=True, help="License (see dalicc.net)")
-@click.option("--apikey", required=True, help="API key")
-@click.argument(
-    "files",
-    nargs=-1,
-    type=click.Path(exists=True),
-)
-def upload_and_deploy(webdav_url, remote, path, version_id, title, abstract, description, license_url, apikey,
-                      files: List[str]):
-    """
-    Upload files to Nextcloud and deploy to DBpedia Databus.
-    """
+    # === Mode 2: Metadata File ===
+    if metadata_file:
+        click.echo(f"[MODE] Deploy from metadata file: {metadata_file}")
+        with open(metadata_file, 'r') as f:
+            metadata = json.load(f)
+        client.deploy_from_metadata(metadata, version_id, title, abstract, description, license_url, apikey)
+        return
 
-    click.echo(f"Uploading data to nextcloud: {remote}")
-    metadata = upload.upload_to_nextcloud(files, remote, path, webdav_url)
-    client.deploy_from_metadata(metadata, version_id, title, abstract, description, license_url, apikey)
+    # === Mode 3: Classic Deploy ===
+    if inputs:
+        invalid = client.validate_distributions(inputs)
+        if invalid:
+            raise click.UsageError(
+                f"The following distributions are not in a valid format:\n"
+                + "\n".join(invalid)
+                + "\nExpected format example:\n"
+                  "https://example.com/file.ttl|format=ttl|gzip|abcdef123456789:12345"
+            )
+        click.echo(f"[MODE] Classic deploy with distributions")
+        dataid = client.create_dataset(version_id, title, abstract, description, license_url, inputs)
+        client.deploy(dataid=dataid, api_key=apikey)
+        return
+
+    raise click.UsageError(
+        "No valid input provided. Please use one of the following modes:\n"
+        "  - Classic deploy: pass distributions as arguments\n"
+        "  - Metadata deploy: use --metadata <file>\n"
+        "  - Upload & deploy: use --webdav-url, --remote, --path, and file arguments"
+    )
 
 
 @app.command()
