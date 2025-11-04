@@ -286,7 +286,7 @@ def validate_distributions(distros: List[str]) -> List[str]:
 
     Parameters
     ----------
-    List[str]
+    distros: List[str]
         List of distribution identifiers to validate
 
     Returns
