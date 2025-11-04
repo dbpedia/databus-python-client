@@ -225,6 +225,10 @@ def create_distributions_from_metadata(metadata: List[Dict[str, Union[str, int]]
     """
     distributions = []
     counter = 0
+
+    # Known compression extensions
+    COMPRESSION_EXTS = {"gz", "bz2", "xz", "zip", "7z", "tar", "lz", "zst"}
+
     for entry in metadata:
         # Validate required keys
         required_keys = ["filename", "checksum", "size", "url"]
@@ -242,8 +246,6 @@ def create_distributions_from_metadata(metadata: List[Dict[str, Union[str, int]]
         if not isinstance(checksum, str) or len(checksum) != 64 or not all(
             c in '0123456789abcdefABCDEF' for c in checksum):
                 raise ValueError(f"Invalid checksum for {filename}")
-        # Known compression extensions
-        COMPRESSION_EXTS = {"gz", "bz2", "xz", "zip", "7z", "tar", "lz", "zst"}
 
         parts = filename.split(".")
         if len(parts) == 1:
@@ -254,7 +256,6 @@ def create_distributions_from_metadata(metadata: List[Dict[str, Union[str, int]]
             compression = "none"
         else:
             # Check if last part is a known compression
-
             if parts[-1] in COMPRESSION_EXTS:
                 compression = parts[-1]
                 # Handle compound extensions like .tar.gz
