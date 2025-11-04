@@ -230,20 +230,21 @@ databusclient deploy \
   --license https://dalicc.net/licenselibrary/Apache-2.0 \
   --apikey "API-KEY"
 ```
-Metadata file structure:
+Metadata file structure (file_format and compression are optional):
 ```json
 [
   {
-    "filename": "example.ttl",
     "checksum": "0929436d44bba110fc7578c138ed770ae9f548e195d19c2f00d813cca24b9f39",
     "size": 12345,
-    "url": "https://cloud.example.com/remote.php/webdav/datasets/mydataset/example.ttl"
+    "url": "https://cloud.example.com/remote.php/webdav/datasets/mydataset/example.ttl",
+    "file_format": "ttl"
   },
   {
-    "filename": "example.csv.gz",
     "checksum": "2238acdd7cf6bc8d9c9963a9f6014051c754bf8a04aacc5cb10448e2da72c537",
     "size": 54321,
-    "url": "https://cloud.example.com/remote.php/webdav/datasets/mydataset/example.csv.gz"
+    "url": "https://cloud.example.com/remote.php/webdav/datasets/mydataset/example.csv.gz",
+    "file_format": "csv",
+    "compression": "gz"
   }
 ]
 
