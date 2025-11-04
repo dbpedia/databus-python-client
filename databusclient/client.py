@@ -226,9 +226,6 @@ def create_distributions_from_metadata(metadata: List[Dict[str, Union[str, int]]
     distributions = []
     counter = 0
 
-    # Known compression extensions
-    COMPRESSION_EXTS = {"gz", "bz2", "xz", "zip", "7z", "tar", "lz", "zst"}
-
     for entry in metadata:
         # Validate required keys
         required_keys = ["filename", "checksum", "size", "url"]
@@ -247,32 +244,12 @@ def create_distributions_from_metadata(metadata: List[Dict[str, Union[str, int]]
             c in '0123456789abcdefABCDEF' for c in checksum):
                 raise ValueError(f"Invalid checksum for {filename}")
 
-        parts = filename.split(".")
-        if len(parts) == 1:
-            file_format = "none"
-            compression = "none"
-        elif len(parts) == 2:
-            file_format = parts[-1]
-            compression = "none"
-        else:
-            # Check if last part is a known compression
-            if parts[-1] in COMPRESSION_EXTS:
-                compression = parts[-1]
-                # Handle compound extensions like .tar.gz
-                if len(parts) > 2 and parts[-2] in COMPRESSION_EXTS:
-                    file_format = parts[-3] if len(parts) > 3 else "file"
-                else:
-                    file_format = parts[-2]
-            else:
-                file_format = parts[-1]
-                compression = "none"
-
         distributions.append(
             create_distribution(
                 url=url,
                 cvs={"count": f"{counter}"},
-                file_format=file_format,
-                compression=compression,
+                file_format=None,
+                compression=None,
                 sha256_length_tuple=(checksum, size)
             )
         )
