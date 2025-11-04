@@ -163,13 +163,25 @@ databusclient download 'PREFIX dcat: <http://www.w3.org/ns/dcat#> SELECT ?x WHER
 databusclient deploy --help
 ```
 ```
-Usage: databusclient deploy [OPTIONS] DISTRIBUTIONS...
+Usage: databusclient deploy [OPTIONS] [INPUTS]...
+
+ Flexible deploy to databus command:
+
+ - Classic dataset deployment
+
+ - Metadata-based deployment
+
+ - Upload & deploy via Nextcloud
 
 Arguments:
-  DISTRIBUTIONS...  distributions in the form of List[URL|CV|fileext|compression|sha256sum:contentlength] where URL is the
-                    download URL and CV the key=value pairs (_ separted)
-                    content variants of a distribution, fileExt and Compression can be set, if not they are inferred from the path  [required]
-
+  INPUTS...  Depending on mode:
+             - Classic mode: List of distributions in the form
+               URL|CV|fileext|compression|sha256sum:contentlength
+               (where URL is the download URL and CV the key=value pairs,
+               separated by underscores)
+             - Upload mode: List of local file or folder paths (must exist)
+             - Metdata mode: None
+             
 Options:
   --version-id TEXT   Target databus version/dataset identifier of the form <h
                       ttps://databus.dbpedia.org/$ACCOUNT/$GROUP/$ARTIFACT/$VE
@@ -179,9 +191,16 @@ Options:
   --description TEXT  Dataset description  [required]
   --license TEXT      License (see dalicc.net)  [required]
   --apikey TEXT       API key  [required]
+  --metadata PATH     Path to metadata JSON file (for metadata mode)
+  --webdav-url TEXT   WebDAV URL (e.g.,
+                      https://cloud.example.com/remote.php/webdav)
+  --remote TEXT       rclone remote name (e.g., 'nextcloud')
+  --path TEXT         Remote path on Nextcloud (e.g., 'datasets/mydataset')
   --help              Show this message and exit.
+  
 ```
-Examples of using deploy command
+#### Examples of using deploy command
+Mode 1: Classic Deploy (Distributions)
 ```
 databusclient deploy --version-id https://databus.dbpedia.org/user1/group1/artifact1/2022-05-18 --title title1 --abstract abstract1 --description description1 --license http://dalicc.net/licenselibrary/AdaptivePublicLicense10 --apikey MYSTERIOUS 'https://raw.githubusercontent.com/dbpedia/databus/master/server/app/api/swagger.yml|type=swagger'  
 ```
@@ -189,13 +208,67 @@ databusclient deploy --version-id https://databus.dbpedia.org/user1/group1/artif
 ```
 databusclient deploy --version-id https://dev.databus.dbpedia.org/denis/group1/artifact1/2022-05-18 --title "Client Testing" --abstract "Testing the client...." --description "Testing the client...." --license http://dalicc.net/licenselibrary/AdaptivePublicLicense10 --apikey MYSTERIOUS 'https://raw.githubusercontent.com/dbpedia/databus/master/server/app/api/swagger.yml|type=swagger'  
 ```
-
 A few more notes for CLI usage:
 
 * The content variants can be left out ONLY IF there is just one distribution
   * For complete inferred: Just use the URL with `https://raw.githubusercontent.com/dbpedia/databus/master/server/app/api/swagger.yml`
   * If other parameters are used, you need to leave them empty like `https://raw.githubusercontent.com/dbpedia/databus/master/server/app/api/swagger.yml||yml|7a751b6dd5eb8d73d97793c3c564c71ab7b565fa4ba619e4a8fd05a6f80ff653:367116`
 
+
+Mode 2: Deploy with Metadata File
+
+Use a JSON metadata file to define all distributions.
+The metadata.json should list all distributions and their metadata.
+All files referenced there will be registered on the Databus.
+```bash
+databusclient deploy \
+  --metadata /home/metadata.json \
+  --version-id https://databus.org/user/dataset/version/1.0 \
+  --title "Metadata Deploy Example" \
+  --abstract "This is a short abstract of the dataset." \
+  --description "This dataset was uploaded using metadata.json." \
+  --license https://dalicc.net/licenselibrary/Apache-2.0 \
+  --apikey "API-KEY"
+```
+Metadata file structure:
+```json
+[
+  {
+    "filename": "example.ttl",
+    "checksum": "0929436d44bba110fc7578c138ed770ae9f548e195d19c2f00d813cca24b9f39",
+    "size": 12345,
+    "url": "https://cloud.example.com/remote.php/webdav/datasets/mydataset/example.ttl"
+  },
+  {
+    "filename": "example.csv.gz",
+    "checksum": "2238acdd7cf6bc8d9c9963a9f6014051c754bf8a04aacc5cb10448e2da72c537",
+    "size": 54321,
+    "url": "https://cloud.example.com/remote.php/webdav/datasets/mydataset/example.csv.gz"
+  }
+]
+
+```
+
+
+Mode 3: Upload & Deploy via Nextcloud
+
+Upload local files or folders to a WebDAV/Nextcloud instance and automatically deploy to DBpedia Databus. 
+Rclone is required.
+
+```bash
+databusclient deploy \
+  --webdav-url https://cloud.example.com/remote.php/webdav \
+  --remote nextcloud \
+  --path datasets/mydataset \
+  --version-id https://databus.org/user/dataset/version/1.0 \
+  --title "Test Dataset" \
+  --abstract "Short abstract of dataset" \
+  --description "This dataset was uploaded for testing the Nextcloud → Databus pipeline." \
+  --license https://dalicc.net/licenselibrary/Apache-2.0 \
+  --apikey "API-KEY" \
+  ./localfile1.ttl \
+  ./data_folder
+```
 
 
 #### Authentication with vault
@@ -219,98 +292,6 @@ docker run --rm -v $(pwd):/data dbpedia/databus-python-client download https://d
 If using vault authentication, make sure the token file is available in the container, e.g. by placing it in the current working directory.
 ```
 docker run --rm -v $(pwd):/data dbpedia/databus-python-client download https://databus.dbpedia.org/dbpedia-enterprise/live-fusion-snapshots/fusion/2025-08-23/fusion_props=all_subjectns=commons-wikimedia-org_vocab=all.ttl.gz --token vault-token.dat
-```
-
-
-### Upload-and-deploy command
-```bash
-databusclient upload-and-deploy --help
-```
-```text
-Usage: databusclient upload-and-deploy [OPTIONS] [FILES]...
-
-  Upload files to Nextcloud and deploy to DBpedia Databus.
-
-Arguments:
-  FILES...  files in the form of List[path], where every path must exist locally, which will be uploaded and deployed
-
-Options:
-  --webdav-url TEXT   WebDAV URL (e.g.,
-                      https://cloud.example.com/remote.php/webdav)
-  --remote TEXT       rclone remote name (e.g., 'nextcloud')
-  --path TEXT         Remote path on Nextcloud (e.g., 'datasets/mydataset')
-  --no-upload         Skip file upload and use existing metadata
-  --metadata PATH     Path to metadata JSON file (required if --no-upload is
-                      used)
-  --version-id TEXT   Target databus version/dataset identifier of the form <h
-                      ttps://databus.dbpedia.org/$ACCOUNT/$GROUP/$ARTIFACT/$VE
-                      RSION>  [required]
-  --title TEXT        Dataset title  [required]
-  --abstract TEXT     Dataset abstract max 200 chars  [required]
-  --description TEXT  Dataset description  [required]
-  --license TEXT      License (see dalicc.net)  [required]
-  --apikey TEXT       API key  [required]
-  --help              Show this message and exit.
-```
-The script uploads all given files and all files in the given folders to the given remote.
-Then registers them on the databus.
-
-
-#### Example of using upload-and-deploy command
-
-```bash
-databusclient upload-and-deploy \
---webdav-url https://cloud.scadsai.uni-leipzig.de/remote.php/webdav \
---remote scads-nextcloud \
---path test \
---version-id https://databus.org/user/dataset/version/1.0 \
---title "Test Dataset" \
---abstract "This is a short abstract of the test dataset." \
---description "This dataset was uploaded for testing the Nextcloud → Databus deployment pipeline." \
---license https://dalicc.net/licenselibrary/Apache-2.0 \
---apikey "API-KEY" \
-/home/test \
-/home/test_folder/test
-```
-
-
-### deploy-with-metadata command
-```bash
-databusclient deploy-with-metadata --help
-```
-```text
-Usage: databusclient deploy-with-metadata [OPTIONS]
-
-  Deploy to DBpedia Databus using metadata json file.
-
-Options:
-  --metadata PATH     Path to metadata JSON file  [required]
-  --version-id TEXT   Target databus version/dataset identifier of the form <h
-                      ttps://databus.dbpedia.org/$ACCOUNT/$GROUP/$ARTIFACT/$VE
-                      RSION>  [required]
-  --title TEXT        Dataset title  [required]
-  --abstract TEXT     Dataset abstract max 200 chars  [required]
-  --description TEXT  Dataset description  [required]
-  --license TEXT      License (see dalicc.net)  [required]
-  --apikey TEXT       API key  [required]
-  --help              Show this message and exit.
-```
-
-Use the metadata.json file (see [databusclient/metadata.json](databusclient/metadata.json)) to list all files which should be added to the databus.
-The script registers all files on the databus.
-
-
-#### Examples of using deploy-with-metadata command
-
-```bash
-databusclient deploy-with-metadata \
-  --metadata /home/metadata.json \
-  --version-id https://databus.org/user/dataset/version/1.0 \
-  --title "Test Dataset" \
-  --abstract "This is a short abstract of the test dataset." \
-  --description "This dataset was uploaded for testing the Nextcloud → Databus deployment pipeline." \
-  --license https://dalicc.net/licenselibrary/Apache-2.0 \
-  --apikey "API-KEY"
 ```
 
 
