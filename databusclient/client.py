@@ -212,10 +212,11 @@ def create_distributions_from_metadata(metadata: List[Dict[str, Union[str, int]]
     ----------
     metadata : List[Dict[str, Union[str, int]]]
         List of metadata entries, each containing:
-        - filename: str - Name of the file
         - checksum: str - SHA-256 hex digest (64 characters)
         - size: int - File size in bytes (positive integer)
         - url: str - Download URL for the file
+        - file_format: str - File format of the file [optional]
+        - compression: str - Compression format of the file [optional]
 
     Returns
     -------
@@ -227,21 +228,20 @@ def create_distributions_from_metadata(metadata: List[Dict[str, Union[str, int]]
 
     for entry in metadata:
         # Validate required keys
-        required_keys = ["filename", "checksum", "size", "url"]
+        required_keys = ["checksum", "size", "url"]
         missing_keys = [key for key in required_keys if key not in entry]
         if missing_keys:
             raise ValueError(f"Metadata entry missing required keys: {missing_keys}")
 
-        filename = entry["filename"]
         checksum = entry["checksum"]
         size = entry["size"]
-        if not isinstance(size, int) or size <= 0:
-            raise ValueError(f"Invalid size for {filename}: expected positive integer, got {size}")
         url = entry["url"]
+        if not isinstance(size, int) or size <= 0:
+            raise ValueError(f"Invalid size for {url}: expected positive integer, got {size}")
         # Validate SHA-256 hex digest (64 hex chars)
         if not isinstance(checksum, str) or len(checksum) != 64 or not all(
             c in '0123456789abcdefABCDEF' for c in checksum):
-                raise ValueError(f"Invalid checksum for {filename}")
+                raise ValueError(f"Invalid checksum for {url}")
 
         distributions.append(
             create_distribution(
@@ -488,7 +488,7 @@ def deploy_from_metadata(
     print(f"Successfully deployed to {version_id}")
     print(f"Deployed {len(metadata)} file(s):")
     for entry in metadata:
-        print(f"  - {entry['filename']}")
+        print(f"  - {entry['url']}")
 
 
 def __download_file__(url, filename, vault_token_file=None, auth_url=None, client_id=None) -> None:
