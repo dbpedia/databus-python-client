@@ -7,7 +7,6 @@ from tqdm import tqdm
 from SPARQLWrapper import SPARQLWrapper, JSON
 from hashlib import sha256
 import os
-import re
 
 __debug = False
 
@@ -205,6 +204,56 @@ def create_distribution(
 
     return f"{url}|{meta_string}"
 
+def create_distributions_from_metadata(metadata: List[Dict[str, Union[str, int]]]) -> List[str]:
+    """
+    Create distributions from metadata entries.
+
+    Parameters
+    ----------
+    metadata : List[Dict[str, Union[str, int]]]
+        List of metadata entries, each containing:
+        - checksum: str - SHA-256 hex digest (64 characters)
+        - size: int - File size in bytes (positive integer)
+        - url: str - Download URL for the file
+        - file_format: str - File format of the file [optional]
+        - compression: str - Compression format of the file [optional]
+
+    Returns
+    -------
+    List[str]
+        List of distribution identifier strings for use with create_dataset
+    """
+    distributions = []
+    counter = 0
+
+    for entry in metadata:
+        # Validate required keys
+        required_keys = ["checksum", "size", "url"]
+        missing_keys = [key for key in required_keys if key not in entry]
+        if missing_keys:
+            raise ValueError(f"Metadata entry missing required keys: {missing_keys}")
+
+        checksum = entry["checksum"]
+        size = entry["size"]
+        url = entry["url"]
+        if not isinstance(size, int) or size <= 0:
+            raise ValueError(f"Invalid size for {url}: expected positive integer, got {size}")
+        # Validate SHA-256 hex digest (64 hex chars)
+        if not isinstance(checksum, str) or len(checksum) != 64 or not all(
+            c in '0123456789abcdefABCDEF' for c in checksum):
+                raise ValueError(f"Invalid checksum for {url}")
+
+        distributions.append(
+            create_distribution(
+                url=url,
+                cvs={"count": f"{counter}"},
+                file_format=entry.get("file_format"),
+                compression=entry.get("compression"),
+                sha256_length_tuple=(checksum, size)
+            )
+        )
+        counter += 1
+    return distributions
 
 def create_dataset(
     version_id: str,
@@ -391,6 +440,55 @@ def deploy(
     if debug or __debug:
         print("---------")
         print(resp.text)
+
+
+def deploy_from_metadata(
+    metadata: List[Dict[str, Union[str, int]]],
+    version_id: str,
+    title: str,
+    abstract: str,
+    description: str,
+    license_url: str,
+    apikey: str
+) -> None:
+    """
+    Deploy a dataset from metadata entries.
+
+    Parameters
+    ----------
+    metadata : List[Dict[str, Union[str, int]]]
+        List of file metadata entries (see create_distributions_from_metadata)
+    version_id : str
+        Dataset version ID in the form $DATABUS_BASE/$ACCOUNT/$GROUP/$ARTIFACT/$VERSION
+    title : str
+        Dataset title
+    abstract : str
+        Short description of the dataset
+    description : str
+        Long description (Markdown supported)
+    license_url : str
+        License URI
+    apikey : str
+        API key for authentication
+    """
+    distributions = create_distributions_from_metadata(metadata)
+
+    dataset = create_dataset(
+        version_id=version_id,
+        title=title,
+        abstract=abstract,
+        description=description,
+        license_url=license_url,
+        distributions=distributions
+    )
+
+    print(f"Deploying dataset version: {version_id}")
+    deploy(dataset, apikey)
+
+    print(f"Successfully deployed to {version_id}")
+    print(f"Deployed {len(metadata)} file(s):")
+    for entry in metadata:
+        print(f"  - {entry['url']}")
 
 
 def __download_file__(url, filename, vault_token_file=None, auth_url=None, client_id=None) -> None:

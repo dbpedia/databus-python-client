@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
+import json
+import os
+
 import click
 from typing import List
 from databusclient import client
 
+from nextcloudclient import upload
 
 @click.group()
 def app():
@@ -22,18 +26,68 @@ def app():
 @click.option("--description", required=True, help="Dataset description")
 @click.option("--license", "license_url", required=True, help="License (see dalicc.net)")
 @click.option("--apikey", required=True, help="API key")
-@click.argument(
-    "distributions",
-    nargs=-1,
-    required=True,
-)
-def deploy(version_id, title, abstract, description, license_url, apikey, distributions: List[str]):
+
+@click.option("--metadata", "metadata_file", type=click.Path(exists=True),
+              help="Path to metadata JSON file (for metadata mode)")
+@click.option("--webdav-url", "webdav_url", help="WebDAV URL (e.g., https://cloud.example.com/remote.php/webdav)")
+@click.option("--remote", help="rclone remote name (e.g., 'nextcloud')")
+@click.option("--path", help="Remote path on Nextcloud (e.g., 'datasets/mydataset')")
+
+@click.argument("distributions", nargs=-1)
+def deploy(version_id, title, abstract, description, license_url, apikey,
+           metadata_file, webdav_url, remote, path, distributions: List[str]):
     """
-    Deploy a dataset version with the provided metadata and distributions.
+    Flexible deploy to Databus command supporting three modes:\n
+    - Classic deploy (distributions as arguments)\n
+    - Metadata-based deploy (--metadata <file>)\n
+    - Upload & deploy via Nextcloud (--webdav-url, --remote, --path)
     """
-    click.echo(f"Deploying dataset version: {version_id}")
-    dataid = client.create_dataset(version_id, title, abstract, description, license_url, distributions)
-    client.deploy(dataid=dataid, api_key=apikey)
+
+    # Sanity checks for conflicting options
+    if metadata_file and any([distributions, webdav_url, remote, path]):
+        raise click.UsageError("Invalid combination: when using --metadata, do not provide --webdav-url, --remote, --path, or distributions.")
+    if any([webdav_url, remote, path]) and not all([webdav_url, remote, path]):
+        raise click.UsageError("Invalid combination: when using WebDAV/Nextcloud mode, please provide --webdav-url, --remote, and --path together.")
+
+    # === Mode 1: Classic Deploy ===
+    if distributions and not (metadata_file or webdav_url or remote or path):
+        click.echo("[MODE] Classic deploy with distributions")
+        click.echo(f"Deploying dataset version: {version_id}")
+
+        dataid = client.create_dataset(version_id, title, abstract, description, license_url, distributions)
+        client.deploy(dataid=dataid, api_key=apikey)
+        return
+
+    # === Mode 2: Metadata File ===
+    if metadata_file:
+        click.echo(f"[MODE] Deploy from metadata file: {metadata_file}")
+        with open(metadata_file, 'r') as f:
+            metadata = json.load(f)
+        client.deploy_from_metadata(metadata, version_id, title, abstract, description, license_url, apikey)
+        return
+    
+    # === Mode 3: Upload & Deploy (Nextcloud) ===
+    if webdav_url and remote and path:
+        if not distributions:
+            raise click.UsageError("Please provide files to upload when using WebDAV/Nextcloud mode.")
+
+        #Check that all given paths exist and are files or directories.#
+        invalid = [f for f in distributions if not os.path.exists(f)]
+        if invalid:
+            raise click.UsageError(f"The following input files or folders do not exist: {', '.join(invalid)}")
+
+        click.echo("[MODE] Upload & Deploy to DBpedia Databus via Nextcloud")
+        click.echo(f"→ Uploading to: {remote}:{path}")
+        metadata = upload.upload_to_nextcloud(distributions, remote, path, webdav_url)
+        client.deploy_from_metadata(metadata, version_id, title, abstract, description, license_url, apikey)
+        return
+
+    raise click.UsageError(
+        "No valid input provided. Please use one of the following modes:\n"
+        "  - Classic deploy: pass distributions as arguments\n"
+        "  - Metadata deploy: use --metadata <file>\n"
+        "  - Upload & deploy: use --webdav-url, --remote, --path, and file arguments"
+    )
 
 
 @app.command()
