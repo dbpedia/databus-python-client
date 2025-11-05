@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 import json
 import os
-import re
 
 import click
 from typing import List
@@ -34,30 +33,29 @@ def app():
 @click.option("--remote", help="rclone remote name (e.g., 'nextcloud')")
 @click.option("--path", help="Remote path on Nextcloud (e.g., 'datasets/mydataset')")
 
-@click.argument("inputs", nargs=-1)
+@click.argument("distributions", nargs=-1)
 def deploy(version_id, title, abstract, description, license_url, apikey,
-           metadata_file, webdav_url, remote, path, inputs: List[str]):
+           metadata_file, webdav_url, remote, path, distributions: List[str]):
     """
-    Flexible deploy to databus command:\n
-    - Classic dataset deployment\n
-    - Metadata-based deployment\n
-    - Upload & deploy via Nextcloud
+    Flexible deploy to Databus command supporting three modes:\n
+    - Classic deploy (distributions as arguments)\n
+    - Metadata-based deploy (--metadata <file>)\n
+    - Upload & deploy via Nextcloud (--webdav-url, --remote, --path)
     """
 
-    # === Mode 1: Upload & Deploy (Nextcloud) ===
-    if webdav_url and remote and path:
-        if not inputs:
-            raise click.UsageError("Please provide files to upload when using WebDAV/Nextcloud mode.")
+    # Sanity checks for conflicting options
+    if metadata_file and any([distributions, webdav_url, remote, path]):
+        raise click.UsageError("Invalid combination: when using --metadata, do not provide --webdav-url, --remote, --path, or distributions.")
+    if any([webdav_url, remote, path]) and not all([webdav_url, remote, path]):
+        raise click.UsageError("Invalid combination: when using WebDAV/Nextcloud mode, please provide --webdav-url, --remote, and --path together.")
 
-        #Check that all given paths exist and are files or directories.#
-        invalid = [f for f in inputs if not os.path.exists(f)]
-        if invalid:
-            raise click.UsageError(f"The following input files or folders do not exist: {', '.join(invalid)}")
+    # === Mode 1: Classic Deploy ===
+    if distributions and not (metadata_file or webdav_url or remote or path):
+        click.echo("[MODE] Classic deploy with distributions")
+        click.echo(f"Deploying dataset version: {version_id}")
 
-        click.echo("[MODE] Upload & Deploy to DBpedia Databus via Nextcloud")
-        click.echo(f"→ Uploading to: {remote}:{path}")
-        metadata = upload.upload_to_nextcloud(inputs, remote, path, webdav_url)
-        client.deploy_from_metadata(metadata, version_id, title, abstract, description, license_url, apikey)
+        dataid = client.create_dataset(version_id, title, abstract, description, license_url, distributions)
+        client.deploy(dataid=dataid, api_key=apikey)
         return
 
     # === Mode 2: Metadata File ===
@@ -67,20 +65,21 @@ def deploy(version_id, title, abstract, description, license_url, apikey,
             metadata = json.load(f)
         client.deploy_from_metadata(metadata, version_id, title, abstract, description, license_url, apikey)
         return
+    
+    # === Mode 3: Upload & Deploy (Nextcloud) ===
+    if webdav_url and remote and path:
+        if not distributions:
+            raise click.UsageError("Please provide files to upload when using WebDAV/Nextcloud mode.")
 
-    # === Mode 3: Classic Deploy ===
-    if inputs:
-        invalid = client.validate_distributions(inputs)
+        #Check that all given paths exist and are files or directories.#
+        invalid = [f for f in distributions if not os.path.exists(f)]
         if invalid:
-            raise click.UsageError(
-                f"The following distributions are not in a valid format:\n"
-                + "\n".join(invalid)
-                + "\nExpected format example:\n"
-                  "https://example.com/file.ttl|format=ttl|gzip|abcdef123456789:12345"
-            )
-        click.echo("[MODE] Classic deploy with distributions")
-        dataid = client.create_dataset(version_id, title, abstract, description, license_url, inputs)
-        client.deploy(dataid=dataid, api_key=apikey)
+            raise click.UsageError(f"The following input files or folders do not exist: {', '.join(invalid)}")
+
+        click.echo("[MODE] Upload & Deploy to DBpedia Databus via Nextcloud")
+        click.echo(f"→ Uploading to: {remote}:{path}")
+        metadata = upload.upload_to_nextcloud(distributions, remote, path, webdav_url)
+        client.deploy_from_metadata(metadata, version_id, title, abstract, description, license_url, apikey)
         return
 
     raise click.UsageError(

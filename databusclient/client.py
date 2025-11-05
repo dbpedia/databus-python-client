@@ -7,7 +7,6 @@ from tqdm import tqdm
 from SPARQLWrapper import SPARQLWrapper, JSON
 from hashlib import sha256
 import os
-import re
 
 __debug = False
 
@@ -255,26 +254,6 @@ def create_distributions_from_metadata(metadata: List[Dict[str, Union[str, int]]
         )
         counter += 1
     return distributions
-
-
-def validate_distributions(distros: List[str]) -> List[str]:
-    """
-    Check that all distributions follow the pattern:
-    url|key=value|[format]|[compression]|[sha256:len]
-
-    Parameters
-    ----------
-    distros: List[str]
-        List of distribution identifiers to validate
-
-    Returns
-    -------
-    List[str]
-        List of invalid distribution identifier strings
-    """
-    pattern = re.compile(r"^https?://[^|]+\|.+$")
-    return [d for d in distros if not pattern.match(d)]
-
 
 def create_dataset(
     version_id: str,
@@ -754,7 +733,7 @@ def __download_list__(urls: List[str],
 def __get_databus_id_parts__(uri: str) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str], Optional[str], Optional[str]]:
     uri = uri.removeprefix("https://").removeprefix("http://")
     parts = uri.strip("/").split("/")
-    parts += [None] * (6 - len(parts))  # pad fwith None if less than 6 parts
+    parts += [None] * (6 - len(parts))  # pad with None if less than 6 parts
     return tuple(parts[:6])  # return only the first 6 parts
 
 

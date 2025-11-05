@@ -163,7 +163,7 @@ databusclient download 'PREFIX dcat: <http://www.w3.org/ns/dcat#> SELECT ?x WHER
 databusclient deploy --help
 ```
 ```
-Usage: databusclient deploy [OPTIONS] [INPUTS]...
+Usage: databusclient deploy [OPTIONS] [DISTRIBUTIONS]...
 
  Flexible deploy to databus command:
 
@@ -174,7 +174,7 @@ Usage: databusclient deploy [OPTIONS] [INPUTS]...
  - Upload & deploy via Nextcloud
 
 Arguments:
-  INPUTS...  Depending on mode:
+  DISTRIBUTIONS...  Depending on mode:
              - Classic mode: List of distributions in the form
                URL|CV|fileext|compression|sha256sum:contentlength
                (where URL is the download URL and CV the key=value pairs,
@@ -200,7 +200,7 @@ Options:
   
 ```
 #### Examples of using deploy command
-Mode 1: Classic Deploy (Distributions)
+##### Mode 1: Classic Deploy (Distributions)
 ```
 databusclient deploy --version-id https://databus.dbpedia.org/user1/group1/artifact1/2022-05-18 --title title1 --abstract abstract1 --description description1 --license http://dalicc.net/licenselibrary/AdaptivePublicLicense10 --apikey MYSTERIOUS 'https://raw.githubusercontent.com/dbpedia/databus/master/server/app/api/swagger.yml|type=swagger'  
 ```
@@ -215,7 +215,7 @@ A few more notes for CLI usage:
   * If other parameters are used, you need to leave them empty like `https://raw.githubusercontent.com/dbpedia/databus/master/server/app/api/swagger.yml||yml|7a751b6dd5eb8d73d97793c3c564c71ab7b565fa4ba619e4a8fd05a6f80ff653:367116`
 
 
-Mode 2: Deploy with Metadata File
+##### Mode 2: Deploy with Metadata File
 
 Use a JSON metadata file to define all distributions.
 The metadata.json should list all distributions and their metadata.
@@ -251,7 +251,7 @@ Metadata file structure (file_format and compression are optional):
 ```
 
 
-Mode 3: Upload & Deploy via Nextcloud
+##### Mode 3: Upload & Deploy via Nextcloud
 
 Upload local files or folders to a WebDAV/Nextcloud instance and automatically deploy to DBpedia Databus. 
 Rclone is required.
