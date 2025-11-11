@@ -29,28 +29,27 @@ def app():
 
 @click.option("--metadata", "metadata_file", type=click.Path(exists=True),
               help="Path to metadata JSON file (for metadata mode)")
-@click.option("--webdav-url", "webdav_url", help="WebDAV URL (e.g., https://cloud.example.com/remote.php/webdav)")
-@click.option("--remote", help="rclone remote name (e.g., 'nextcloud')")
-@click.option("--path", help="Remote path on Nextcloud (e.g., 'datasets/mydataset')")
+@click.option("--remote", help="rclone remote name (e.g., 'my-nextcloud')")
+@click.option("--path", help="Remote path on Rclone Remote (e.g., 'datasets/mydataset')")
 
 @click.argument("distributions", nargs=-1)
 def deploy(version_id, title, abstract, description, license_url, apikey,
-           metadata_file, webdav_url, remote, path, distributions: List[str]):
+           metadata_file, remote, path, distributions: List[str]):
     """
     Flexible deploy to Databus command supporting three modes:\n
     - Classic deploy (distributions as arguments)\n
     - Metadata-based deploy (--metadata <file>)\n
-    - Upload & deploy via Nextcloud (--webdav-url, --remote, --path)
+    - Upload & deploy via Rclone (--remote, --path)
     """
 
     # Sanity checks for conflicting options
-    if metadata_file and any([distributions, webdav_url, remote, path]):
-        raise click.UsageError("Invalid combination: when using --metadata, do not provide --webdav-url, --remote, --path, or distributions.")
-    if any([webdav_url, remote, path]) and not all([webdav_url, remote, path]):
-        raise click.UsageError("Invalid combination: when using WebDAV/Nextcloud mode, please provide --webdav-url, --remote, and --path together.")
+    if metadata_file and any([distributions, remote, path]):
+        raise click.UsageError("Invalid combination: when using --metadata, do not provide --remote, --path, or distributions.")
+    if any([remote, path]) and not all([remote, path]):
+        raise click.UsageError("Invalid combination: when using Rclone mode, please provide --remote, and --path together.")
 
     # === Mode 1: Classic Deploy ===
-    if distributions and not (metadata_file or webdav_url or remote or path):
+    if distributions and not (metadata_file or remote or path):
         click.echo("[MODE] Classic deploy with distributions")
         click.echo(f"Deploying dataset version: {version_id}")
 
@@ -66,19 +65,19 @@ def deploy(version_id, title, abstract, description, license_url, apikey,
         client.deploy_from_metadata(metadata, version_id, title, abstract, description, license_url, apikey)
         return
     
-    # === Mode 3: Upload & Deploy (Nextcloud) ===
-    if webdav_url and remote and path:
+    # === Mode 3: Upload & Deploy (Rclone) ===
+    if remote and path:
         if not distributions:
-            raise click.UsageError("Please provide files to upload when using WebDAV/Nextcloud mode.")
+            raise click.UsageError("Please provide files to upload when using Rclone mode.")
 
         #Check that all given paths exist and are files or directories.#
         invalid = [f for f in distributions if not os.path.exists(f)]
         if invalid:
             raise click.UsageError(f"The following input files or folders do not exist: {', '.join(invalid)}")
 
-        click.echo("[MODE] Upload & Deploy to DBpedia Databus via Nextcloud")
+        click.echo("[MODE] Upload & Deploy to DBpedia Databus via Rclone")
         click.echo(f"→ Uploading to: {remote}:{path}")
-        metadata = upload.upload_to_nextcloud(distributions, remote, path, webdav_url)
+        metadata = upload.upload_with_rclone(distributions, remote, path)
         client.deploy_from_metadata(metadata, version_id, title, abstract, description, license_url, apikey)
         return
 
@@ -86,7 +85,7 @@ def deploy(version_id, title, abstract, description, license_url, apikey,
         "No valid input provided. Please use one of the following modes:\n"
         "  - Classic deploy: pass distributions as arguments\n"
         "  - Metadata deploy: use --metadata <file>\n"
-        "  - Upload & deploy: use --webdav-url, --remote, --path, and file arguments"
+        "  - Upload & deploy: use --remote, --path, and file arguments"
     )
 
 

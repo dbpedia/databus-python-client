@@ -171,7 +171,7 @@ Usage: databusclient deploy [OPTIONS] [DISTRIBUTIONS]...
 
  - Metadata-based deployment
 
- - Upload & deploy via Nextcloud
+ - Upload & deploy via Rclone
 
 Arguments:
   DISTRIBUTIONS...  Depending on mode:
@@ -192,10 +192,8 @@ Options:
   --license TEXT      License (see dalicc.net)  [required]
   --apikey TEXT       API key  [required]
   --metadata PATH     Path to metadata JSON file (for metadata mode)
-  --webdav-url TEXT   WebDAV URL (e.g.,
-                      https://cloud.example.com/remote.php/webdav)
-  --remote TEXT       rclone remote name (e.g., 'nextcloud')
-  --path TEXT         Remote path on Nextcloud (e.g., 'datasets/mydataset')
+  --remote TEXT       rclone remote name (e.g., 'my-nextcloud')
+  --path TEXT         Remote path on Rclone Remote (e.g., 'datasets/mydataset')
   --help              Show this message and exit.
   
 ```
@@ -251,20 +249,19 @@ Metadata file structure (file_format and compression are optional):
 ```
 
 
-##### Mode 3: Upload & Deploy via Nextcloud
+##### Mode 3: Upload & Deploy via Rclone
 
-Upload local files or folders to a WebDAV/Nextcloud instance and automatically deploy to DBpedia Databus. 
+Upload local files or folders to a Rclone remote and automatically deploy to DBpedia Databus. 
 Rclone is required.
 
 ```bash
 databusclient deploy \
-  --webdav-url https://cloud.example.com/remote.php/webdav \
-  --remote nextcloud \
+  --remote my-nextcloud \
   --path datasets/mydataset \
   --version-id https://databus.org/user/dataset/version/1.0 \
   --title "Test Dataset" \
   --abstract "Short abstract of dataset" \
-  --description "This dataset was uploaded for testing the Nextcloud → Databus pipeline." \
+  --description "This dataset was uploaded for testing the Rclone → Databus pipeline." \
   --license https://dalicc.net/licenselibrary/Apache-2.0 \
   --apikey "API-KEY" \
   ./localfile1.ttl \
