@@ -158,6 +158,30 @@ databusclient download https://databus.dbpedia.org/dbpedia/collections/dbpedia-s
 databusclient download 'PREFIX dcat: <http://www.w3.org/ns/dcat#> SELECT ?x WHERE { ?sub dcat:downloadURL ?x . } LIMIT 10' --databus https://databus.dbpedia.org/sparql
 ```
 
+#### Authentication with vault
+
+For downloading files from the vault, you need to provide a vault token. See [getting-the-access-refresh-token](https://github.com/dbpedia/databus-vault-access?tab=readme-ov-file#step-1-getting-the-access-refresh-token) for details. You can come back here once you have a `vault-token.dat` file. To use it, just provide the path to the file with `--token /path/to/vault-token.dat`.
+
+Example:
+```
+databusclient download https://databus.dbpedia.org/dbpedia-enterprise/live-fusion-snapshots/fusion/2025-08-23 --token vault-token.dat
+```
+
+If vault authentication is required for downloading a file, the client will use the token. If no vault authentication is required, the token will not be used.
+
+#### Usage of docker image
+
+A docker image is available at [dbpedia/databus-python-client](https://hub.docker.com/r/dbpedia/databus-python-client). You can use it like this:
+
+```
+docker run --rm -v $(pwd):/data dbpedia/databus-python-client download https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals/2022.12.01
+```
+If using vault authentication, make sure the token file is available in the container, e.g. by placing it in the current working directory.
+```
+docker run --rm -v $(pwd):/data dbpedia/databus-python-client download https://databus.dbpedia.org/dbpedia-enterprise/live-fusion-snapshots/fusion/2025-08-23/fusion_props=all_subjectns=commons-wikimedia-org_vocab=all.ttl.gz --token vault-token.dat
+```
+
+
 ### Deploy command
 ```
 databusclient deploy --help
@@ -195,10 +219,10 @@ Options:
   --remote TEXT       rclone remote name (e.g., 'my-nextcloud')
   --path TEXT         Remote path on Rclone Remote (e.g., 'datasets/mydataset')
   --help              Show this message and exit.
-  
 ```
-#### Examples of using deploy command
-##### Mode 1: Classic Deploy (Distributions)
+
+#### Mode 1: Classic Deploy (Distributions)
+Example Calls:
 ```
 databusclient deploy --version-id https://databus.dbpedia.org/user1/group1/artifact1/2022-05-18 --title title1 --abstract abstract1 --description description1 --license http://dalicc.net/licenselibrary/AdaptivePublicLicense10 --apikey MYSTERIOUS 'https://raw.githubusercontent.com/dbpedia/databus/master/server/app/api/swagger.yml|type=swagger'  
 ```
@@ -213,11 +237,13 @@ A few more notes for CLI usage:
   * If other parameters are used, you need to leave them empty like `https://raw.githubusercontent.com/dbpedia/databus/master/server/app/api/swagger.yml||yml|7a751b6dd5eb8d73d97793c3c564c71ab7b565fa4ba619e4a8fd05a6f80ff653:367116`
 
 
-##### Mode 2: Deploy with Metadata File
+#### Mode 2: Deploy with Metadata File
 
-Use a JSON metadata file to define all distributions.
-The metadata.json should list all distributions and their metadata.
-All files referenced there will be registered on the Databus.
+Use a JSON metadata file instead of command-line arguments to define all distributions.  
+The `metadata.json` file should list all distributions along with their metadata.  
+All files referenced in this file will be registered on the Databus.
+
+Example Call:
 ```bash
 databusclient deploy \
   --metadata /home/metadata.json \
@@ -228,7 +254,8 @@ databusclient deploy \
   --license https://dalicc.net/licenselibrary/Apache-2.0 \
   --apikey "API-KEY"
 ```
-Metadata file structure (file_format and compression are optional):
+
+Metadata file structure:
 ```json
 [
   {
@@ -243,17 +270,23 @@ Metadata file structure (file_format and compression are optional):
     "url": "https://cloud.example.com/remote.php/webdav/datasets/mydataset/example.csv.gz",
     "file_format": "csv",
     "compression": "gz"
-  }
+  },
+  ...
 ]
-
 ```
+`file_format` and `compression` fields are optional.  
+If omitted, the system attempts to detect them automatically.
 
 
-##### Mode 3: Upload & Deploy via Rclone
+#### Mode 3: Upload & Deploy via Rclone
 
-Upload local files or folders to a Rclone remote and automatically deploy to DBpedia Databus. 
-Rclone is required.
+Uploads local files or folders to an Rclone remote and automatically deploys them to the DBpedia Databus.  
+**Rclone must be installed and configured.**
 
+The `--remote` argument must match the name of the remote as registered in your Rclone configuration.  
+The `--path` argument defines the destination path on the remote, relative to its base directory.
+
+Example Call:
 ```bash
 databusclient deploy \
   --remote my-nextcloud \
@@ -268,29 +301,6 @@ databusclient deploy \
   ./data_folder
 ```
 
-
-#### Authentication with vault
-
-For downloading files from the vault, you need to provide a vault token. See [getting-the-access-refresh-token](https://github.com/dbpedia/databus-vault-access?tab=readme-ov-file#step-1-getting-the-access-refresh-token) for details. You can come back here once you have a `vault-token.dat` file. To use it, just provide the path to the file with `--token /path/to/vault-token.dat`.
-
-Example:
-```
-databusclient download https://databus.dbpedia.org/dbpedia-enterprise/live-fusion-snapshots/fusion/2025-08-23 --token vault-token.dat
-```
-
-If vault authentication is required for downloading a file, the client will use the token. If no vault authentication is required, the token will not be used.
-
-#### Usage of docker image
-
-A docker image is available at [dbpedia/databus-python-client](https://hub.docker.com/r/dbpedia/databus-python-client). You can use it like this:
-
-```
-docker run --rm -v $(pwd):/data dbpedia/databus-python-client download https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals/2022.12.01
-```
-If using vault authentication, make sure the token file is available in the container, e.g. by placing it in the current working directory.
-```
-docker run --rm -v $(pwd):/data dbpedia/databus-python-client download https://databus.dbpedia.org/dbpedia-enterprise/live-fusion-snapshots/fusion/2025-08-23/fusion_props=all_subjectns=commons-wikimedia-org_vocab=all.ttl.gz --token vault-token.dat
-```
 
 
 ## Module Usage
