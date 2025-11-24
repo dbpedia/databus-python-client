@@ -6,7 +6,7 @@ import click
 from typing import List
 from databusclient import client
 
-from nextcloudclient import upload
+from databusclient.rclone_wrapper import upload
 
 @click.group()
 def app():
