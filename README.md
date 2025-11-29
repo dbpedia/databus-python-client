@@ -183,7 +183,7 @@ Arguments:
              - Metdata mode: None
              
 Options:
-  --version-id TEXT   Target databus version/dataset identifier of the form <h
+  --versionid TEXT   Target databus version/dataset identifier of the form <h
                       ttps://databus.dbpedia.org/$ACCOUNT/$GROUP/$ARTIFACT/$VE
                       RSION>  [required]
   --title TEXT        Dataset title  [required]
@@ -202,11 +202,11 @@ Options:
 #### Examples of using deploy command
 ##### Mode 1: Classic Deploy (Distributions)
 ```
-databusclient deploy --version-id https://databus.dbpedia.org/user1/group1/artifact1/2022-05-18 --title title1 --abstract abstract1 --description description1 --license http://dalicc.net/licenselibrary/AdaptivePublicLicense10 --apikey MYSTERIOUS 'https://raw.githubusercontent.com/dbpedia/databus/master/server/app/api/swagger.yml|type=swagger'  
+databusclient deploy --versionid https://databus.dbpedia.org/user1/group1/artifact1/2022-05-18 --title title1 --abstract abstract1 --description description1 --license http://dalicc.net/licenselibrary/AdaptivePublicLicense10 --apikey MYSTERIOUS 'https://raw.githubusercontent.com/dbpedia/databus/master/server/app/api/swagger.yml|type=swagger'  
 ```
 
 ```
-databusclient deploy --version-id https://dev.databus.dbpedia.org/denis/group1/artifact1/2022-05-18 --title "Client Testing" --abstract "Testing the client...." --description "Testing the client...." --license http://dalicc.net/licenselibrary/AdaptivePublicLicense10 --apikey MYSTERIOUS 'https://raw.githubusercontent.com/dbpedia/databus/master/server/app/api/swagger.yml|type=swagger'  
+databusclient deploy --versionid https://dev.databus.dbpedia.org/denis/group1/artifact1/2022-05-18 --title "Client Testing" --abstract "Testing the client...." --description "Testing the client...." --license http://dalicc.net/licenselibrary/AdaptivePublicLicense10 --apikey MYSTERIOUS 'https://raw.githubusercontent.com/dbpedia/databus/master/server/app/api/swagger.yml|type=swagger'  
 ```
 A few more notes for CLI usage:
 
@@ -223,7 +223,7 @@ All files referenced there will be registered on the Databus.
 ```bash
 databusclient deploy \
   --metadata /home/metadata.json \
-  --version-id https://databus.org/user/dataset/version/1.0 \
+  --versionid https://databus.org/user/dataset/version/1.0 \
   --title "Metadata Deploy Example" \
   --abstract "This is a short abstract of the dataset." \
   --description "This dataset was uploaded using metadata.json." \
@@ -261,7 +261,7 @@ databusclient deploy \
   --webdav-url https://cloud.example.com/remote.php/webdav \
   --remote nextcloud \
   --path datasets/mydataset \
-  --version-id https://databus.org/user/dataset/version/1.0 \
+  --versionid https://databus.org/user/dataset/version/1.0 \
   --title "Test Dataset" \
   --abstract "Short abstract of dataset" \
   --description "This dataset was uploaded for testing the Nextcloud → Databus pipeline." \
