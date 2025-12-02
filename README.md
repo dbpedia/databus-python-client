@@ -73,47 +73,47 @@ To download BUSL 1.1 licensed datasets, you need to register and get an access t
 ### DBpedia Knowledge Graphs
 
 #### Download Live Fusion KG Snapshot (BUSL 1.1, registration needed)
-High-frequency, conflict-resolved knowledge graph that merges Live Wikipedia and Wikidata signals into a single, queryable snapshot for enterprise consumption. [More information](https://databus.dev.dbpedia.link/fhofer/live-fusion-kg-snapshot)
+High-frequency, conflict-resolved knowledge graph that merges Live Wikipedia and Wikidata signals into a single, queryable snapshot for enterprise consumption. [More information](https://databus.dbpedia.org/dbpedia-enterprise/live-fusion-kg-dump)
 ```bash
 # Python
-databusclient download https://databus.dev.dbpedia.link/fhofer/live-fusion-kg-snapshot --vault-token vault-token.dat
+databusclient download https://databus.dbpedia.org/dbpedia-enterprise/live-fusion-kg-dump --vault-token vault-token.dat
 # Docker
-docker run --rm -v $(pwd):/data dbpedia/databus-python-client download https://databus.dev.dbpedia.link/fhofer/live-fusion-kg-snapshot --vault-token vault-token.dat
+docker run --rm -v $(pwd):/data dbpedia/databus-python-client download https://databus.dbpedia.org/dbpedia-enterprise/live-fusion-kg-dump --vault-token vault-token.dat
 ```
 
 #### Download Enriched Knowledge Graphs (BUSL 1.1, registration needed)
 
 **DBpedia Wikipedia Extraction Enriched**
 
-DBpedia-based enrichment of structured Wikipedia extractions (currently EN DBpedia only). [More information](https://databus.dev.dbpedia.link/fhofer/dbpedia-wikipedia-kg-enriched-snapshot)
+DBpedia-based enrichment of structured Wikipedia extractions (currently EN DBpedia only). [More information](https://databus.dbpedia.org/dbpedia-enterprise/dbpedia-wikipedia-kg-enriched-dump)
 
 ```bash
 # Python
-databusclient download https://databus.dev.dbpedia.link/fhofer/dbpedia-wikipedia-kg-enriched-snapshot --vault-token vault-token.dat
+databusclient download https://databus.dbpedia.org/dbpedia-enterprise/dbpedia-wikipedia-kg-enriched-dump --vault-token vault-token.dat
 # Docker
-docker run --rm -v $(pwd):/data dbpedia/databus-python-client download https://databus.dev.dbpedia.link/fhofer/dbpedia-wikipedia-kg-enriched-snapshot --vault-token vault-token.dat
+docker run --rm -v $(pwd):/data dbpedia/databus-python-client download https://databus.dbpedia.org/dbpedia-enterprise/dbpedia-wikipedia-kg-enriched-dump --vault-token vault-token.dat
 ```
 
 #### Download DBpedia Wikipedia Knowledge Graphs (CC-BY-SA, no registration needed)
 
-Original extraction of structured Wikipedia data before enrichment. [More information](https://databus.dev.dbpedia.link/fhofer/dbpedia-wikipedia-kg-snapshot)
+Original extraction of structured Wikipedia data before enrichment. [More information](https://databus.dbpedia.org/dbpedia/dbpedia-wikipedia-kg-dump)
 
 ```bash
 # Python
-databusclient download https://databus.dev.dbpedia.link/fhofer/dbpedia-wikipedia-kg-snapshot
+databusclient download https://databus.dbpedia.org/dbpedia/dbpedia-wikipedia-kg-dump
 # Docker
-docker run --rm -v $(pwd):/data dbpedia/databus-python-client download https://databus.dev.dbpedia.link/fhofer/dbpedia-wikipedia-kg-snapshot
+docker run --rm -v $(pwd):/data dbpedia/databus-python-client download https://databus.dbpedia.org/dbpedia/dbpedia-wikipedia-kg-dump
 ```
 
 #### Download DBpedia Wikidata Knowledge Graphs (CC-BY-SA, no registration needed)
 
-Original extraction of structured Wikidata data before enrichment. [More information](https://databus.dev.dbpedia.link/fhofer/dbpedia-wikidata-kg-snapshot)
+Original extraction of structured Wikidata data before enrichment. [More information](https://databus.dbpedia.org/dbpedia/dbpedia-wikidata-kg-dump)
 
 ```bash
 # Python
-databusclient download https://databus.dev.dbpedia.link/fhofer/dbpedia-wikidata-kg-snapshot
+databusclient download https://databus.dbpedia.org/dbpedia/dbpedia-wikidata-kg-dump
 # Docker
-docker run --rm -v $(pwd):/data dbpedia/databus-python-client download https://databus.dev.dbpedia.link/fhofer/dbpedia-wikidata-kg-snapshot
+docker run --rm -v $(pwd):/data dbpedia/databus-python-client download https://databus.dbpedia.org/dbpedia/dbpedia-wikidata-kg-dump
 ```
 
 ## CLI Usage

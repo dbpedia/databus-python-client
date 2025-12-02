@@ -520,7 +520,7 @@ def __download_file__(url, filename, vault_token_file=None, databus_key=None, au
         print("Redirects url: ", url)
 
     # --- 2. Try direct GET ---
-    response = requests.get(url, stream=True, allow_redirects=False)  # no redirects here, we want to see if auth is required
+    response = requests.get(url, stream=True, allow_redirects=True)
     www = response.headers.get('WWW-Authenticate', '')  # get WWW-Authenticate header if present to check for Bearer auth
 
     # Vault token required if 401 Unauthorized with Bearer challenge
