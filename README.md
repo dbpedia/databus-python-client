@@ -17,6 +17,7 @@ Command-line and Python client for downloading and deploying datasets on DBpedia
 - [CLI Usage](#cli-usage)
   - [Download](#cli-download)
   - [Deploy](#cli-deploy)
+  - [Delete](#cli-delete)
 - [Module Usage](#module-usage)
   - [Deploy](#module-deploy)
 
@@ -394,6 +395,84 @@ docker run --rm -v $(pwd):/data dbpedia/databus-python-client deploy \
   --apikey "API-KEY" \
   ./localfile1.ttl \
   ./data_folder
+```
+
+<a id="module-delete"></a>
+### Delete
+
+With the delete command you can delete collections, groups, artifacts, and versions from the Databus. Deleting files is not supported via API.
+
+**Note**: Deleting datasets will recursively delete all data associated with the dataset below the specified level. Please use this command with caution. As security measure, the delete command will prompt you for confirmation before proceeding with any deletion.
+
+```bash
+# Python
+databusclient delete [OPTIONS] DATABUSURIS...
+# Docker
+docker run --rm -v $(pwd):/data dbpedia/databus-python-client delete [OPTIONS] DATABUSURIS...
+```
+
+**Help and further information on delete command:**
+```bash
+# Python
+databusclient delete --help
+# Docker
+docker run --rm -v $(pwd):/data dbpedia/databus-python-client delete --help
+
+# Output:
+Usage: databusclient delete [OPTIONS] DATABUSURIS...
+
+  Delete a dataset from the databus.
+
+  Delete a group, artifact, or version identified by the given databus URI.
+  Will recursively delete all data associated with the dataset.
+
+Options:
+  --databus-key TEXT  Databus API key to access protected databus  [required]
+  --dry-run           Perform a dry run without actual deletion
+  --force             Force deletion without confirmation prompt
+  --help              Show this message and exit.
+```
+
+To authenticate the delete request, you need to provide an API key with `--databus-key YOUR_API_KEY`.
+
+If you want to perform a dry run without actual deletion, use the `--dry-run` option. This will show you what would be deleted without making any changes.
+
+As securety measure, the delete command will prompt you for confirmation before proceeding with the deletion. If you want to skip this prompt, you can use the `--force` option.
+
+**Example of using the delete command**
+
+### Examples of using the download command
+
+**Delete Version**: delete a specific version
+```bash
+# Python
+databusclient delete https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals/2022.12.01 --databus-key YOUR_API_KEY
+# Docker
+docker run --rm -v $(pwd):/data dbpedia/databus-python-client delete https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals/2022.12.01 --databus-key YOUR_API_KEY
+```
+
+**Delete Artifact**: delete an artifact and all its versions
+```bash
+# Python
+databusclient delete https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals --databus-key YOUR_API_KEY
+# Docker
+docker run --rm -v $(pwd):/data dbpedia/databus-python-client delete https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals --databus-key YOUR_API_KEY
+```
+
+**Delete Group**: delete a group and all its artifacts and versions
+```bash
+# Python
+databusclient delete https://databus.dbpedia.org/dbpedia/mappings --databus-key YOUR_API_KEY
+# Docker
+docker run --rm -v $(pwd):/data dbpedia/databus-python-client delete https://databus.dbpedia.org/dbpedia/mappings --databus-key YOUR_API_KEY
+```
+
+**Delete Collection**: delete collection
+```bash
+# Python
+databusclient delete https://databus.dbpedia.org/dbpedia/collections/dbpedia-snapshot-2022-12 --databus-key YOUR_API_KEY
+# Docker
+docker run --rm -v $(pwd):/data dbpedia/databus-python-client delete https://databus.dbpedia.org/dbpedia/collections/dbpedia-snapshot-2022-12 --databus-key YOUR_API_KEY
 ```
 
 ## Module Usage

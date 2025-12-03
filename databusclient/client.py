@@ -8,6 +8,8 @@ from SPARQLWrapper import SPARQLWrapper, JSON
 from hashlib import sha256
 import os
 
+from databusclient.api.utils import get_databus_id_parts_from_uri, get_json_ld_from_databus
+
 __debug = False
 
 
@@ -704,7 +706,7 @@ def __get_databus_artifacts_of_group__(json_str: str) -> List[str]:
         uri = item.get("@id")
         if not uri:
             continue
-        _, _, _, _, version, _ = __get_databus_id_parts__(uri)
+        _, _, _, _, version, _ = get_databus_id_parts_from_uri(uri)
         if version is None:
             result.append(uri)
     return result
@@ -722,13 +724,6 @@ def __handle_databus_collection__(uri: str, databus_key: str = None) -> str:
     return requests.get(uri, headers=headers).text
 
 
-def __get_json_ld_from_databus__(uri: str, databus_key: str = None) -> str:
-    headers = {"Accept": "application/ld+json"}
-    if databus_key is not None:
-        headers["X-API-KEY"] = databus_key
-    return requests.get(uri, headers=headers).text
-
-
 def __download_list__(urls: List[str],
                       localDir: str,
                       vault_token_file: str = None,
@@ -738,7 +733,7 @@ def __download_list__(urls: List[str],
     fileLocalDir = localDir
     for url in urls:
         if localDir is None:
-            host, account, group, artifact, version, file = __get_databus_id_parts__(url)
+            host, account, group, artifact, version, file = get_databus_id_parts_from_uri(url)
             fileLocalDir = os.path.join(os.getcwd(), account, group, artifact, version if version is not None else "latest")
             print(f"Local directory not given, using {fileLocalDir}")
 
@@ -747,13 +742,6 @@ def __download_list__(urls: List[str],
         print("\n")
         __download_file__(url=url, filename=filename, vault_token_file=vault_token_file, databus_key=databus_key, auth_url=auth_url, client_id=client_id)
         print("\n")
-
-
-def __get_databus_id_parts__(uri: str) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str], Optional[str], Optional[str]]:
-    uri = uri.removeprefix("https://").removeprefix("http://")
-    parts = uri.strip("/").split("/")
-    parts += [None] * (6 - len(parts))  # pad with None if less than 6 parts
-    return tuple(parts[:6])  # return only the first 6 parts
 
 
 def download(
@@ -778,7 +766,7 @@ def download(
 
     # TODO: make pretty
     for databusURI in databusURIs:
-        host, account, group, artifact, version, file = __get_databus_id_parts__(databusURI)
+        host, account, group, artifact, version, file = get_databus_id_parts_from_uri(databusURI)
 
         # dataID or databus collection
         if databusURI.startswith("http://") or databusURI.startswith("https://"):
@@ -788,8 +776,8 @@ def download(
             print(f"SPARQL endpoint {endpoint}")
 
             # databus collection
-            if "/collections/" in databusURI:  # TODO "in" is not safe! there could be an artifact named collections, need to check for the correct part position in the URI
-                query = __handle_databus_collection__(databusURI)
+            if group == "collections":
+                query = __handle_databus_collection__(databusURI, databus_key=databus_key)
                 res = __handle_databus_file_query__(endpoint, query)
                 __download_list__(res, localDir, vault_token_file=token, databus_key=databus_key, auth_url=auth_url, client_id=client_id)
             # databus file
@@ -797,28 +785,28 @@ def download(
                 __download_list__([databusURI], localDir, vault_token_file=token, databus_key=databus_key, auth_url=auth_url, client_id=client_id)
             # databus artifact version
             elif version is not None:
-                json_str = __get_json_ld_from_databus__(databusURI)
+                json_str = get_json_ld_from_databus(databusURI, databus_key=databus_key)
                 res = __handle_databus_artifact_version__(json_str)
                 __download_list__(res, localDir, vault_token_file=token, databus_key=databus_key, auth_url=auth_url, client_id=client_id)
             # databus artifact
             elif artifact is not None:
-                json_str = __get_json_ld_from_databus__(databusURI)
+                json_str = get_json_ld_from_databus(databusURI, databus_key=databus_key)
                 latest = __get_databus_latest_version_of_artifact__(json_str)
                 print(f"No version given, using latest version: {latest}")
-                json_str = __get_json_ld_from_databus__(latest)
+                json_str = get_json_ld_from_databus(latest, databus_key=databus_key)
                 res = __handle_databus_artifact_version__(json_str)
                 __download_list__(res, localDir, vault_token_file=token, databus_key=databus_key, auth_url=auth_url, client_id=client_id)
 
             # databus group
             elif group is not None:
-                json_str = __get_json_ld_from_databus__(databusURI)
+                json_str = get_json_ld_from_databus(databusURI, databus_key=databus_key)
                 artifacts = __get_databus_artifacts_of_group__(json_str)
                 for artifact_uri in artifacts:
                     print(f"Processing artifact {artifact_uri}")
-                    json_str = __get_json_ld_from_databus__(artifact_uri)
+                    json_str = get_json_ld_from_databus(artifact_uri, databus_key=databus_key)
                     latest = __get_databus_latest_version_of_artifact__(json_str)
                     print(f"No version given, using latest version: {latest}")
-                    json_str = __get_json_ld_from_databus__(latest)
+                    json_str = get_json_ld_from_databus(latest, databus_key=databus_key)
                     res = __handle_databus_artifact_version__(json_str)
                     __download_list__(res, localDir, vault_token_file=token, databus_key=databus_key, auth_url=auth_url, client_id=client_id)
 

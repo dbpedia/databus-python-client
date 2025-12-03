@@ -7,6 +7,7 @@ from typing import List
 from databusclient import client
 
 from databusclient.rclone_wrapper import upload
+from databusclient.api.delete import delete as api_delete
 
 @click.group()
 def app():
@@ -111,6 +112,26 @@ def download(databusuris: List[str], localdir, databus, vault_token, databus_key
         auth_url=authurl,
         client_id=clientid,
     )
+
+@app.command()
+@click.argument("databusuris", nargs=-1, required=True)
+@click.option("--databus-key", help="Databus API key to access protected databus", required=True)
+@click.option("--dry-run", is_flag=True, help="Perform a dry run without actual deletion")
+@click.option("--force", is_flag=True, help="Force deletion without confirmation prompt")
+def delete(databusuris: List[str], databus_key: str, dry_run: bool, force: bool):
+    """
+    Delete a dataset from the databus.
+
+    Delete a group, artifact, or version identified by the given databus URI.
+    Will recursively delete all data associated with the dataset.
+    """
+
+    api_delete(
+        databusURIs=databusuris,
+        databus_key=databus_key,
+        dry_run=dry_run,
+        force=force,
+        )
 
 
 if __name__ == "__main__":
