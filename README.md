@@ -10,7 +10,7 @@ Command-line and Python client for downloading and deploying datasets on DBpedia
 - [DBpedia](#dbpedia)
   - [Registration (Access Token)](#registration-access-token)
   - [DBpedia Knowledge Graphs](#dbpedia-knowledge-graphs)
-    - [Download Live Fusion KG Dump (BUSL 1.1, registration needed)](#download-live-fusion-kg-dump-busl-11-registration-needed)
+    - [Download Live Fusion KG Snapshot (BUSL 1.1, registration needed)](#download-live-fusion-kg-snapshot-busl-11-registration-needed)
     - [Download Enriched Knowledge Graphs (BUSL 1.1, registration needed)](#download-enriched-knowledge-graphs-busl-11-registration-needed)
     - [Download DBpedia Wikipedia Knowledge Graphs (CC-BY-SA, no registration needed)](#download-dbpedia-wikipedia-knowledge-graphs-cc-by-sa-no-registration-needed)
     - [Download DBpedia Wikidata Knowledge Graphs (CC-BY-SA, no registration needed)](#download-dbpedia-wikidata-knowledge-graphs-cc-by-sa-no-registration-needed)
@@ -20,9 +20,6 @@ Command-line and Python client for downloading and deploying datasets on DBpedia
   - [Delete](#cli-delete)
 - [Module Usage](#module-usage)
   - [Deploy](#module-deploy)
-- [Development & Contributing](#development--contributing)
-  - [Linting](#linting)
-  - [Testing](#testing)
 
 
 ## Quickstart
@@ -33,7 +30,7 @@ You can use either **Python** or **Docker**. Both methods support all client fea
 
 ### Python
 
-Requirements: [Python 3.11+](https://www.python.org/downloads/) and [pip](https://pip.pypa.io/en/stable/installation/)
+Requirements: [Python](https://www.python.org/downloads/) and [pip](https://pip.pypa.io/en/stable/installation/)
 
 Before using the client, install it via pip:
 
@@ -41,60 +38,13 @@ Before using the client, install it via pip:
 python3 -m pip install databusclient
 ```
 
-Note: the PyPI release was updated and this repository prepares version `0.15`. If you previously installed `databusclient` via `pip` and observe different CLI behavior, upgrade to the latest release:
+You can then use the client in the command line:
 
 ```bash
-python3 -m pip install --upgrade databusclient==0.15
-```
-
-**Help and further general information:**
-
-```bash
-# Python
 databusclient --help
-# Docker
-docker run --rm -v $(pwd):/data dbpedia/databus-python-client --help
-
-# Output:
-Usage: databusclient [OPTIONS] COMMAND [ARGS]...
-
-  Databus Client CLI
-
-Options:
-  --help  Show this message and exit.
-
-Commands:
-  deploy    Flexible deploy to Databus command supporting three modes:
-  download  Download datasets from databus, optionally using vault access...
-```
-
-<a id="cli-download"></a>
-### Download
-
-With the download command, you can download datasets or parts thereof from the Databus. The download command expects one or more Databus URIs or a SPARQL query as arguments. The URIs can point to files, versions, artifacts, groups, or collections. If a SPARQL query is provided, the query must return download URLs from the Databus which will be downloaded.
-
-```bash
-# Python
-databusclient download $DOWNLOADTARGET
-# Docker
-docker run --rm -v $(pwd):/data dbpedia/databus-python-client download $DOWNLOADTARGET
-```
-
-- `$DOWNLOADTARGET`
-  - Can be any Databus URI including collections OR SPARQL query (or several thereof).
-- `--localdir`
-  - If no `--localdir` is provided, the current working directory is used as base directory. The downloaded files will be stored in the working directory in a folder structure according to the Databus layout, i.e. `./$ACCOUNT/$GROUP/$ARTIFACT/$VERSION/`.
-- `--vault-token`
-  - If the dataset/files to be downloaded require vault authentication, you need to provide a vault token with `--vault-token /path/to/vault-token.dat`. See [Registration (Access Token)](#registration-access-token) for details on how to get a vault token.
-- `--databus-key`
-  - If the databus is protected and needs API key authentication, you can provide the API key with `--databus-key YOUR_API_KEY`.
-
-**Help and further information on download command:**
-```bash
-# Python
+databusclient deploy --help
 databusclient download --help
-# Docker
-docker run --rm -v $(pwd):/data dbpedia/databus-python-client download --help
+```
 
 ### Docker
 
@@ -123,48 +73,48 @@ To download BUSL 1.1 licensed datasets, you need to register and get an access t
 
 ### DBpedia Knowledge Graphs
 
-#### Download Live Fusion KG Dump (BUSL 1.1, registration needed)
-High-frequency, conflict-resolved knowledge graph that merges Live Wikipedia and Wikidata signals into a single, queryable dump for enterprise consumption. [More information](https://databus.dbpedia.org/dbpedia-enterprise/live-fusion-kg-dump)
+#### Download Live Fusion KG Snapshot (BUSL 1.1, registration needed)
+High-frequency, conflict-resolved knowledge graph that merges Live Wikipedia and Wikidata signals into a single, queryable snapshot for enterprise consumption. [More information](https://databus.dev.dbpedia.link/fhofer/live-fusion-kg-dump)
 ```bash
 # Python
-databusclient download https://databus.dbpedia.org/dbpedia-enterprise/live-fusion-kg-dump --vault-token vault-token.dat
+databusclient download https://databus.dev.dbpedia.link/fhofer/live-fusion-kg-dump --vault-token vault-token.dat
 # Docker
-docker run --rm -v $(pwd):/data dbpedia/databus-python-client download https://databus.dbpedia.org/dbpedia-enterprise/live-fusion-kg-dump --vault-token vault-token.dat
+docker run --rm -v $(pwd):/data dbpedia/databus-python-client download https://databus.dev.dbpedia.link/fhofer/live-fusion-kg-dump --vault-token vault-token.dat
 ```
 
 #### Download Enriched Knowledge Graphs (BUSL 1.1, registration needed)
 
 **DBpedia Wikipedia Extraction Enriched**
 
-DBpedia-based enrichment of structured Wikipedia extractions (currently EN DBpedia only). [More information](https://databus.dbpedia.org/dbpedia-enterprise/dbpedia-wikipedia-kg-enriched-dump)
+DBpedia-based enrichment of structured Wikipedia extractions (currently EN DBpedia only). [More information](https://databus.dev.dbpedia.link/fhofer/dbpedia-wikipedia-kg-enriched-dump)
 
 ```bash
 # Python
-databusclient download https://databus.dbpedia.org/dbpedia-enterprise/dbpedia-wikipedia-kg-enriched-dump --vault-token vault-token.dat
+databusclient download https://databus.dev.dbpedia.link/fhofer/dbpedia-wikipedia-kg-enriched-dump --vault-token vault-token.dat
 # Docker
-docker run --rm -v $(pwd):/data dbpedia/databus-python-client download https://databus.dbpedia.org/dbpedia-enterprise/dbpedia-wikipedia-kg-enriched-dump --vault-token vault-token.dat
+docker run --rm -v $(pwd):/data dbpedia/databus-python-client download https://databus.dev.dbpedia.link/fhofer/dbpedia-wikipedia-kg-enriched-dump --vault-token vault-token.dat
 ```
 
 #### Download DBpedia Wikipedia Knowledge Graphs (CC-BY-SA, no registration needed)
 
-Original extraction of structured Wikipedia data before enrichment. [More information](https://databus.dbpedia.org/dbpedia/dbpedia-wikipedia-kg-dump)
+Original extraction of structured Wikipedia data before enrichment. [More information](https://databus.dev.dbpedia.link/fhofer/dbpedia-wikipedia-kg-dump)
 
 ```bash
 # Python
-databusclient download https://databus.dbpedia.org/dbpedia/dbpedia-wikipedia-kg-dump
+databusclient download https://databus.dev.dbpedia.link/fhofer/dbpedia-wikipedia-kg-dump
 # Docker
-docker run --rm -v $(pwd):/data dbpedia/databus-python-client download https://databus.dbpedia.org/dbpedia/dbpedia-wikipedia-kg-dump
+docker run --rm -v $(pwd):/data dbpedia/databus-python-client download https://databus.dev.dbpedia.link/fhofer/dbpedia-wikipedia-kg-dump
 ```
 
 #### Download DBpedia Wikidata Knowledge Graphs (CC-BY-SA, no registration needed)
 
-Original extraction of structured Wikidata data before enrichment. [More information](https://databus.dbpedia.org/dbpedia/dbpedia-wikidata-kg-dump)
+Original extraction of structured Wikidata data before enrichment. [More information](https://databus.dev.dbpedia.link/fhofer/dbpedia-wikidata-kg-dump)
 
 ```bash
 # Python
-databusclient download https://databus.dbpedia.org/dbpedia/dbpedia-wikidata-kg-dump
+databusclient download https://databus.dev.dbpedia.link/fhofer/dbpedia-wikidata-kg-dump
 # Docker
-docker run --rm -v $(pwd):/data dbpedia/databus-python-client download https://databus.dbpedia.org/dbpedia/dbpedia-wikidata-kg-dump
+docker run --rm -v $(pwd):/data dbpedia/databus-python-client download https://databus.dev.dbpedia.link/fhofer/dbpedia-wikidata-kg-dump
 ```
 
 ## CLI Usage
@@ -210,8 +160,6 @@ docker run --rm -v $(pwd):/data dbpedia/databus-python-client download $DOWNLOAD
   - If no `--localdir` is provided, the current working directory is used as base directory. The downloaded files will be stored in the working directory in a folder structure according to the Databus layout, i.e. `./$ACCOUNT/$GROUP/$ARTIFACT/$VERSION/`.
 - `--vault-token`
   - If the dataset/files to be downloaded require vault authentication, you need to provide a vault token with `--vault-token /path/to/vault-token.dat`. See [Registration (Access Token)](#registration-access-token) for details on how to get a vault token.
-  
-  Note: Vault tokens are only required for certain protected Databus hosts (for example: `data.dbpedia.io`, `data.dev.dbpedia.link`). The client now detects those hosts and will fail early with a clear message if a token is required but not provided. Do not pass `--vault-token` for public downloads.
 - `--databus-key`
   - If the databus is protected and needs API key authentication, you can provide the API key with `--databus-key YOUR_API_KEY`.
 
@@ -235,8 +183,6 @@ Options:
                       e.g. https://databus.dbpedia.org/sparql)
   --vault-token TEXT  Path to Vault refresh token file
   --databus-key TEXT  Databus API key to download from protected databus
-  --all-versions      When downloading artifacts, download all versions
-                      instead of only the latest
   --authurl TEXT      Keycloak token endpoint URL  [default:
                       https://auth.dbpedia.org/realms/dbpedia/protocol/openid-
                       connect/token]
@@ -329,7 +275,7 @@ Usage: databusclient deploy [OPTIONS] [DISTRIBUTIONS]...
   - Upload & deploy via Nextcloud (--webdav-url, --remote, --path)
 
 Options:
-  --versionid TEXT   Target databus version/dataset identifier of the form <h
+  --version-id TEXT   Target databus version/dataset identifier of the form <h
                       ttps://databus.dbpedia.org/$ACCOUNT/$GROUP/$ARTIFACT/$VE
                       RSION>  [required]
   --title TEXT        Dataset title  [required]
@@ -451,7 +397,6 @@ docker run --rm -v $(pwd):/data dbpedia/databus-python-client deploy \
   ./data_folder
 ```
 
-
 <a id="cli-delete"></a>
 ### Delete
 
@@ -528,47 +473,6 @@ databusclient delete https://databus.dbpedia.org/dbpedia/collections/dbpedia-sna
 docker run --rm -v $(pwd):/data dbpedia/databus-python-client delete https://databus.dbpedia.org/dbpedia/collections/dbpedia-snapshot-2022-12 --databus-key YOUR_API_KEY
 ```
 
-### mkdist command
-
-Create a distribution string from components.
-
-Usage:
-```
-databusclient mkdist URL --cv key=value --cv key2=value2 --format ttl --compression gz --sha-length <sha256hex>:<length>
-```
-
-Example:
-```
-python -m databusclient mkdist "https://example.org/file.ttl" --cv lang=en --cv part=sorted --format ttl --compression gz --sha-length aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:12345
-```
-
-## Completion
-
-Enable shell completion (bash example):
-```
-eval "$(_DATABUSCLIENT_COMPLETE=source_bash python -m databusclient)"
-```
-
-### mkdist command
-
-Create a distribution string from components.
-
-Usage:
-```
-databusclient mkdist URL --cv key=value --cv key2=value2 --format ttl --compression gz --sha-length <sha256hex>:<length>
-```
-
-Example:
-```
-python -m databusclient mkdist "https://example.org/file.ttl" --cv lang=en --cv part=sorted --format ttl --compression gz --sha-length aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:12345
-```
-
-## Completion
-
-Enable shell completion (bash example):
-```
-eval "$(_DATABUSCLIENT_COMPLETE=source_bash python -m databusclient)"
-```
 ## Module Usage
 
 <a id="module-deploy"></a>
@@ -646,46 +550,4 @@ from databusclient import deploy
 # to deploy something you just need the dataset from the previous step and an API key
 # API key can be found (or generated) at https://$$DATABUS_BASE$$/$$USER$$#settings
 deploy(dataset, "mysterious API key")
-```
-
-## Development & Contributing
-
-Install development dependencies yourself or via [Poetry](https://python-poetry.org/):
-
-```bash
-poetry install --with dev
-```
-
-### Linting
-
-The used linter is [Ruff](https://ruff.rs/). Ruff is configured in `pyproject.toml` and is enforced in CI (`.github/workflows/ruff.yml`).
-
-For development, you can run linting locally with `ruff check .` and optionally auto-format with `ruff format .`.
-
-To ensure compatibility with the `pyproject.toml` configured dependencies, run Ruff via Poetry:
-
-```bash
-# To check for linting issues:
-poetry run ruff check .
-
-# To auto-format code:
-poetry run ruff format .
-```
-
-### Testing
-
-When developing new features please make sure to add appropriate tests and ensure that all tests pass. Tests are under `tests/` and use [pytest](https://docs.pytest.org/en/7.4.x/) as test framework.
-
-When fixing bugs or refactoring existing code, please make sure to add tests that cover the affected functionality. The current test coverage is very low, so any additional tests are highly appreciated.
-
-To run tests locally, use:
-
-```bash
-pytest tests/
-```
-
-Or to ensure compatibility with the `pyproject.toml` configured dependencies, run pytest via Poetry:
-
-```bash
-poetry run pytest tests/
 ```
