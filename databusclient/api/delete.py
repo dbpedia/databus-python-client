@@ -108,13 +108,15 @@ def _delete_artifact(databusURI: str, databus_key: str, dry_run: bool = False, f
     # Multiple versions case [{}, {}]
 
     # If versions is None or empty skip
-    if not versions:
+    if versions is None:
+        print(f"No versions found for artifact: {databusURI}")
+    else:
         version_uris = [v["@id"] for v in versions if "@id" in v]
         if not version_uris:
-            raise ValueError("No versions found in artifact JSON-LD")
-
-        # Delete all versions
-        _delete_list(version_uris, databus_key, dry_run=dry_run, force=force)
+            print(f"No version URIs found in artifact JSON-LD for: {databusURI}")
+        else:
+            # Delete all versions
+            _delete_list(version_uris, databus_key, dry_run=dry_run, force=force)
 
     # Finally, delete the artifact itself
     _delete_resource(databusURI, databus_key, dry_run=dry_run, force=force)
