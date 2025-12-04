@@ -8,6 +8,8 @@ from SPARQLWrapper import SPARQLWrapper, JSON
 from hashlib import sha256
 import os
 
+from databusclient.api.utils import get_databus_id_parts_from_uri, get_json_ld_from_databus
+
 __debug = False
 
 
@@ -520,7 +522,7 @@ def __download_file__(url, filename, vault_token_file=None, databus_key=None, au
         print("Redirects url: ", url)
 
     # --- 2. Try direct GET ---
-    response = requests.get(url, stream=True, allow_redirects=True)
+    response = requests.get(url, stream=True, allow_redirects=True, timeout=30)
     www = response.headers.get('WWW-Authenticate', '')  # get WWW-Authenticate header if present to check for Bearer auth
 
     # Vault token required if 401 Unauthorized with Bearer challenge
@@ -534,7 +536,7 @@ def __download_file__(url, filename, vault_token_file=None, databus_key=None, au
         headers = {"Authorization": f"Bearer {vault_token}"}
 
         # --- 4. Retry with token ---
-        response = requests.get(url, headers=headers, stream=True)
+        response = requests.get(url, headers=headers, stream=True, timeout=30)
     
     # Databus API key required if only 401 Unauthorized
     elif response.status_code == 401:
@@ -543,7 +545,7 @@ def __download_file__(url, filename, vault_token_file=None, databus_key=None, au
             raise ValueError("Databus API key not given for protected download")
 
         headers = {"X-API-KEY": databus_key}
-        response = requests.get(url, headers=headers, stream=True)
+        response = requests.get(url, headers=headers, stream=True, timeout=30)
 
     try:
         response.raise_for_status()  # Raise if still failing
@@ -566,8 +568,7 @@ def __download_file__(url, filename, vault_token_file=None, databus_key=None, au
 
     # TODO: could be a problem of github raw / openflaas
     if total_size_in_bytes != 0 and progress_bar.n != total_size_in_bytes:
-        # raise IOError("Downloaded size does not match Content-Length header")
-        print(f"Warning: Downloaded size does not match Content-Length header:\nExpected {total_size_in_bytes}, got {progress_bar.n}")
+        raise IOError("Downloaded size does not match Content-Length header")
 
 
 def __get_vault_access__(download_url: str,
@@ -620,13 +621,14 @@ def __get_vault_access__(download_url: str,
     return vault_token
 
 
-def __query_sparql__(endpoint_url, query) -> dict:
+def __query_sparql__(endpoint_url, query, databus_key=None) -> dict:
     """
     Query a SPARQL endpoint and return results in JSON format.
 
     Parameters:
     - endpoint_url: the URL of the SPARQL endpoint
     - query: the SPARQL query string
+    - databus_key: Optional API key for authentication
 
     Returns:
     - Dictionary containing the query results
@@ -635,12 +637,14 @@ def __query_sparql__(endpoint_url, query) -> dict:
     sparql.method = 'POST'
     sparql.setQuery(query)
     sparql.setReturnFormat(JSON)
+    if databus_key is not None:
+        sparql.setCustomHttpHeaders({"X-API-KEY": databus_key})
     results = sparql.query().convert()
     return results
 
 
-def __handle_databus_file_query__(endpoint_url, query) -> List[str]:
-    result_dict = __query_sparql__(endpoint_url, query)
+def __handle_databus_file_query__(endpoint_url, query, databus_key=None) -> List[str]:
+    result_dict = __query_sparql__(endpoint_url, query, databus_key=databus_key)
     for binding in result_dict['results']['bindings']:
         if len(binding.keys()) > 1:
             print("Error multiple bindings in query response")
@@ -704,7 +708,7 @@ def __get_databus_artifacts_of_group__(json_str: str) -> List[str]:
         uri = item.get("@id")
         if not uri:
             continue
-        _, _, _, _, version, _ = __get_databus_id_parts__(uri)
+        _, _, _, _, version, _ = get_databus_id_parts_from_uri(uri)
         if version is None:
             result.append(uri)
     return result
@@ -714,19 +718,12 @@ def wsha256(raw: str):
     return sha256(raw.encode('utf-8')).hexdigest()
 
 
-def __handle_databus_collection__(uri: str, databus_key: str = None) -> str:
+def __handle_databus_collection__(uri: str, databus_key: str | None = None) -> str:
     headers = {"Accept": "text/sparql"}
     if databus_key is not None:
         headers["X-API-KEY"] = databus_key
 
-    return requests.get(uri, headers=headers).text
-
-
-def __get_json_ld_from_databus__(uri: str, databus_key: str = None) -> str:
-    headers = {"Accept": "application/ld+json"}
-    if databus_key is not None:
-        headers["X-API-KEY"] = databus_key
-    return requests.get(uri, headers=headers).text
+    return requests.get(uri, headers=headers, timeout=30).text
 
 
 def __download_list__(urls: List[str],
@@ -738,7 +735,7 @@ def __download_list__(urls: List[str],
     fileLocalDir = localDir
     for url in urls:
         if localDir is None:
-            host, account, group, artifact, version, file = __get_databus_id_parts__(url)
+            _host, account, group, artifact, version, file = get_databus_id_parts_from_uri(url)
             fileLocalDir = os.path.join(os.getcwd(), account, group, artifact, version if version is not None else "latest")
             print(f"Local directory not given, using {fileLocalDir}")
 
@@ -747,13 +744,6 @@ def __download_list__(urls: List[str],
         print("\n")
         __download_file__(url=url, filename=filename, vault_token_file=vault_token_file, databus_key=databus_key, auth_url=auth_url, client_id=client_id)
         print("\n")
-
-
-def __get_databus_id_parts__(uri: str) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str], Optional[str], Optional[str]]:
-    uri = uri.removeprefix("https://").removeprefix("http://")
-    parts = uri.strip("/").split("/")
-    parts += [None] * (6 - len(parts))  # pad with None if less than 6 parts
-    return tuple(parts[:6])  # return only the first 6 parts
 
 
 def download(
@@ -772,13 +762,14 @@ def download(
     endpoint: the databus endpoint URL
     databusURIs: identifiers to access databus registered datasets
     token: Path to Vault refresh token file
+    databus_key: Databus API key for protected downloads
     auth_url: Keycloak token endpoint URL
     client_id: Client ID for token exchange
     """
 
     # TODO: make pretty
     for databusURI in databusURIs:
-        host, account, group, artifact, version, file = __get_databus_id_parts__(databusURI)
+        host, account, group, artifact, version, file = get_databus_id_parts_from_uri(databusURI)
 
         # dataID or databus collection
         if databusURI.startswith("http://") or databusURI.startswith("https://"):
@@ -788,8 +779,8 @@ def download(
             print(f"SPARQL endpoint {endpoint}")
 
             # databus collection
-            if "/collections/" in databusURI:  # TODO "in" is not safe! there could be an artifact named collections, need to check for the correct part position in the URI
-                query = __handle_databus_collection__(databusURI)
+            if group == "collections":
+                query = __handle_databus_collection__(databusURI, databus_key=databus_key)
                 res = __handle_databus_file_query__(endpoint, query)
                 __download_list__(res, localDir, vault_token_file=token, databus_key=databus_key, auth_url=auth_url, client_id=client_id)
             # databus file
@@ -797,28 +788,28 @@ def download(
                 __download_list__([databusURI], localDir, vault_token_file=token, databus_key=databus_key, auth_url=auth_url, client_id=client_id)
             # databus artifact version
             elif version is not None:
-                json_str = __get_json_ld_from_databus__(databusURI)
+                json_str = get_json_ld_from_databus(databusURI, databus_key=databus_key)
                 res = __handle_databus_artifact_version__(json_str)
                 __download_list__(res, localDir, vault_token_file=token, databus_key=databus_key, auth_url=auth_url, client_id=client_id)
             # databus artifact
             elif artifact is not None:
-                json_str = __get_json_ld_from_databus__(databusURI)
+                json_str = get_json_ld_from_databus(databusURI, databus_key=databus_key)
                 latest = __get_databus_latest_version_of_artifact__(json_str)
                 print(f"No version given, using latest version: {latest}")
-                json_str = __get_json_ld_from_databus__(latest)
+                json_str = get_json_ld_from_databus(latest, databus_key=databus_key)
                 res = __handle_databus_artifact_version__(json_str)
                 __download_list__(res, localDir, vault_token_file=token, databus_key=databus_key, auth_url=auth_url, client_id=client_id)
 
             # databus group
             elif group is not None:
-                json_str = __get_json_ld_from_databus__(databusURI)
+                json_str = get_json_ld_from_databus(databusURI, databus_key=databus_key)
                 artifacts = __get_databus_artifacts_of_group__(json_str)
                 for artifact_uri in artifacts:
                     print(f"Processing artifact {artifact_uri}")
-                    json_str = __get_json_ld_from_databus__(artifact_uri)
+                    json_str = get_json_ld_from_databus(artifact_uri, databus_key=databus_key)
                     latest = __get_databus_latest_version_of_artifact__(json_str)
                     print(f"No version given, using latest version: {latest}")
-                    json_str = __get_json_ld_from_databus__(latest)
+                    json_str = get_json_ld_from_databus(latest, databus_key=databus_key)
                     res = __handle_databus_artifact_version__(json_str)
                     __download_list__(res, localDir, vault_token_file=token, databus_key=databus_key, auth_url=auth_url, client_id=client_id)
 
@@ -835,5 +826,5 @@ def download(
             print("QUERY {}", databusURI.replace("\n", " "))
             if endpoint is None:  # endpoint is required for queries (--databus)
                 raise ValueError("No endpoint given for query")
-            res = __handle_databus_file_query__(endpoint, databusURI)
+            res = __handle_databus_file_query__(endpoint, databusURI, databus_key=databus_key)
             __download_list__(res, localDir, vault_token_file=token, databus_key=databus_key, auth_url=auth_url, client_id=client_id)

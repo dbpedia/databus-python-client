@@ -7,6 +7,7 @@ from typing import List
 from databusclient import client
 
 from databusclient.rclone_wrapper import upload
+from databusclient.api.delete import delete as api_delete
 
 @click.group()
 def app():
@@ -95,7 +96,7 @@ def deploy(version_id, title, abstract, description, license_url, apikey,
 @click.option("--localdir", help="Local databus folder (if not given, databus folder structure is created in current working directory)")
 @click.option("--databus", help="Databus URL (if not given, inferred from databusuri, e.g. https://databus.dbpedia.org/sparql)")
 @click.option("--vault-token", help="Path to Vault refresh token file")
-@click.option("--databus-key", help="Databus API key to donwload from protected databus")
+@click.option("--databus-key", help="Databus API key to download from protected databus")
 @click.option("--authurl", default="https://auth.dbpedia.org/realms/dbpedia/protocol/openid-connect/token", show_default=True, help="Keycloak token endpoint URL")
 @click.option("--clientid", default="vault-token-exchange", show_default=True, help="Client ID for token exchange")
 def download(databusuris: List[str], localdir, databus, vault_token, databus_key, authurl, clientid):
@@ -111,6 +112,26 @@ def download(databusuris: List[str], localdir, databus, vault_token, databus_key
         auth_url=authurl,
         client_id=clientid,
     )
+
+@app.command()
+@click.argument("databusuris", nargs=-1, required=True)
+@click.option("--databus-key", help="Databus API key to access protected databus", required=True)
+@click.option("--dry-run", is_flag=True, help="Perform a dry run without actual deletion")
+@click.option("--force", is_flag=True, help="Force deletion without confirmation prompt")
+def delete(databusuris: List[str], databus_key: str, dry_run: bool, force: bool):
+    """
+    Delete a dataset from the databus.
+
+    Delete a group, artifact, or version identified by the given databus URI.
+    Will recursively delete all data associated with the dataset.
+    """
+
+    api_delete(
+        databusURIs=databusuris,
+        databus_key=databus_key,
+        dry_run=dry_run,
+        force=force,
+        )
 
 
 if __name__ == "__main__":
