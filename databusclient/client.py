@@ -522,7 +522,7 @@ def __download_file__(url, filename, vault_token_file=None, databus_key=None, au
         print("Redirects url: ", url)
 
     # --- 2. Try direct GET ---
-    response = requests.get(url, stream=True, allow_redirects=True)
+    response = requests.get(url, stream=True, allow_redirects=True, timeout=30)
     www = response.headers.get('WWW-Authenticate', '')  # get WWW-Authenticate header if present to check for Bearer auth
 
     # Vault token required if 401 Unauthorized with Bearer challenge
@@ -536,7 +536,7 @@ def __download_file__(url, filename, vault_token_file=None, databus_key=None, au
         headers = {"Authorization": f"Bearer {vault_token}"}
 
         # --- 4. Retry with token ---
-        response = requests.get(url, headers=headers, stream=True)
+        response = requests.get(url, headers=headers, stream=True, timeout=30)
     
     # Databus API key required if only 401 Unauthorized
     elif response.status_code == 401:
@@ -545,7 +545,7 @@ def __download_file__(url, filename, vault_token_file=None, databus_key=None, au
             raise ValueError("Databus API key not given for protected download")
 
         headers = {"X-API-KEY": databus_key}
-        response = requests.get(url, headers=headers, stream=True)
+        response = requests.get(url, headers=headers, stream=True, timeout=30)
 
     try:
         response.raise_for_status()  # Raise if still failing
@@ -718,12 +718,12 @@ def wsha256(raw: str):
     return sha256(raw.encode('utf-8')).hexdigest()
 
 
-def __handle_databus_collection__(uri: str, databus_key: str = None) -> str:
+def __handle_databus_collection__(uri: str, databus_key: str | None = None) -> str:
     headers = {"Accept": "text/sparql"}
     if databus_key is not None:
         headers["X-API-KEY"] = databus_key
 
-    return requests.get(uri, headers=headers).text
+    return requests.get(uri, headers=headers, timeout=30).text
 
 
 def __download_list__(urls: List[str],
@@ -735,7 +735,7 @@ def __download_list__(urls: List[str],
     fileLocalDir = localDir
     for url in urls:
         if localDir is None:
-            host, account, group, artifact, version, file = get_databus_id_parts_from_uri(url)
+            _host, account, group, artifact, version, file = get_databus_id_parts_from_uri(url)
             fileLocalDir = os.path.join(os.getcwd(), account, group, artifact, version if version is not None else "latest")
             print(f"Local directory not given, using {fileLocalDir}")
 

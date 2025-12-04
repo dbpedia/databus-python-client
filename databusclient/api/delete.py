@@ -20,11 +20,11 @@ def _confirm_delete(databusURI: str) -> str:
     print("\nThis action is irreversible and will permanently remove the resource and all its data.")
     while True:
         choice = input("Type 'yes'/'y' to confirm, 'skip'/'s' to skip this resource, or 'cancel'/'c' to abort: ").strip().lower()
-        if choice == "yes" or choice == "y":
+        if choice in ("yes", "y"):
             return "confirm"
-        elif choice == "skip" or choice == "s":
+        elif choice in ("skip", "s"):
             return "skip"
-        elif choice == "cancel" or choice == "c":
+        elif choice in ("cancel", "c"):
             return "cancel"
         else:
             print("Invalid input. Please type 'yes'/'y', 'skip'/'s', or 'cancel'/'c'.")
@@ -107,12 +107,14 @@ def _delete_artifact(databusURI: str, databus_key: str, dry_run: bool = False, f
         versions = [versions]
     # Multiple versions case [{}, {}]
 
-    version_uris = [v["@id"] for v in versions if "@id" in v]
-    if not version_uris:
-        raise ValueError("No versions found in artifact JSON-LD")
+    # If versions is None or empty skip
+    if not versions:
+        version_uris = [v["@id"] for v in versions if "@id" in v]
+        if not version_uris:
+            raise ValueError("No versions found in artifact JSON-LD")
 
-    # Delete all versions
-    _delete_list(version_uris, databus_key, dry_run=dry_run, force=force)
+        # Delete all versions
+        _delete_list(version_uris, databus_key, dry_run=dry_run, force=force)
 
     # Finally, delete the artifact itself
     _delete_resource(databusURI, databus_key, dry_run=dry_run, force=force)
@@ -150,7 +152,6 @@ def _delete_group(databusURI: str, databus_key: str, dry_run: bool = False, forc
     # Finally, delete the group itself
     _delete_resource(databusURI, databus_key, dry_run=dry_run, force=force)
 
-# TODO: add to README.md
 def delete(databusURIs: List[str], databus_key: str, dry_run: bool, force: bool):
     """
     Delete a dataset from the databus.
