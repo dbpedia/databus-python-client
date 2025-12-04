@@ -67,8 +67,8 @@ Commands to download the [DBpedia Knowledge Graphs](#dbpedia-knowledge-graphs) g
 
 To download BUSL 1.1 licensed datasets, you need to register and get an access token.
 
-1. If you do not have a DBpedia Account yet (Forum/Databus), please register at https://account.dbpedia.org
-2. Log in at https://account.dbpedia.org and create your token.
+1. If you do not have a DBpedia Account yet (Forum/Databus), please register at [https://account.dbpedia.org](https://account.dbpedia.org)
+2. Log in at [https://account.dbpedia.org](https://account.dbpedia.org) and create your token.
 3. Save the token to a file, e.g. `vault-token.dat`.
 
 ### DBpedia Knowledge Graphs
@@ -182,7 +182,7 @@ Options:
   --databus TEXT      Databus URL (if not given, inferred from databusuri,
                       e.g. https://databus.dbpedia.org/sparql)
   --vault-token TEXT  Path to Vault refresh token file
-  --databus-key TEXT  Databus API key to donwload from protected databus
+  --databus-key TEXT  Databus API key to download from protected databus
   --authurl TEXT      Keycloak token endpoint URL  [default:
                       https://auth.dbpedia.org/realms/dbpedia/protocol/openid-
                       connect/token]
@@ -191,7 +191,7 @@ Options:
   --help              Show this message and exit.
 ```
 
-### Examples of using the download command
+#### Examples of using the download command
 
 **Download File**: download of a single file
 ```bash
@@ -397,7 +397,7 @@ docker run --rm -v $(pwd):/data dbpedia/databus-python-client deploy \
   ./data_folder
 ```
 
-<a id="module-delete"></a>
+<a id="cli-delete"></a>
 ### Delete
 
 With the delete command you can delete collections, groups, artifacts, and versions from the Databus. Deleting files is not supported via API.
@@ -437,11 +437,9 @@ To authenticate the delete request, you need to provide an API key with `--datab
 
 If you want to perform a dry run without actual deletion, use the `--dry-run` option. This will show you what would be deleted without making any changes.
 
-As securety measure, the delete command will prompt you for confirmation before proceeding with the deletion. If you want to skip this prompt, you can use the `--force` option.
+As security measure, the delete command will prompt you for confirmation before proceeding with the deletion. If you want to skip this prompt, you can use the `--force` option.
 
-**Example of using the delete command**
-
-### Examples of using the download command
+#### Examples of using the delete command
 
 **Delete Version**: delete a specific version
 ```bash

@@ -65,7 +65,7 @@ def _delete_resource(databusURI: str, databus_key: str, dry_run: bool = False, f
         print(f"[DRY RUN] Would delete: {databusURI}")
         return
 
-    response = requests.delete(databusURI, headers=headers)
+    response = requests.delete(databusURI, headers=headers, timeout=30)
 
     if response.status_code in (200, 204):
         print(f"Successfully deleted: {databusURI}")
@@ -112,11 +112,10 @@ def _delete_artifact(databusURI: str, databus_key: str, dry_run: bool = False, f
         raise ValueError("No versions found in artifact JSON-LD")
 
     # Delete all versions
-    _delete_list(version_uris, databus_key, dry_run=dry_run)
+    _delete_list(version_uris, databus_key, dry_run=dry_run, force=force)
 
     # Finally, delete the artifact itself
-    _delete_resource(databusURI, databus_key, dry_run=dry_run)
-
+    _delete_resource(databusURI, databus_key, dry_run=dry_run, force=force)
 
 def _delete_group(databusURI: str, databus_key: str, dry_run: bool = False, force: bool = False):
     """
@@ -167,7 +166,7 @@ def delete(databusURIs: List[str], databus_key: str, dry_run: bool, force: bool)
     """
 
     for databusURI in databusURIs:
-        host, account, group, artifact, version, file = get_databus_id_parts_from_uri(databusURI)
+        _host, _account, group, artifact, version, file = get_databus_id_parts_from_uri(databusURI)
 
         if group == "collections" and artifact is not None:
             print(f"Deleting collection: {databusURI}")
@@ -185,4 +184,4 @@ def delete(databusURIs: List[str], databus_key: str, dry_run: bool, force: bool)
             print(f"Deleting group and all its artifacts and versions: {databusURI}")
             _delete_group(databusURI, databus_key, dry_run=dry_run, force=force)
         else:
-            print(f"Deleting ${databusURI} is not supported.")
+            print(f"Deleting {databusURI} is not supported.")

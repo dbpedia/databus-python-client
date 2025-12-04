@@ -17,7 +17,7 @@ def get_databus_id_parts_from_uri(uri: str) -> Tuple[Optional[str], Optional[str
     parts += [None] * (6 - len(parts))  # pad with None if less than 6 parts
     return tuple(parts[:6])  # return only the first 6 parts
 
-def get_json_ld_from_databus(uri: str, databus_key: str = None) -> str:
+def get_json_ld_from_databus(uri: str, databus_key: str | None = None) -> str:
     """
     Retrieve JSON-LD representation of a databus resource.
 
@@ -31,7 +31,7 @@ def get_json_ld_from_databus(uri: str, databus_key: str = None) -> str:
     headers = {"Accept": "application/ld+json"}
     if databus_key is not None:
         headers["X-API-KEY"] = databus_key
-    response = requests.get(uri, headers=headers)
+    response = requests.get(uri, headers=headers, timeout=30)
     response.raise_for_status()
 
     return response.text

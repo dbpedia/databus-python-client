@@ -568,8 +568,7 @@ def __download_file__(url, filename, vault_token_file=None, databus_key=None, au
 
     # TODO: could be a problem of github raw / openflaas
     if total_size_in_bytes != 0 and progress_bar.n != total_size_in_bytes:
-        # raise IOError("Downloaded size does not match Content-Length header")
-        print(f"Warning: Downloaded size does not match Content-Length header:\nExpected {total_size_in_bytes}, got {progress_bar.n}")
+        raise IOError("Downloaded size does not match Content-Length header")
 
 
 def __get_vault_access__(download_url: str,
@@ -622,13 +621,14 @@ def __get_vault_access__(download_url: str,
     return vault_token
 
 
-def __query_sparql__(endpoint_url, query) -> dict:
+def __query_sparql__(endpoint_url, query, databus_key=None) -> dict:
     """
     Query a SPARQL endpoint and return results in JSON format.
 
     Parameters:
     - endpoint_url: the URL of the SPARQL endpoint
     - query: the SPARQL query string
+    - databus_key: Optional API key for authentication
 
     Returns:
     - Dictionary containing the query results
@@ -637,12 +637,14 @@ def __query_sparql__(endpoint_url, query) -> dict:
     sparql.method = 'POST'
     sparql.setQuery(query)
     sparql.setReturnFormat(JSON)
+    if databus_key is not None:
+        sparql.setCustomHttpHeaders({"X-API-KEY": databus_key})
     results = sparql.query().convert()
     return results
 
 
-def __handle_databus_file_query__(endpoint_url, query) -> List[str]:
-    result_dict = __query_sparql__(endpoint_url, query)
+def __handle_databus_file_query__(endpoint_url, query, databus_key=None) -> List[str]:
+    result_dict = __query_sparql__(endpoint_url, query, databus_key=databus_key)
     for binding in result_dict['results']['bindings']:
         if len(binding.keys()) > 1:
             print("Error multiple bindings in query response")
@@ -760,6 +762,7 @@ def download(
     endpoint: the databus endpoint URL
     databusURIs: identifiers to access databus registered datasets
     token: Path to Vault refresh token file
+    databus_key: Databus API key for protected downloads
     auth_url: Keycloak token endpoint URL
     client_id: Client ID for token exchange
     """
@@ -823,5 +826,5 @@ def download(
             print("QUERY {}", databusURI.replace("\n", " "))
             if endpoint is None:  # endpoint is required for queries (--databus)
                 raise ValueError("No endpoint given for query")
-            res = __handle_databus_file_query__(endpoint, databusURI)
+            res = __handle_databus_file_query__(endpoint, databusURI, databus_key=databus_key)
             __download_list__(res, localDir, vault_token_file=token, databus_key=databus_key, auth_url=auth_url, client_id=client_id)
