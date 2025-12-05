@@ -1,5 +1,5 @@
 from databusclient import cli
-from databusclient.client import create_dataset, deploy, create_distribution
+from databusclient.api.deploy import create_dataset, deploy, create_distribution
 
 __all__ = ["create_dataset", "deploy", "create_distribution"]
 

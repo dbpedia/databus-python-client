@@ -1,6 +1,6 @@
 """Client tests"""
 import pytest
-from databusclient.client import create_dataset, create_distribution, __get_file_info
+from databusclient.api.deploy import create_dataset, create_distribution, __get_file_info
 from collections import OrderedDict
 
 
