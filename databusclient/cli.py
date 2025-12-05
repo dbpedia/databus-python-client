@@ -4,10 +4,12 @@ import os
 
 import click
 from typing import List
-from databusclient import client
 
 from databusclient.rclone_wrapper import upload
+
 from databusclient.api.delete import delete as api_delete
+import databusclient.api.deploy as api_deploy
+from databusclient.api.download import download as api_download
 
 @click.group()
 def app():
@@ -55,8 +57,8 @@ def deploy(version_id, title, abstract, description, license_url, apikey,
         click.echo("[MODE] Classic deploy with distributions")
         click.echo(f"Deploying dataset version: {version_id}")
 
-        dataid = client.create_dataset(version_id, title, abstract, description, license_url, distributions)
-        client.deploy(dataid=dataid, api_key=apikey)
+        dataid = api_deploy.create_dataset(version_id, title, abstract, description, license_url, distributions)
+        api_deploy.deploy(dataid=dataid, api_key=apikey)
         return
 
     # === Mode 2: Metadata File ===
@@ -64,7 +66,7 @@ def deploy(version_id, title, abstract, description, license_url, apikey,
         click.echo(f"[MODE] Deploy from metadata file: {metadata_file}")
         with open(metadata_file, 'r') as f:
             metadata = json.load(f)
-        client.deploy_from_metadata(metadata, version_id, title, abstract, description, license_url, apikey)
+        api_deploy.deploy_from_metadata(metadata, version_id, title, abstract, description, license_url, apikey)
         return
     
     # === Mode 3: Upload & Deploy (Nextcloud) ===
@@ -80,7 +82,7 @@ def deploy(version_id, title, abstract, description, license_url, apikey,
         click.echo("[MODE] Upload & Deploy to DBpedia Databus via Nextcloud")
         click.echo(f"→ Uploading to: {remote}:{path}")
         metadata = upload.upload_to_nextcloud(distributions, remote, path, webdav_url)
-        client.deploy_from_metadata(metadata, version_id, title, abstract, description, license_url, apikey)
+        api_deploy.deploy_from_metadata(metadata, version_id, title, abstract, description, license_url, apikey)
         return
 
     raise click.UsageError(
@@ -103,7 +105,7 @@ def download(databusuris: List[str], localdir, databus, vault_token, databus_key
     """
     Download datasets from databus, optionally using vault access if vault options are provided.
     """
-    client.download(
+    api_download(
         localDir=localdir,
         endpoint=databus,
         databusURIs=databusuris,
