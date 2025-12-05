@@ -183,6 +183,8 @@ Options:
                       e.g. https://databus.dbpedia.org/sparql)
   --vault-token TEXT  Path to Vault refresh token file
   --databus-key TEXT  Databus API key to download from protected databus
+  --latest-only       When downloading artifacts, only download the latest
+                      version
   --authurl TEXT      Keycloak token endpoint URL  [default:
                       https://auth.dbpedia.org/realms/dbpedia/protocol/openid-
                       connect/token]
