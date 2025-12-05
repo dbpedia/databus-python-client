@@ -2,7 +2,7 @@ import json
 import requests
 from typing import List
 
-from databusclient.api.utils import get_databus_id_parts_from_uri, get_json_ld_from_databus
+from databusclient.api.utils import get_databus_id_parts_from_uri, fetch_databus_jsonld
 
 def _confirm_delete(databusURI: str) -> str:
     """
@@ -97,7 +97,7 @@ def _delete_artifact(databusURI: str, databus_key: str, dry_run: bool = False, f
     - databus_key: Databus API key to authenticate the deletion requests
     - dry_run: If True, do not perform the deletion but only print what would be deleted
     """
-    artifact_body = get_json_ld_from_databus(databusURI, databus_key)
+    artifact_body = fetch_databus_jsonld(databusURI, databus_key)
 
     json_dict = json.loads(artifact_body)
     versions = json_dict.get("databus:hasVersion")
@@ -133,7 +133,7 @@ def _delete_group(databusURI: str, databus_key: str, dry_run: bool = False, forc
     - databus_key: Databus API key to authenticate the deletion requests
     - dry_run: If True, do not perform the deletion but only print what would be deleted
     """
-    group_body = get_json_ld_from_databus(databusURI, databus_key)
+    group_body = fetch_databus_jsonld(databusURI, databus_key)
 
     json_dict = json.loads(group_body)
     artifacts = json_dict.get("databus:hasArtifact", [])

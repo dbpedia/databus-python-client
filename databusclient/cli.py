@@ -100,9 +100,10 @@ def deploy(version_id, title, abstract, description, license_url, apikey,
 @click.option("--databus", help="Databus URL (if not given, inferred from databusuri, e.g. https://databus.dbpedia.org/sparql)")
 @click.option("--vault-token", help="Path to Vault refresh token file")
 @click.option("--databus-key", help="Databus API key to download from protected databus")
+@click.option("--all-versions", is_flag=True, help="When downloading artifacts, download all versions instead of only the latest")
 @click.option("--authurl", default="https://auth.dbpedia.org/realms/dbpedia/protocol/openid-connect/token", show_default=True, help="Keycloak token endpoint URL")
 @click.option("--clientid", default="vault-token-exchange", show_default=True, help="Client ID for token exchange")
-def download(databusuris: List[str], localdir, databus, vault_token, databus_key, authurl, clientid):
+def download(databusuris: List[str], localdir, databus, vault_token, databus_key, all_versions, authurl, clientid):
     """
     Download datasets from databus, optionally using vault access if vault options are provided.
     """
@@ -112,6 +113,7 @@ def download(databusuris: List[str], localdir, databus, vault_token, databus_key
         databusURIs=databusuris,
         token=vault_token,
         databus_key=databus_key,
+        all_versions=all_versions,
         auth_url=authurl,
         client_id=clientid,
     )
