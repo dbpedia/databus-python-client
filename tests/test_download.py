@@ -1,6 +1,6 @@
 """Download Tests"""
 import pytest
-import databusclient.client as cl
+from databusclient.api.download import download as api_download
 
 DEFAULT_ENDPOINT="https://databus.dbpedia.org/sparql"
 TEST_QUERY="""
@@ -17,7 +17,7 @@ LIMIT 10
 TEST_COLLECTION="https://databus.dbpedia.org/dbpedia/collections/dbpedia-snapshot-2022-12"
 
 def test_with_query():
-  cl.download("tmp",DEFAULT_ENDPOINT,[TEST_QUERY])
+  api_download("tmp",DEFAULT_ENDPOINT,[TEST_QUERY])
   
 def test_with_collection():
-  cl.download("tmp",DEFAULT_ENDPOINT,[TEST_COLLECTION])
+  api_download("tmp",DEFAULT_ENDPOINT,[TEST_COLLECTION])
