@@ -1,6 +1,6 @@
 """Client tests"""
 import pytest
-from databusclient.api.deploy import create_dataset, create_distribution, __get_file_info
+from databusclient.api.deploy import create_dataset, create_distribution, get_file_info
 from collections import OrderedDict
 
 
@@ -47,7 +47,7 @@ def test_distribution_cases():
             compression,
             sha256sum,
             content_length,
-        ) = __get_file_info(artifact_name, dst_string)
+        ) = get_file_info(artifact_name, dst_string)
 
         created_dst_str = create_distribution(
             uri, cvs, formatExtension, compression, (sha256sum, content_length)

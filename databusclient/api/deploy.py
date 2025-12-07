@@ -23,7 +23,7 @@ class DeployLogLevel(Enum):
     debug = 2
 
 
-def __get_content_variants(distribution_str: str) -> Optional[Dict[str, str]]:
+def _get_content_variants(distribution_str: str) -> Optional[Dict[str, str]]:
     args = distribution_str.split("|")
 
     # cv string is ALWAYS at position 1 after the URL
@@ -41,7 +41,7 @@ def __get_content_variants(distribution_str: str) -> Optional[Dict[str, str]]:
     return cvs
 
 
-def __get_filetype_definition(
+def _get_filetype_definition(
     distribution_str: str,
 ) -> Tuple[Optional[str], Optional[str]]:
     file_ext = None
@@ -80,9 +80,9 @@ def __get_filetype_definition(
     return file_ext, compression
 
 
-def __get_extensions(distribution_str: str) -> Tuple[str, str, str]:
+def _get_extensions(distribution_str: str) -> Tuple[str, str, str]:
     extension_part = ""
-    format_extension, compression = __get_filetype_definition(distribution_str)
+    format_extension, compression = _get_filetype_definition(distribution_str)
 
     if format_extension is not None:
         # build the format extension (only append compression if not none)
@@ -119,7 +119,7 @@ def __get_extensions(distribution_str: str) -> Tuple[str, str, str]:
     return extension_part, format_extension, compression
 
 
-def __get_file_stats(distribution_str: str) -> Tuple[Optional[str], Optional[int]]:
+def _get_file_stats(distribution_str: str) -> Tuple[Optional[str], Optional[int]]:
     metadata_list = distribution_str.split("|")[1:]
     # check whether there is the shasum:length tuple separated by :
     if len(metadata_list) == 0 or ":" not in metadata_list[-1]:
@@ -139,7 +139,7 @@ def __get_file_stats(distribution_str: str) -> Tuple[Optional[str], Optional[int
     return sha256sum, content_length
 
 
-def __load_file_stats(url: str) -> Tuple[str, int]:
+def _load_file_stats(url: str) -> Tuple[str, int]:
     resp = requests.get(url)
     if resp.status_code > 400:
         raise requests.exceptions.RequestException(response=resp)
@@ -149,20 +149,20 @@ def __load_file_stats(url: str) -> Tuple[str, int]:
     return sha256sum, content_length
 
 
-def __get_file_info(distribution_str: str) -> Tuple[Dict[str, str], str, str, str, int]:
-    cvs = __get_content_variants(distribution_str)
-    extension_part, format_extension, compression = __get_extensions(distribution_str)
+def get_file_info(distribution_str: str) -> Tuple[Dict[str, str], str, str, str, int]:
+    cvs = _get_content_variants(distribution_str)
+    extension_part, format_extension, compression = _get_extensions(distribution_str)
 
     content_variant_part = "_".join([f"{key}={value}" for key, value in cvs.items()])
 
     if __debug:
         print("DEBUG", distribution_str, extension_part)
 
-    sha256sum, content_length = __get_file_stats(distribution_str)
+    sha256sum, content_length = _get_file_stats(distribution_str)
 
     if sha256sum is None or content_length is None:
         __url = str(distribution_str).split("|")[0]
-        sha256sum, content_length = __load_file_stats(__url)
+        sha256sum, content_length = _load_file_stats(__url)
 
     return cvs, format_extension, compression, sha256sum, content_length
 
@@ -200,7 +200,7 @@ def create_distribution(
 
     return f"{url}|{meta_string}"
 
-def create_distributions_from_metadata(metadata: List[Dict[str, Union[str, int]]]) -> List[str]:
+def _create_distributions_from_metadata(metadata: List[Dict[str, Union[str, int]]]) -> List[str]:
     """
     Create distributions from metadata entries.
 
@@ -313,7 +313,7 @@ def create_dataset(
             compression,
             sha256sum,
             content_length,
-        ) = __get_file_info(dst_string)
+        ) = get_file_info(dst_string)
 
         if not cvs and len(distributions) > 1:
             raise BadArgumentException(
@@ -453,7 +453,7 @@ def deploy_from_metadata(
     Parameters
     ----------
     metadata : List[Dict[str, Union[str, int]]]
-        List of file metadata entries (see create_distributions_from_metadata)
+        List of file metadata entries (see _create_distributions_from_metadata)
     version_id : str
         Dataset version ID in the form $DATABUS_BASE/$ACCOUNT/$GROUP/$ARTIFACT/$VERSION
     title : str
@@ -467,7 +467,7 @@ def deploy_from_metadata(
     apikey : str
         API key for authentication
     """
-    distributions = create_distributions_from_metadata(metadata)
+    distributions = _create_distributions_from_metadata(metadata)
 
     dataset = create_dataset(
         version_id=version_id,
