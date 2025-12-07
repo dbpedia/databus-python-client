@@ -5,7 +5,7 @@ import os
 import click
 from typing import List
 
-from databusclient.rclone_wrapper import upload
+from databusclient.extensions import webdav
 
 from databusclient.api.delete import delete as api_delete
 import databusclient.api.deploy as api_deploy
@@ -81,7 +81,7 @@ def deploy(version_id, title, abstract, description, license_url, apikey,
 
         click.echo("[MODE] Upload & Deploy to DBpedia Databus via Nextcloud")
         click.echo(f"→ Uploading to: {remote}:{path}")
-        metadata = upload.upload_to_nextcloud(distributions, remote, path, webdav_url)
+        metadata = webdav.upload_to_webdav(distributions, remote, path, webdav_url)
         api_deploy.deploy_from_metadata(metadata, version_id, title, abstract, description, license_url, apikey)
         return
 
