@@ -1,11 +1,10 @@
-from typing import List, Iterator
+from typing import List
 import requests
 import os
 from tqdm import tqdm
 import json
 from SPARQLWrapper import SPARQLWrapper, JSON
 
-from databusclient.api.delete import _delete_group, _delete_resource
 from databusclient.api.utils import get_databus_id_parts_from_uri, fetch_databus_jsonld
 
 
