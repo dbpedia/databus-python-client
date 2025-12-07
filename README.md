@@ -20,6 +20,8 @@ Command-line and Python client for downloading and deploying datasets on DBpedia
   - [Delete](#cli-delete)
 - [Module Usage](#module-usage)
   - [Deploy](#module-deploy)
+- [Contributing](#contributing)
+  - [Linting](#linting)
 
 
 ## Quickstart
@@ -43,6 +45,7 @@ You can then use the client in the command line:
 ```bash
 databusclient --help
 databusclient deploy --help
+databusclient delete --help
 databusclient download --help
 ```
 
@@ -552,4 +555,28 @@ from databusclient import deploy
 # to deploy something you just need the dataset from the previous step and an API key
 # API key can be found (or generated) at https://$$DATABUS_BASE$$/$$USER$$#settings
 deploy(dataset, "mysterious API key")
+```
+
+## Development
+
+Install development dependencies yourself or via [Poetry](https://python-poetry.org/):
+
+```bash
+poetry install --with dev
+```
+
+### Linting
+
+The used linter is [Ruff](https://ruff.rs/). Ruff is configured in `pyproject.toml` and is enforced in CI (`.github/workflows/ruff.yml`).
+
+For development, you can run linting locally with `ruff check . ` and optionally auto-format with `ruff format .`.
+
+To ensuere compatibility with the `pyproject.toml` configured dependencies, run Ruff via Poetry:
+
+```bash
+# To check for linting issues:
+poetry run ruff check .
+
+# To auto-format code:
+poetry run ruff format .
 ```

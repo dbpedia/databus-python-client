@@ -1,8 +1,9 @@
-from enum import Enum
-from typing import List, Dict, Tuple, Optional, Union
-import requests
 import hashlib
 import json
+from enum import Enum
+from typing import Dict, List, Optional, Tuple, Union
+
+import requests
 
 __debug = False
 
@@ -153,7 +154,7 @@ def get_file_info(distribution_str: str) -> Tuple[Dict[str, str], str, str, str,
     cvs = _get_content_variants(distribution_str)
     extension_part, format_extension, compression = _get_extensions(distribution_str)
 
-    content_variant_part = "_".join([f"{key}={value}" for key, value in cvs.items()])
+    # content_variant_part = "_".join([f"{key}={value}" for key, value in cvs.items()])
 
     if __debug:
         print("DEBUG", distribution_str, extension_part)
@@ -200,7 +201,10 @@ def create_distribution(
 
     return f"{url}|{meta_string}"
 
-def _create_distributions_from_metadata(metadata: List[Dict[str, Union[str, int]]]) -> List[str]:
+
+def _create_distributions_from_metadata(
+    metadata: List[Dict[str, Union[str, int]]],
+) -> List[str]:
     """
     Create distributions from metadata entries.
 
@@ -233,11 +237,16 @@ def _create_distributions_from_metadata(metadata: List[Dict[str, Union[str, int]
         size = entry["size"]
         url = entry["url"]
         if not isinstance(size, int) or size <= 0:
-            raise ValueError(f"Invalid size for {url}: expected positive integer, got {size}")
+            raise ValueError(
+                f"Invalid size for {url}: expected positive integer, got {size}"
+            )
         # Validate SHA-256 hex digest (64 hex chars)
-        if not isinstance(checksum, str) or len(checksum) != 64 or not all(
-            c in '0123456789abcdefABCDEF' for c in checksum):
-                raise ValueError(f"Invalid checksum for {url}")
+        if (
+            not isinstance(checksum, str)
+            or len(checksum) != 64
+            or not all(c in "0123456789abcdefABCDEF" for c in checksum)
+        ):
+            raise ValueError(f"Invalid checksum for {url}")
 
         distributions.append(
             create_distribution(
@@ -245,11 +254,12 @@ def _create_distributions_from_metadata(metadata: List[Dict[str, Union[str, int]
                 cvs={"count": f"{counter}"},
                 file_format=entry.get("file_format"),
                 compression=entry.get("compression"),
-                sha256_length_tuple=(checksum, size)
+                sha256_length_tuple=(checksum, size),
             )
         )
         counter += 1
     return distributions
+
 
 def create_dataset(
     version_id: str,
@@ -361,7 +371,7 @@ def create_dataset(
         "@type": "Artifact",
         "title": title,
         "abstract": abstract,
-        "description": description
+        "description": description,
     }
     graphs.append(artifact_graph)
 
@@ -445,7 +455,7 @@ def deploy_from_metadata(
     abstract: str,
     description: str,
     license_url: str,
-    apikey: str
+    apikey: str,
 ) -> None:
     """
     Deploy a dataset from metadata entries.
@@ -475,7 +485,7 @@ def deploy_from_metadata(
         abstract=abstract,
         description=description,
         license_url=license_url,
-        distributions=distributions
+        distributions=distributions,
     )
 
     print(f"Deploying dataset version: {version_id}")

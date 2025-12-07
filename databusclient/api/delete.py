@@ -1,8 +1,10 @@
 import json
-import requests
 from typing import List
 
-from databusclient.api.utils import get_databus_id_parts_from_uri, fetch_databus_jsonld
+import requests
+
+from databusclient.api.utils import fetch_databus_jsonld, get_databus_id_parts_from_uri
+
 
 def _confirm_delete(databusURI: str) -> str:
     """
@@ -17,9 +19,17 @@ def _confirm_delete(databusURI: str) -> str:
     - "cancel" if the user chooses to cancel the entire deletion process
     """
     print(f"Are you sure you want to delete: {databusURI}?")
-    print("\nThis action is irreversible and will permanently remove the resource and all its data.")
+    print(
+        "\nThis action is irreversible and will permanently remove the resource and all its data."
+    )
     while True:
-        choice = input("Type 'yes'/'y' to confirm, 'skip'/'s' to skip this resource, or 'cancel'/'c' to abort: ").strip().lower()
+        choice = (
+            input(
+                "Type 'yes'/'y' to confirm, 'skip'/'s' to skip this resource, or 'cancel'/'c' to abort: "
+            )
+            .strip()
+            .lower()
+        )
         if choice in ("yes", "y"):
             return "confirm"
         elif choice in ("skip", "s"):
@@ -30,7 +40,9 @@ def _confirm_delete(databusURI: str) -> str:
             print("Invalid input. Please type 'yes'/'y', 'skip'/'s', or 'cancel'/'c'.")
 
 
-def _delete_resource(databusURI: str, databus_key: str, dry_run: bool = False, force: bool = False):
+def _delete_resource(
+    databusURI: str, databus_key: str, dry_run: bool = False, force: bool = False
+):
     """
     Delete a single Databus resource (version, artifact, group).
 
@@ -56,10 +68,7 @@ def _delete_resource(databusURI: str, databus_key: str, dry_run: bool = False, f
     if databus_key is None:
         raise ValueError("Databus API key must be provided for deletion")
 
-    headers = {
-        "accept": "*/*",
-        "X-API-KEY": databus_key
-    }
+    headers = {"accept": "*/*", "X-API-KEY": databus_key}
 
     if dry_run:
         print(f"[DRY RUN] Would delete: {databusURI}")
@@ -70,10 +79,14 @@ def _delete_resource(databusURI: str, databus_key: str, dry_run: bool = False, f
     if response.status_code in (200, 204):
         print(f"Successfully deleted: {databusURI}")
     else:
-        raise Exception(f"Failed to delete {databusURI}: {response.status_code} - {response.text}")
+        raise Exception(
+            f"Failed to delete {databusURI}: {response.status_code} - {response.text}"
+        )
 
 
-def _delete_list(databusURIs: List[str], databus_key: str, dry_run: bool = False, force: bool = False):
+def _delete_list(
+    databusURIs: List[str], databus_key: str, dry_run: bool = False, force: bool = False
+):
     """
     Delete a list of Databus resources.
 
@@ -85,7 +98,9 @@ def _delete_list(databusURIs: List[str], databus_key: str, dry_run: bool = False
         _delete_resource(databusURI, databus_key, dry_run=dry_run, force=force)
 
 
-def _delete_artifact(databusURI: str, databus_key: str, dry_run: bool = False, force: bool = False):
+def _delete_artifact(
+    databusURI: str, databus_key: str, dry_run: bool = False, force: bool = False
+):
     """
     Delete an artifact and all its versions.
 
@@ -121,7 +136,10 @@ def _delete_artifact(databusURI: str, databus_key: str, dry_run: bool = False, f
     # Finally, delete the artifact itself
     _delete_resource(databusURI, databus_key, dry_run=dry_run, force=force)
 
-def _delete_group(databusURI: str, databus_key: str, dry_run: bool = False, force: bool = False):
+
+def _delete_group(
+    databusURI: str, databus_key: str, dry_run: bool = False, force: bool = False
+):
     """
     Delete a group and all its artifacts and versions.
 
@@ -154,13 +172,14 @@ def _delete_group(databusURI: str, databus_key: str, dry_run: bool = False, forc
     # Finally, delete the group itself
     _delete_resource(databusURI, databus_key, dry_run=dry_run, force=force)
 
+
 def delete(databusURIs: List[str], databus_key: str, dry_run: bool, force: bool):
     """
     Delete a dataset from the databus.
 
     Delete a group, artifact, or version identified by the given databus URI.
     Will recursively delete all data associated with the dataset.
-    
+
     Parameters:
     - databusURIs: List of full databus URIs of the resources to delete
     - databus_key: Databus API key to authenticate the deletion requests
@@ -169,7 +188,9 @@ def delete(databusURIs: List[str], databus_key: str, dry_run: bool, force: bool)
     """
 
     for databusURI in databusURIs:
-        _host, _account, group, artifact, version, file = get_databus_id_parts_from_uri(databusURI)
+        _host, _account, group, artifact, version, file = get_databus_id_parts_from_uri(
+            databusURI
+        )
 
         if group == "collections" and artifact is not None:
             print(f"Deleting collection: {databusURI}")

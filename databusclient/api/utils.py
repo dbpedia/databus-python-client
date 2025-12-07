@@ -1,10 +1,21 @@
-import requests
-from typing import Tuple, Optional
+from typing import Optional, Tuple
 
-def get_databus_id_parts_from_uri(uri: str) -> Tuple[Optional[str], Optional[str], Optional[str], Optional[str], Optional[str], Optional[str]]:
+import requests
+
+
+def get_databus_id_parts_from_uri(
+    uri: str,
+) -> Tuple[
+    Optional[str],
+    Optional[str],
+    Optional[str],
+    Optional[str],
+    Optional[str],
+    Optional[str],
+]:
     """
     Extract databus ID parts from a given databus URI.
-    
+
     Parameters:
     - uri: The full databus URI
 
@@ -16,6 +27,7 @@ def get_databus_id_parts_from_uri(uri: str) -> Tuple[Optional[str], Optional[str
     parts = uri.strip("/").split("/")
     parts += [None] * (6 - len(parts))  # pad with None if less than 6 parts
     return tuple(parts[:6])  # return only the first 6 parts
+
 
 def fetch_databus_jsonld(uri: str, databus_key: str | None = None) -> str:
     """
