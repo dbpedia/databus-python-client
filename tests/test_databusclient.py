@@ -1,14 +1,16 @@
 """Client tests"""
-import pytest
-from databusclient.api.deploy import create_dataset, create_distribution, get_file_info
+
 from collections import OrderedDict
 
+import pytest
+
+from databusclient.api.deploy import create_dataset, create_distribution, get_file_info
 
 EXAMPLE_URL = "https://raw.githubusercontent.com/dbpedia/databus/608482875276ef5df00f2360a2f81005e62b58bd/server/app/api/swagger.yml"
 
+
 @pytest.mark.skip(reason="temporarily disabled since code needs fixing")
 def test_distribution_cases():
-
     metadata_args_with_filler = OrderedDict()
 
     metadata_args_with_filler["type=config_source=databus"] = ""
@@ -24,7 +26,6 @@ def test_distribution_cases():
     parameters = list(metadata_args_with_filler.keys())
 
     for i in range(0, len(metadata_args_with_filler.keys())):
-
         if i == 1:
             continue
 
@@ -58,7 +59,6 @@ def test_distribution_cases():
 
 @pytest.mark.skip(reason="temporarily disabled since code needs fixing")
 def test_empty_cvs():
-
     dst = [create_distribution(url=EXAMPLE_URL, cvs={})]
 
     dataset = create_dataset(
