@@ -26,12 +26,11 @@ def _download_file(url, localDir, vault_token_file=None, databus_key=None, auth_
     """
     if localDir is None:
         _host, account, group, artifact, version, file = get_databus_id_parts_from_uri(url)
-        fileLocalDir = os.path.join(os.getcwd(), account, group, artifact, version if version is not None else "latest")
-        print(f"Local directory not given, using {fileLocalDir}")
+        localDir = os.path.join(os.getcwd(), account, group, artifact, version if version is not None else "latest")
+        print(f"Local directory not given, using {localDir}")
 
     file = url.split("/")[-1]
-    filename = os.path.join(fileLocalDir, file)
-
+    filename = os.path.join(localDir, file)
     print(f"Download file: {url}")
     dirpath = os.path.dirname(filename)
     if dirpath:
