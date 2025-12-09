@@ -5,7 +5,7 @@ from typing import Dict, List, Optional, Tuple, Union
 
 import requests
 
-__debug = False
+_debug = False
 
 
 class DeployError(Exception):
@@ -36,6 +36,11 @@ def _get_content_variants(distribution_str: str) -> Optional[Dict[str, str]]:
 
     cvs = {}
     for kv in cv_str.split("_"):
+        if "=" not in kv:
+            raise BadArgumentException(
+                f"Invalid content variant format: '{kv}'. Expected 'key=value' format."
+            )
+
         key, value = kv.split("=")
         cvs[key] = value
 
@@ -141,8 +146,8 @@ def _get_file_stats(distribution_str: str) -> Tuple[Optional[str], Optional[int]
 
 
 def _load_file_stats(url: str) -> Tuple[str, int]:
-    resp = requests.get(url)
-    if resp.status_code > 400:
+    resp = requests.get(url, timeout=30)
+    if resp.status_code >= 400:
         raise requests.exceptions.RequestException(response=resp)
 
     sha256sum = hashlib.sha256(bytes(resp.content)).hexdigest()
@@ -156,7 +161,7 @@ def get_file_info(distribution_str: str) -> Tuple[Dict[str, str], str, str, str,
 
     # content_variant_part = "_".join([f"{key}={value}" for key, value in cvs.items()])
 
-    if __debug:
+    if _debug:
         print("DEBUG", distribution_str, extension_part)
 
     sha256sum, content_length = _get_file_stats(distribution_str)
@@ -306,7 +311,13 @@ def create_dataset(
     """
 
     _versionId = str(version_id).strip("/")
-    _, account_name, group_name, artifact_name, version = _versionId.rsplit("/", 4)
+    parts = _versionId.rsplit("/", 4)
+    if len(parts) < 5:
+        raise BadArgumentException(
+            f"Invalid version_id format: '{version_id}'. "
+            f"Expected format: <BASE>/<ACCOUNT>/<GROUP>/<ARTIFACT>/<VERSION>"
+        )
+    _, _account_name, _group_name, _artifact_name, version = parts
 
     # could be build from stuff above,
     # was not sure if there are edge cases BASE=http://databus.example.org/"base"/...
@@ -428,22 +439,30 @@ def deploy(
 
     headers = {"X-API-KEY": f"{api_key}", "Content-Type": "application/json"}
     data = json.dumps(dataid)
-    base = "/".join(dataid["@graph"][0]["@id"].split("/")[0:3])
+
+    try:
+        base = "/".join(dataid["@graph"][0]["@id"].split("/")[0:3])
+    except (KeyError, IndexError, TypeError) as e:
+        raise DeployError(f"Invalid dataid structure: {e}")
+
     api_uri = (
         base
         + f"/api/publish?verify-parts={str(verify_parts).lower()}&log-level={log_level.name}"
     )
-    resp = requests.post(api_uri, data=data, headers=headers)
+    resp = requests.post(api_uri, data=data, headers=headers, timeout=30)
 
-    if debug or __debug:
-        dataset_uri = dataid["@graph"][0]["@id"]
+    if debug or _debug:
+        try:
+            dataset_uri = dataid["@graph"][0]["@id"]
+        except (KeyError, IndexError, TypeError) as e:
+            raise DeployError(f"Invalid dataid structure: {e}")
         print(f"Trying submitting data to {dataset_uri}:")
         print(data)
 
     if resp.status_code != 200:
         raise DeployError(f"Could not deploy dataset to databus. Reason: '{resp.text}'")
 
-    if debug or __debug:
+    if debug or _debug:
         print("---------")
         print(resp.text)
 

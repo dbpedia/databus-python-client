@@ -4,9 +4,39 @@ from collections import OrderedDict
 
 import pytest
 
-from databusclient.api.deploy import create_dataset, create_distribution, get_file_info
+from databusclient.api.deploy import (
+    create_dataset,
+    create_distribution,
+    get_file_info,
+    _get_content_variants,
+    BadArgumentException,
+)
 
 EXAMPLE_URL = "https://raw.githubusercontent.com/dbpedia/databus/608482875276ef5df00f2360a2f81005e62b58bd/server/app/api/swagger.yml"
+
+
+def test_get_content_variants():
+    # With content variants
+    cvs = _get_content_variants(
+        "https://example.com/file.ttl|lang=en_type=parsed|ttl|none|sha256hash|12345"
+    )
+    assert cvs == {
+        "lang": "en",
+        "type": "parsed",
+    }
+
+    # Without content variants
+    cvs = _get_content_variants(
+        "https://example.com/file.ttl||ttl|none|sha256hash|12345"
+    )
+    assert cvs == {}
+
+    csv = _get_content_variants("https://example.com/file.ttl")
+    assert csv == {}
+
+    # Wrong format
+    with pytest.raises(BadArgumentException):
+        _ = _get_content_variants("https://example.com/file.ttl|invalidformat")
 
 
 @pytest.mark.skip(reason="temporarily disabled since code needs fixing")
