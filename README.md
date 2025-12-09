@@ -20,8 +20,9 @@ Command-line and Python client for downloading and deploying datasets on DBpedia
   - [Delete](#cli-delete)
 - [Module Usage](#module-usage)
   - [Deploy](#module-deploy)
-- [Contributing](#contributing)
+- [Development & Contributing](#development--contributing)
   - [Linting](#linting)
+  - [Testing](#testing)
 
 
 ## Quickstart
@@ -32,7 +33,7 @@ You can use either **Python** or **Docker**. Both methods support all client fea
 
 ### Python
 
-Requirements: [Python](https://www.python.org/downloads/) and [pip](https://pip.pypa.io/en/stable/installation/)
+Requirements: [Python 3.11+](https://www.python.org/downloads/) and [pip](https://pip.pypa.io/en/stable/installation/)
 
 Before using the client, install it via pip:
 
@@ -186,8 +187,8 @@ Options:
                       e.g. https://databus.dbpedia.org/sparql)
   --vault-token TEXT  Path to Vault refresh token file
   --databus-key TEXT  Databus API key to download from protected databus
-  --latest-only       When downloading artifacts, only download the latest
-                      version
+  --all-versions      When downloading artifacts, download all versions
+                      instead of only the latest
   --authurl TEXT      Keycloak token endpoint URL  [default:
                       https://auth.dbpedia.org/realms/dbpedia/protocol/openid-
                       connect/token]
@@ -557,7 +558,7 @@ from databusclient import deploy
 deploy(dataset, "mysterious API key")
 ```
 
-## Development
+## Development & Contributing
 
 Install development dependencies yourself or via [Poetry](https://python-poetry.org/):
 
@@ -569,9 +570,9 @@ poetry install --with dev
 
 The used linter is [Ruff](https://ruff.rs/). Ruff is configured in `pyproject.toml` and is enforced in CI (`.github/workflows/ruff.yml`).
 
-For development, you can run linting locally with `ruff check . ` and optionally auto-format with `ruff format .`.
+For development, you can run linting locally with `ruff check .` and optionally auto-format with `ruff format .`.
 
-To ensuere compatibility with the `pyproject.toml` configured dependencies, run Ruff via Poetry:
+To ensure compatibility with the `pyproject.toml` configured dependencies, run Ruff via Poetry:
 
 ```bash
 # To check for linting issues:
@@ -579,4 +580,22 @@ poetry run ruff check .
 
 # To auto-format code:
 poetry run ruff format .
+```
+
+### Testing
+
+When developing new features please make sure to add appropriate tests and ensure that all tests pass. Tests are under `tests/` and use [pytest](https://docs.pytest.org/en/7.4.x/) as test framework.
+
+When fixing bugs or refactoring existing code, please make sure to add tests that cover the affected functionality. The current test coverage is very low, so any additional tests are highly appreciated.
+
+To run tests locally, use:
+
+```bash
+pytest tests/
+```
+
+Or to ensure compatibility with the `pyproject.toml` configured dependencies, run pytest via Poetry:
+
+```bash
+poetry run pytest tests/
 ```

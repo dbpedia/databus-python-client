@@ -3,7 +3,10 @@ from typing import List
 
 import requests
 
-from databusclient.api.utils import fetch_databus_jsonld, get_databus_id_parts_from_uri
+from databusclient.api.utils import (
+    fetch_databus_jsonld,
+    get_databus_id_parts_from_file_url,
+)
 
 
 def _confirm_delete(databusURI: str) -> str:
@@ -161,7 +164,7 @@ def _delete_group(
         uri = item.get("@id")
         if not uri:
             continue
-        _, _, _, _, version, _ = get_databus_id_parts_from_uri(uri)
+        _, _, _, _, version, _ = get_databus_id_parts_from_file_url(uri)
         if version is None:
             artifact_uris.append(uri)
 
@@ -188,8 +191,8 @@ def delete(databusURIs: List[str], databus_key: str, dry_run: bool, force: bool)
     """
 
     for databusURI in databusURIs:
-        _host, _account, group, artifact, version, file = get_databus_id_parts_from_uri(
-            databusURI
+        _host, _account, group, artifact, version, file = (
+            get_databus_id_parts_from_file_url(databusURI)
         )
 
         if group == "collections" and artifact is not None:
