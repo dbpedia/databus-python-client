@@ -104,7 +104,7 @@ def deploy(
                 "Please provide files to upload when using WebDAV/Nextcloud mode."
             )
 
-        # Check that all given paths exist and are files or directories.#
+        # Check that all given paths exist and are files or directories.
         invalid = [f for f in distributions if not os.path.exists(f)]
         if invalid:
             raise click.UsageError(

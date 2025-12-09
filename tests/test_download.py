@@ -2,6 +2,8 @@
 
 from databusclient.api.download import download as api_download
 
+# TODO: overall test structure not great, needs refactoring
+
 DEFAULT_ENDPOINT = "https://databus.dbpedia.org/sparql"
 TEST_QUERY = """
 PREFIX dcat: <http://www.w3.org/ns/dcat#>

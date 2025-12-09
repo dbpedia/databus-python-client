@@ -3,7 +3,7 @@ from typing import Optional, Tuple
 import requests
 
 
-def get_databus_id_parts_from_uri(
+def get_databus_id_parts_from_file_url(
     uri: str,
 ) -> Tuple[
     Optional[str],
@@ -17,7 +17,8 @@ def get_databus_id_parts_from_uri(
     Extract databus ID parts from a given databus URI.
 
     Parameters:
-    - uri: The full databus URI
+    - uri: The full databus URI of the form
+      "http(s)://host/accountId/groupId/artifactId/versionId/fileId"
 
     Returns:
     A tuple containing (host, accountId, groupId, artifactId, versionId, fileId).
