@@ -27,12 +27,9 @@ def _download_file(
     - url: the URL of the file to download
     - localDir: Local directory to download file to. If None, the databus folder structure is created in the current working directory.
     - vault_token_file: Path to Vault refresh token file
+    - databus_key: Databus API key for protected downloads
     - auth_url: Keycloak token endpoint URL
     - client_id: Client ID for token exchange
-
-    Steps:
-    1. Try direct GET without Authorization header.
-    2. If server responds with WWW-Authenticate: Bearer, 401 Unauthorized), then fetch Vault access token and retry with Authorization header.
     """
     if localDir is None:
         _host, account, group, artifact, version, file = (
@@ -54,7 +51,18 @@ def _download_file(
     if dirpath:
         os.makedirs(dirpath, exist_ok=True)  # Create the necessary directories
     # --- 1. Get redirect URL by requesting HEAD ---
-    response = requests.head(url, stream=True, timeout=30)
+    headers = {}
+    # --- 1a. public databus ---
+    response = requests.head(url, timeout=30)
+    # --- 1b. Databus API key required ---
+    if response.status_code == 401:
+        # print(f"API key required for {url}")
+        if not databus_key:
+            raise ValueError("Databus API key not given for protected download")
+
+        headers = {"X-API-KEY": databus_key}
+        response = requests.head(url, headers=headers, timeout=30)
+
     # Check for redirect and update URL if necessary
     if response.headers.get("Location") and response.status_code in [
         301,
@@ -66,33 +74,26 @@ def _download_file(
         url = response.headers.get("Location")
         print("Redirects url: ", url)
 
-    # --- 2. Try direct GET ---
-    response = requests.get(url, stream=True, allow_redirects=True, timeout=30)
+    # --- 2. Try direct GET to redirected URL ---
+    headers["Accept-Encoding"] = "identity"  # disable gzip to get correct content-length
+    response = requests.get(url, headers=headers, stream=True, allow_redirects=True, timeout=30)
     www = response.headers.get(
         "WWW-Authenticate", ""
-    )  # get WWW-Authenticate header if present to check for Bearer auth
+    ) # Check if authentication is required
 
-    # Vault token required if 401 Unauthorized with Bearer challenge
+    # --- 3. If redirected to authentication 401 Unauthorized, get Vault token and retry ---
     if response.status_code == 401 and "bearer" in www.lower():
         print(f"Authentication required for {url}")
         if not (vault_token_file):
             raise ValueError("Vault token file not given for protected download")
 
-        # --- 3. Fetch Vault token ---
+        # --- 3a. Fetch Vault token ---
         # TODO: cache token
         vault_token = __get_vault_access__(url, vault_token_file, auth_url, client_id)
-        headers = {"Authorization": f"Bearer {vault_token}"}
+        headers["Authorization"] = f"Bearer {vault_token}"
+        headers.pop("Accept-Encoding")
 
-        # --- 4. Retry with token ---
-        response = requests.get(url, headers=headers, stream=True, timeout=30)
-
-    # Databus API key required if only 401 Unauthorized
-    elif response.status_code == 401:
-        print(f"API key required for {url}")
-        if not databus_key:
-            raise ValueError("Databus API key not given for protected download")
-
-        headers = {"X-API-KEY": databus_key}
+        # --- 3b. Retry with token ---
         response = requests.get(url, headers=headers, stream=True, timeout=30)
 
     try:
@@ -104,6 +105,7 @@ def _download_file(
         else:
             raise e
 
+    # --- 4. Download with progress bar ---
     total_size_in_bytes = int(response.headers.get("content-length", 0))
     block_size = 1024  # 1 KiB
 
@@ -114,12 +116,9 @@ def _download_file(
             file.write(data)
     progress_bar.close()
 
-    # TODO: keep check or remove?
+    # --- 5. Verify download size ---
     if total_size_in_bytes != 0 and progress_bar.n != total_size_in_bytes:
-        localsize = os.path.getsize(filename)
-        print(f"\nHeaders: {response.headers}")
-        print(f"\n[WARNING]: Downloaded size {progress_bar.n} does not match Content-Length header {total_size_in_bytes} ( local file size: {localsize})")
-        # raise IOError("Downloaded size does not match Content-Length header")
+        raise IOError("Downloaded size does not match Content-Length header")
 
 
 def _download_files(
