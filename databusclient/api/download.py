@@ -75,11 +75,15 @@ def _download_file(
         print("Redirects url: ", url)
 
     # --- 2. Try direct GET to redirected URL ---
-    headers["Accept-Encoding"] = "identity"  # disable gzip to get correct content-length
-    response = requests.get(url, headers=headers, stream=True, allow_redirects=True, timeout=30)
+    headers["Accept-Encoding"] = (
+        "identity"  # disable gzip to get correct content-length
+    )
+    response = requests.get(
+        url, headers=headers, stream=True, allow_redirects=True, timeout=30
+    )
     www = response.headers.get(
         "WWW-Authenticate", ""
-    ) # Check if authentication is required
+    )  # Check if authentication is required
 
     # --- 3. If redirected to authentication 401 Unauthorized, get Vault token and retry ---
     if response.status_code == 401 and "bearer" in www.lower():
@@ -419,9 +423,7 @@ def _get_databus_versions_of_artifact(
             f"Unexpected type for 'databus:hasVersion': {type(versions).__name__}"
         )
 
-    version_urls = [
-        v["@id"] for v in versions if isinstance(v, dict) and "@id" in v
-    ]
+    version_urls = [v["@id"] for v in versions if isinstance(v, dict) and "@id" in v]
 
     if not version_urls:
         raise ValueError("No versions found in artifact JSON-LD")
@@ -446,7 +448,7 @@ def _get_file_download_urls_from_artifact_jsonld(json_str: str) -> List[str]:
     """
 
     databusIdUrl: List[str] = []
-    
+
     json_dict = json.loads(json_str)
     graph = json_dict.get("@graph", [])
     for node in graph:
