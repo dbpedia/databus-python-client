@@ -66,7 +66,9 @@ def _download_file(
     # --- 1. Get redirect URL by requesting HEAD ---
     headers = {}
 
-    # Determine hostname early and fail fast if this host requires Vault token
+    # Determine hostname early and fail fast if this host requires Vault token.
+    # This prevents confusing 401/403 errors later and tells the user exactly
+    # what to do (provide --vault-token).
     parsed = urlparse(url)
     host = parsed.hostname
     if host in VAULT_REQUIRED_HOSTS and not vault_token_file:
@@ -105,22 +107,28 @@ def _download_file(
     www = response.headers.get("WWW-Authenticate", "")  # Check if authentication is required
 
     # --- 3. Handle authentication responses ---
-    # 3a. Server requests Bearer auth
+    # 3a. Server requests Bearer auth. Only attempt token exchange for hosts
+    # we explicitly consider Vault-protected (VAULT_REQUIRED_HOSTS). This avoids
+    # sending tokens to unrelated hosts and makes auth behavior predictable.
     if response.status_code == 401 and "bearer" in www.lower():
-        # If host is not configured for Vault, do not attempt token exchange
+        # If host is not configured for Vault, do not attempt token exchange.
         if host not in VAULT_REQUIRED_HOSTS:
             raise DownloadAuthError(
                 "Server requests Bearer authentication but this host is not configured for Vault token exchange."
                 " Try providing a databus API key with --databus-key or contact your administrator."
             )
 
-        # Host requires Vault; ensure token file provided
+        # Host requires Vault; ensure token file provided.
         if not vault_token_file:
             raise DownloadAuthError(
                 f"Vault token required for host '{host}', but no token was provided. Please use --vault-token."
             )
 
         # --- 3b. Fetch Vault token and retry ---
+        # Token exchange is potentially sensitive and should only be performed
+        # for known hosts. __get_vault_access__ handles reading the refresh
+        # token and exchanging it; errors are translated to DownloadAuthError
+        # for user-friendly CLI output.
         vault_token = __get_vault_access__(url, vault_token_file, auth_url, client_id)
         headers["Authorization"] = f"Bearer {vault_token}"
         headers.pop("Accept-Encoding", None)
