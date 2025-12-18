@@ -1,3 +1,10 @@
+"""Helpers for deleting Databus resources via the Databus HTTP API.
+
+This module provides utilities to delete groups, artifacts and versions on a
+Databus instance using authenticated HTTP requests. The class `DeleteQueue`
+also allows batching of deletions.
+"""
+
 import json
 from typing import List
 
@@ -16,23 +23,43 @@ class DeleteQueue:
     """
 
     def __init__(self, databus_key: str):
+        """Create a DeleteQueue bound to a given Databus API key.
+
+        Args:
+            databus_key: API key used to authenticate deletion requests.
+        """
         self.databus_key = databus_key
         self.queue: set[str] = set()
 
     def add_uri(self, databusURI: str):
+        """Add a single Databus URI to the deletion queue.
+
+        The URI will be deleted when `execute()` is called.
+        """
         self.queue.add(databusURI)
 
     def add_uris(self, databusURIs: List[str]):
+        """Add multiple Databus URIs to the deletion queue.
+
+        Args:
+            databusURIs: Iterable of full Databus URIs.
+        """
         for uri in databusURIs:
             self.queue.add(uri)
 
     def is_empty(self) -> bool:
+        """Return True if the queue is empty."""
         return len(self.queue) == 0
 
     def is_not_empty(self) -> bool:
+        """Return True if the queue contains any URIs."""
         return len(self.queue) > 0
 
     def execute(self):
+        """Execute all queued deletions.
+
+        Each queued URI will be deleted using `_delete_resource`.
+        """
         for uri in self.queue:
             print(f"[DELETE] {uri}")
             _delete_resource(
