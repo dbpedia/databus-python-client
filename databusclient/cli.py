@@ -7,7 +7,7 @@ import click
 
 import databusclient.api.deploy as api_deploy
 from databusclient.api.delete import delete as api_delete
-from databusclient.api.download import download as api_download
+from databusclient.api.download import download as api_download, DownloadAuthError
 from databusclient.extensions import webdav
 
 
@@ -171,16 +171,19 @@ def download(
     """
     Download datasets from databus, optionally using vault access if vault options are provided.
     """
-    api_download(
-        localDir=localdir,
-        endpoint=databus,
-        databusURIs=databusuris,
-        token=vault_token,
-        databus_key=databus_key,
-        all_versions=all_versions,
-        auth_url=authurl,
-        client_id=clientid,
-    )
+    try:
+        api_download(
+            localDir=localdir,
+            endpoint=databus,
+            databusURIs=databusuris,
+            token=vault_token,
+            databus_key=databus_key,
+            all_versions=all_versions,
+            auth_url=authurl,
+            client_id=clientid,
+        )
+    except DownloadAuthError as e:
+        raise click.ClickException(str(e))
 
 
 @app.command()

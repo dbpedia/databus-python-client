@@ -1,6 +1,7 @@
 import json
 import os
 from typing import List
+from urllib.parse import urlparse
 
 import requests
 from SPARQLWrapper import JSON, SPARQLWrapper
@@ -10,6 +11,18 @@ from databusclient.api.utils import (
     fetch_databus_jsonld,
     get_databus_id_parts_from_file_url,
 )
+
+
+# Hosts that require Vault token based authentication. Central source of truth.
+VAULT_REQUIRED_HOSTS = {
+    "data.dbpedia.io",
+    "data.dev.dbpedia.link",
+}
+
+
+class DownloadAuthError(Exception):
+    """Raised when an authorization problem occurs during download."""
+
 
 
 def _download_file(
@@ -52,16 +65,9 @@ def _download_file(
         os.makedirs(dirpath, exist_ok=True)  # Create the necessary directories
     # --- 1. Get redirect URL by requesting HEAD ---
     headers = {}
-    # --- 1a. public databus ---
-    response = requests.head(url, timeout=30)
-    # --- 1b. Databus API key required ---
-    if response.status_code == 401:
-        # print(f"API key required for {url}")
-        if not databus_key:
-            raise ValueError("Databus API key not given for protected download")
 
-        headers = {"X-API-KEY": databus_key}
-        response = requests.head(url, headers=headers, timeout=30)
+    # --- 1a. public databus ---
+    response = requests.head(url, timeout=30, allow_redirects=False)
 
     # Check for redirect and update URL if necessary
     if response.headers.get("Location") and response.status_code in [
@@ -73,6 +79,30 @@ def _download_file(
     ]:
         url = response.headers.get("Location")
         print("Redirects url: ", url)
+        # Re-do HEAD request on redirect URL
+        response = requests.head(url, timeout=30)
+
+    # Extract hostname from final URL (after redirect) to check if vault token needed.
+    # This is the actual download location that may require authentication.
+    parsed = urlparse(url)
+    host = parsed.hostname
+
+    # --- 1b. Handle 401 on HEAD request ---
+    if response.status_code == 401:
+        # Check if this is a vault-required host
+        if host in VAULT_REQUIRED_HOSTS:
+            # Vault-required host: need vault token
+            if not vault_token_file:
+                raise DownloadAuthError(
+                    f"Vault token required for host '{host}', but no token was provided. Please use --vault-token."
+                )
+            # Token provided; will handle in GET request below
+        else:
+            # Not a vault host; might need databus API key
+            if not databus_key:
+                raise DownloadAuthError("Databus API key not given for protected download")
+            headers = {"X-API-KEY": databus_key}
+            response = requests.head(url, headers=headers, timeout=30)
 
     # --- 2. Try direct GET to redirected URL ---
     headers["Accept-Encoding"] = (
@@ -81,24 +111,53 @@ def _download_file(
     response = requests.get(
         url, headers=headers, stream=True, allow_redirects=True, timeout=30
     )
-    www = response.headers.get(
-        "WWW-Authenticate", ""
-    )  # Check if authentication is required
+    www = response.headers.get("WWW-Authenticate", "")  # Check if authentication is required
 
-    # --- 3. If redirected to authentication 401 Unauthorized, get Vault token and retry ---
+    # --- 3. Handle authentication responses ---
+    # 3a. Server requests Bearer auth. Only attempt token exchange for hosts
+    # we explicitly consider Vault-protected (VAULT_REQUIRED_HOSTS). This avoids
+    # sending tokens to unrelated hosts and makes auth behavior predictable.
     if response.status_code == 401 and "bearer" in www.lower():
-        print(f"Authentication required for {url}")
-        if not (vault_token_file):
-            raise ValueError("Vault token file not given for protected download")
+        # If host is not configured for Vault, do not attempt token exchange.
+        if host not in VAULT_REQUIRED_HOSTS:
+            raise DownloadAuthError(
+                "Server requests Bearer authentication but this host is not configured for Vault token exchange."
+                " Try providing a databus API key with --databus-key or contact your administrator."
+            )
 
-        # --- 3a. Fetch Vault token ---
-        # TODO: cache token
+        # Host requires Vault; ensure token file provided.
+        if not vault_token_file:
+            raise DownloadAuthError(
+                f"Vault token required for host '{host}', but no token was provided. Please use --vault-token."
+            )
+
+        # --- 3b. Fetch Vault token and retry ---
+        # Token exchange is potentially sensitive and should only be performed
+        # for known hosts. __get_vault_access__ handles reading the refresh
+        # token and exchanging it; errors are translated to DownloadAuthError
+        # for user-friendly CLI output.
         vault_token = __get_vault_access__(url, vault_token_file, auth_url, client_id)
         headers["Authorization"] = f"Bearer {vault_token}"
-        headers.pop("Accept-Encoding")
+        headers.pop("Accept-Encoding", None)
 
-        # --- 3b. Retry with token ---
+        # Retry with token
         response = requests.get(url, headers=headers, stream=True, timeout=30)
+
+        # Map common auth failures to friendly messages
+        if response.status_code == 401:
+            raise DownloadAuthError("Vault token is invalid or expired. Please generate a new token.")
+        if response.status_code == 403:
+            raise DownloadAuthError("Vault token is valid but has insufficient permissions to access this file.")
+
+    # 3c. Generic forbidden without Bearer challenge
+    if response.status_code == 403:
+        raise DownloadAuthError("Access forbidden: your token or API key does not have permission to download this file.")
+
+    # 3d. Generic unauthorized without Bearer
+    if response.status_code == 401:
+        raise DownloadAuthError(
+            "Unauthorized: access denied. Check your --databus-key or --vault-token settings."
+        )
 
     try:
         response.raise_for_status()  # Raise if still failing

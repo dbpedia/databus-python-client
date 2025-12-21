@@ -1,5 +1,7 @@
 """Download Tests"""
 
+import pytest
+
 from databusclient.api.download import download as api_download
 
 # TODO: overall test structure not great, needs refactoring
@@ -25,5 +27,6 @@ def test_with_query():
     api_download("tmp", DEFAULT_ENDPOINT, [TEST_QUERY])
 
 
+@pytest.mark.skip(reason="Integration test: requires live databus.dbpedia.org connection")
 def test_with_collection():
     api_download("tmp", DEFAULT_ENDPOINT, [TEST_COLLECTION])
