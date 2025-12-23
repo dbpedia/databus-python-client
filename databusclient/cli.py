@@ -16,7 +16,7 @@ def app():
 
 @app.command()
 @click.option(
-    "--version-id", "version_id",
+    "--versionid", "version_id",
     required=True,
     help="Target databus version/dataset identifier of the form "
          "<https://databus.dbpedia.org/$ACCOUNT/$GROUP/$ARTIFACT/$VERSION>",
