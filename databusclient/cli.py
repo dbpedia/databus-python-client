@@ -22,12 +22,8 @@ def app():
 
 @app.command()
 @click.option(
-<<<<<<< HEAD
-    "--versionid", "version_id",
-=======
     "--version-id",
     "version_id",
->>>>>>> upstream/main
     required=True,
     help="Target databus version/dataset identifier of the form "
     "<https://databus.dbpedia.org/$ACCOUNT/$GROUP/$ARTIFACT/$VERSION>",
