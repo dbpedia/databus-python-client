@@ -5,8 +5,6 @@ from typing import List
 
 import click
 import re
-from typing import List
-from databusclient import client
 
 import databusclient.api.deploy as api_deploy
 from databusclient.api.delete import delete as api_delete
@@ -248,7 +246,7 @@ def mkdist(url, cvs, file_format, compression, sha_length, json_output):
     # Deterministic ordering
     sorted_cvs = {k: cvs_dict[k] for k in sorted(cvs_dict)}
 
-    dist = client.create_distribution(url=url, cvs=sorted_cvs, file_format=file_format, compression=compression, sha256_length_tuple=sha_tuple)
+    dist = api_deploy.create_distribution(url=url, cvs=sorted_cvs, file_format=file_format, compression=compression, sha256_length_tuple=sha_tuple)
     if json_output:
         import json as _json
         click.echo(_json.dumps({"distribution": dist}))
