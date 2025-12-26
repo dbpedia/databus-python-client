@@ -90,6 +90,8 @@ Options:
 Commands:
   deploy
   download
+  mkdist
+  completion
 ```
 
 
@@ -183,7 +185,7 @@ Arguments:
              - Metdata mode: None
              
 Options:
-  --version-id TEXT   Target databus version/dataset identifier of the form <h
+  --versionid TEXT   Target databus version/dataset identifier of the form <h
                       ttps://databus.dbpedia.org/$ACCOUNT/$GROUP/$ARTIFACT/$VE
                       RSION>  [required]
   --title TEXT        Dataset title  [required]
@@ -202,11 +204,11 @@ Options:
 #### Examples of using deploy command
 ##### Mode 1: Classic Deploy (Distributions)
 ```
-databusclient deploy --version-id https://databus.dbpedia.org/user1/group1/artifact1/2022-05-18 --title title1 --abstract abstract1 --description description1 --license http://dalicc.net/licenselibrary/AdaptivePublicLicense10 --apikey MYSTERIOUS 'https://raw.githubusercontent.com/dbpedia/databus/master/server/app/api/swagger.yml|type=swagger'  
+databusclient deploy --versionid https://databus.dbpedia.org/user1/group1/artifact1/2022-05-18 --title title1 --abstract abstract1 --description description1 --license http://dalicc.net/licenselibrary/AdaptivePublicLicense10 --apikey MYSTERIOUS 'https://raw.githubusercontent.com/dbpedia/databus/master/server/app/api/swagger.yml|type=swagger'  
 ```
 
 ```
-databusclient deploy --version-id https://dev.databus.dbpedia.org/denis/group1/artifact1/2022-05-18 --title "Client Testing" --abstract "Testing the client...." --description "Testing the client...." --license http://dalicc.net/licenselibrary/AdaptivePublicLicense10 --apikey MYSTERIOUS 'https://raw.githubusercontent.com/dbpedia/databus/master/server/app/api/swagger.yml|type=swagger'  
+databusclient deploy --versionid https://dev.databus.dbpedia.org/denis/group1/artifact1/2022-05-18 --title "Client Testing" --abstract "Testing the client...." --description "Testing the client...." --license http://dalicc.net/licenselibrary/AdaptivePublicLicense10 --apikey MYSTERIOUS 'https://raw.githubusercontent.com/dbpedia/databus/master/server/app/api/swagger.yml|type=swagger'  
 ```
 A few more notes for CLI usage:
 
@@ -223,7 +225,7 @@ All files referenced there will be registered on the Databus.
 ```bash
 databusclient deploy \
   --metadata /home/metadata.json \
-  --version-id https://databus.org/user/dataset/version/1.0 \
+  --versionid https://databus.org/user/dataset/version/1.0 \
   --title "Metadata Deploy Example" \
   --abstract "This is a short abstract of the dataset." \
   --description "This dataset was uploaded using metadata.json." \
@@ -261,7 +263,7 @@ databusclient deploy \
   --webdav-url https://cloud.example.com/remote.php/webdav \
   --remote nextcloud \
   --path datasets/mydataset \
-  --version-id https://databus.org/user/dataset/version/1.0 \
+  --versionid https://databus.org/user/dataset/version/1.0 \
   --title "Test Dataset" \
   --abstract "Short abstract of dataset" \
   --description "This dataset was uploaded for testing the Nextcloud → Databus pipeline." \
@@ -295,6 +297,48 @@ If using vault authentication, make sure the token file is available in the cont
 docker run --rm -v $(pwd):/data dbpedia/databus-python-client download https://databus.dbpedia.org/dbpedia-enterprise/live-fusion-snapshots/fusion/2025-08-23/fusion_props=all_subjectns=commons-wikimedia-org_vocab=all.ttl.gz --token vault-token.dat
 ```
 
+
+### mkdist command
+
+Create a distribution string from components.
+
+Usage:
+```
+databusclient mkdist URL --cv key=value --cv key2=value2 --format ttl --compression gz --sha-length <sha256hex>:<length>
+```
+
+Example:
+```
+python -m databusclient mkdist "https://example.org/file.ttl" --cv lang=en --cv part=sorted --format ttl --compression gz --sha-length aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:12345
+```
+
+## Completion
+
+Enable shell completion (bash example):
+```
+eval "$(_DATABUSCLIENT_COMPLETE=source_bash python -m databusclient)"
+```
+
+### mkdist command
+
+Create a distribution string from components.
+
+Usage:
+```
+databusclient mkdist URL --cv key=value --cv key2=value2 --format ttl --compression gz --sha-length <sha256hex>:<length>
+```
+
+Example:
+```
+python -m databusclient mkdist "https://example.org/file.ttl" --cv lang=en --cv part=sorted --format ttl --compression gz --sha-length aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:12345
+```
+
+## Completion
+
+Enable shell completion (bash example):
+```
+eval "$(_DATABUSCLIENT_COMPLETE=source_bash python -m databusclient)"
+```
 
 ## Module Usage
 ### Step 1: Create lists of distributions for the dataset
