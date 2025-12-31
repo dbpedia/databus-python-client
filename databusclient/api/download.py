@@ -12,6 +12,7 @@ from databusclient.api.utils import (
     get_databus_id_parts_from_file_url,
 )
 
+from databusclient.extensions.webdav import compute_sha256_and_length
 
 def _extract_checksum_from_node(node) -> str | None:
     """
@@ -236,8 +237,6 @@ def _download_file(
     if validate_checksum:
         # reuse compute_sha256_and_length from webdav extension
         try:
-            from databusclient.extensions.webdav import compute_sha256_and_length
-
             actual, _ = compute_sha256_and_length(filename)
         except Exception:
             actual = None
@@ -798,7 +797,6 @@ def download(
                     auth_url=auth_url,
                     client_id=client_id,
                     validate_checksum=validate_checksum,
-                    expected_checksum=expected,
                 )
             elif artifact is not None:
                 print(

@@ -173,8 +173,7 @@ def download(
     authurl,
     clientid,
     validate_checksum,
-):
-    
+):    
     """
     Download datasets from databus, optionally using vault access if vault options are provided.
     """
@@ -222,4 +221,4 @@ def delete(databusuris: List[str], databus_key: str, dry_run: bool, force: bool)
 
 
 if __name__ == "__main__":
-    download()
+    app()
