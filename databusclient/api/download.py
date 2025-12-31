@@ -238,7 +238,8 @@ def _download_file(
         # reuse compute_sha256_and_length from webdav extension
         try:
             actual, _ = compute_sha256_and_length(filename)
-        except Exception:
+        except (OSError, IOError) as e:
+            print(f"WARNING: error computing checksum for {filename}: {e}")
             actual = None
 
         if expected_checksum is None:
@@ -451,6 +452,42 @@ def _download_collection(
     file_urls = _get_file_download_urls_from_sparql_query(
         endpoint, query, databus_key=databus_key
     )
+
+    # If checksum validation requested, attempt to build url->checksum mapping
+    # by fetching the Version JSON-LD for each file's version. We group files
+    # by their version URI to avoid fetching the same metadata repeatedly.
+    checksums: dict = {}
+    if validate_checksum:
+        # Map version_uri -> list of file urls
+        versions_map: dict = {}
+        for fu in file_urls:
+            try:
+                h, acc, grp, art, ver, f = get_databus_id_parts_from_file_url(fu)
+            except Exception:
+                continue
+            if ver is None:
+                continue
+            version_uri = f"https://{h}/{acc}/{grp}/{art}/{ver}"
+            versions_map.setdefault(version_uri, []).append(fu)
+
+        # Fetch each version's JSON-LD once and extract checksums for its files
+        for version_uri, urls_in_version in versions_map.items():
+            try:
+                json_str = fetch_databus_jsonld(version_uri, databus_key=databus_key)
+                jd = json.loads(json_str)
+                graph = jd.get("@graph", [])
+                for node in graph:
+                    if node.get("@type") == "Part":
+                        file_uri = node.get("file")
+                        if not isinstance(file_uri, str):
+                            continue
+                        expected = _extract_checksum_from_node(node)
+                        if expected and file_uri in urls_in_version:
+                            checksums[file_uri] = expected
+            except Exception:
+                # Best-effort: if fetching a version fails, skip it
+                continue
+
     _download_files(
         list(file_urls),
         localDir,
@@ -459,6 +496,7 @@ def _download_collection(
         auth_url=auth_url,
         client_id=client_id,
         validate_checksum=validate_checksum,
+        checksums=checksums if checksums else None,
     )
 
 
