@@ -2,21 +2,23 @@
 
 All notable changes to this project will be documented in this file.
 
-## [0.15] - 2025-12-18
-- Prepare new PyPI release 0.15 (skipping 0.13/0.14 as requested).
-- Improve Vault authentication: host-restricted token exchange and clearer errors.
-- Add tests for Vault auth behavior.
-- Add docstrings to increase docstring coverage for CI.
+## [0.15] - 2025-12-31
 
-Note: After merging this branch, publish a PyPI release (version 0.15) so
-`pip install databusclient` reflects the updated CLI behavior and bug fixes.
-# Changelog
+### Added
+- Vault authentication improvements with host-restricted token exchange
+- Comprehensive tests for Vault authentication behavior
+- Enhanced docstrings across all modules for better documentation coverage
+- Support for download redirect handling
 
-## 0.15 - Prepared release
+### Fixed
+- Vault token exchange now restricted to known hosts for improved security
+- Clearer authentication error messages
+- README instructions now consistent with PyPI release
 
-- Prepare PyPI release 0.15.
-- Restrict Vault token exchange to known hosts and provide clearer auth errors.
-- Add tests for Vault auth behavior.
-- Documentation: note about Vault-hosts and `--vault-token` usage.
+### Changed
+- Updated CLI usage documentation to reflect current command structure
+- Improved error handling in download operations
 
-(See PR and issue tracker for details.)
+### Notes
+- Version 0.15 skips 0.13 and 0.14 as requested in issue #35
+- This release updates the PyPI package to align with current repository features
