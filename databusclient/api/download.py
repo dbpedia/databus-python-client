@@ -467,6 +467,8 @@ def _download_collection(
                 continue
             if ver is None:
                 continue
+            if h is None or acc is None or grp is None or art is None:
+                continue
             version_uri = f"https://{h}/{acc}/{grp}/{art}/{ver}"
             versions_map.setdefault(version_uri, []).append(fu)
 
