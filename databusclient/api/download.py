@@ -13,6 +13,53 @@ from databusclient.api.utils import (
 )
 
 
+def _extract_checksum_from_node(node) -> str | None:
+    """
+    Try to extract a 64-char hex checksum from a JSON-LD file node.
+    Handles these common shapes:
+    - checksum or sha256sum fields as plain string
+    - checksum fields as dict with '@value'
+    - nested values (recursively search strings for a 64-char hex)
+    """
+    def find_in_value(v):
+        if isinstance(v, str):
+            s = v.strip()
+            if len(s) == 64 and all(c in "0123456789abcdefABCDEF" for c in s):
+                return s
+        if isinstance(v, dict):
+            # common JSON-LD value object
+            if "@value" in v and isinstance(v["@value"], str):
+                res = find_in_value(v["@value"])
+                if res:
+                    return res
+            # try all nested dict values
+            for vv in v.values():
+                res = find_in_value(vv)
+                if res:
+                    return res
+        if isinstance(v, list):
+            for item in v:
+                res = find_in_value(item)
+                if res:
+                    return res
+        return None
+
+    # direct keys to try first
+    for key in ("checksum", "sha256sum", "sha256", "databus:checksum"):
+        if key in node:
+            res = find_in_value(node[key])
+            if res:
+                return res
+
+    # fallback: search all values recursively for a 64-char hex string
+    for v in node.values():
+        res = find_in_value(v)
+        if res:
+            return res
+    return None
+
+
+
 # Hosts that require Vault token based authentication. Central source of truth.
 VAULT_REQUIRED_HOSTS = {
     "data.dbpedia.io",
@@ -32,6 +79,8 @@ def _download_file(
     databus_key=None,
     auth_url=None,
     client_id=None,
+    validate_checksum: bool = False,
+    expected_checksum: str | None = None,
 ) -> None:
     """
     Download a file from the internet with a progress bar using tqdm.
@@ -183,6 +232,26 @@ def _download_file(
     if total_size_in_bytes != 0 and progress_bar.n != total_size_in_bytes:
         raise IOError("Downloaded size does not match Content-Length header")
 
+    # --- 6. Optional checksum validation ---
+    if validate_checksum:
+        # reuse compute_sha256_and_length from webdav extension
+        try:
+            from databusclient.extensions.webdav import compute_sha256_and_length
+
+            actual, _ = compute_sha256_and_length(filename)
+        except Exception:
+            actual = None
+
+        if expected_checksum is None:
+            print(f"WARNING: no expected checksum available for {filename}; skipping validation")
+        elif actual is None:
+            print(f"WARNING: could not compute checksum for {filename}; skipping validation")
+        else:
+            if actual.lower() != expected_checksum.lower():
+                raise IOError(
+                    f"Checksum mismatch for {filename}: expected {expected_checksum}, got {actual}"
+                )
+
 
 def _download_files(
     urls: List[str],
@@ -191,6 +260,8 @@ def _download_files(
     databus_key: str = None,
     auth_url: str = None,
     client_id: str = None,
+    validate_checksum: bool = False,
+    checksums: dict | None = None,
 ) -> None:
     """
     Download multiple files from the databus.
@@ -204,6 +275,9 @@ def _download_files(
     - client_id: Client ID for token exchange
     """
     for url in urls:
+        expected = None
+        if checksums and isinstance(checksums, dict):
+            expected = checksums.get(url)
         _download_file(
             url=url,
             localDir=localDir,
@@ -211,6 +285,8 @@ def _download_files(
             databus_key=databus_key,
             auth_url=auth_url,
             client_id=client_id,
+            validate_checksum=validate_checksum,
+            expected_checksum=expected,
         )
 
 
@@ -358,6 +434,7 @@ def _download_collection(
     databus_key: str = None,
     auth_url: str = None,
     client_id: str = None,
+    validate_checksum: bool = False
 ) -> None:
     """
     Download all files in a databus collection.
@@ -382,6 +459,7 @@ def _download_collection(
         databus_key=databus_key,
         auth_url=auth_url,
         client_id=client_id,
+        validate_checksum=validate_checksum,
     )
 
 
@@ -392,6 +470,7 @@ def _download_version(
     databus_key: str = None,
     auth_url: str = None,
     client_id: str = None,
+    validate_checksum: bool = False,
 ) -> None:
     """
     Download all files in a databus artifact version.
@@ -406,6 +485,22 @@ def _download_version(
     """
     json_str = fetch_databus_jsonld(uri, databus_key=databus_key)
     file_urls = _get_file_download_urls_from_artifact_jsonld(json_str)
+    # build url -> checksum mapping from JSON-LD when available
+    checksums: dict = {}
+    try:
+        json_dict = json.loads(json_str)
+        graph = json_dict.get("@graph", [])
+        for node in graph:
+            if node.get("@type") == "Part":
+                file_uri = node.get("file")
+                if not isinstance(file_uri, str):
+                    continue
+                expected = _extract_checksum_from_node(node)
+                if expected:
+                    checksums[file_uri] = expected
+    except Exception:
+        checksums = {}
+
     _download_files(
         file_urls,
         localDir,
@@ -413,6 +508,8 @@ def _download_version(
         databus_key=databus_key,
         auth_url=auth_url,
         client_id=client_id,
+        validate_checksum=validate_checksum,
+        checksums=checksums,
     )
 
 
@@ -424,6 +521,7 @@ def _download_artifact(
     databus_key: str = None,
     auth_url: str = None,
     client_id: str = None,
+    validate_checksum: bool = False,
 ) -> None:
     """
     Download files in a databus artifact.
@@ -445,6 +543,22 @@ def _download_artifact(
         print(f"Downloading version: {version_uri}")
         json_str = fetch_databus_jsonld(version_uri, databus_key=databus_key)
         file_urls = _get_file_download_urls_from_artifact_jsonld(json_str)
+        # extract checksums for this version
+        checksums: dict = {}
+        try:
+            jd = json.loads(json_str)
+            graph = jd.get("@graph", [])
+            for node in graph:
+                if node.get("@type") == "Part":
+                    file_uri = node.get("file")
+                    if not isinstance(file_uri, str):
+                        continue
+                    expected = _extract_checksum_from_node(node)
+                    if expected:
+                        checksums[file_uri] = expected
+        except Exception:
+            checksums = {}
+
         _download_files(
             file_urls,
             localDir,
@@ -452,6 +566,8 @@ def _download_artifact(
             databus_key=databus_key,
             auth_url=auth_url,
             client_id=client_id,
+            validate_checksum=validate_checksum,
+            checksums=checksums,
         )
 
 
@@ -527,6 +643,7 @@ def _download_group(
     databus_key: str = None,
     auth_url: str = None,
     client_id: str = None,
+    validate_checksum: bool = False,
 ) -> None:
     """
     Download files in a databus group.
@@ -552,6 +669,7 @@ def _download_group(
             databus_key=databus_key,
             auth_url=auth_url,
             client_id=client_id,
+            validate_checksum=validate_checksum,
         )
 
 
@@ -598,6 +716,7 @@ def download(
     all_versions=None,
     auth_url="https://auth.dbpedia.org/realms/dbpedia/protocol/openid-connect/token",
     client_id="vault-token-exchange",
+    validate_checksum: bool = False
 ) -> None:
     """
     Download datasets from databus.
@@ -638,9 +757,27 @@ def download(
                     databus_key,
                     auth_url,
                     client_id,
+                    validate_checksum=validate_checksum,
                 )
             elif file is not None:
                 print(f"Downloading file: {databusURI}")
+                # Try to fetch expected checksum from the parent Version metadata
+                expected = None
+                if validate_checksum:
+                    try:
+                        version_uri = f"https://{host}/{account}/{group}/{artifact}/{version}"
+                        json_str = fetch_databus_jsonld(version_uri, databus_key=databus_key)
+                        json_dict = json.loads(json_str)
+                        graph = json_dict.get("@graph", [])
+                        for node in graph:
+                            if node.get("file") == databusURI or node.get("@id") == databusURI:
+                                expected = _extract_checksum_from_node(node)
+                                if expected:
+                                    break
+                    except Exception as e:
+                        print(f"WARNING: Could not fetch checksum for single file: {e}")
+
+                # Call the worker to download the single file (passes expected checksum)
                 _download_file(
                     databusURI,
                     localDir,
@@ -648,6 +785,8 @@ def download(
                     databus_key=databus_key,
                     auth_url=auth_url,
                     client_id=client_id,
+                    validate_checksum=validate_checksum,
+                    expected_checksum=expected,
                 )
             elif version is not None:
                 print(f"Downloading version: {databusURI}")
@@ -658,6 +797,8 @@ def download(
                     databus_key=databus_key,
                     auth_url=auth_url,
                     client_id=client_id,
+                    validate_checksum=validate_checksum,
+                    expected_checksum=expected,
                 )
             elif artifact is not None:
                 print(
@@ -671,6 +812,7 @@ def download(
                     databus_key=databus_key,
                     auth_url=auth_url,
                     client_id=client_id,
+                    validate_checksum=validate_checksum,
                 )
             elif group is not None and group != "collections":
                 print(
@@ -684,6 +826,7 @@ def download(
                     databus_key=databus_key,
                     auth_url=auth_url,
                     client_id=client_id,
+                    validate_checksum=validate_checksum,
                 )
             elif account is not None:
                 print("accountId not supported yet")  # TODO
@@ -709,4 +852,5 @@ def download(
                 databus_key=databus_key,
                 auth_url=auth_url,
                 client_id=client_id,
+                validate_checksum=validate_checksum,
             )
