@@ -248,6 +248,8 @@ def _download_file(
             print(f"WARNING: could not compute checksum for {filename}; skipping validation")
         else:
             if actual.lower() != expected_checksum.lower():
+                try: os.remove(filename)  # delete corrupted file
+                except OSError: pass
                 raise IOError(
                     f"Checksum mismatch for {filename}: expected {expected_checksum}, got {actual}"
                 )
@@ -878,6 +880,8 @@ def download(
         # query as argument
         else:
             print("QUERY {}", databusURI.replace("\n", " "))
+            if validate_checksum:
+                print("WARNING: Checksum validation is not supported for user-defined SPARQL queries.")
             if uri_endpoint is None:  # endpoint is required for queries (--databus)
                 raise ValueError("No endpoint given for query")
             res = _get_file_download_urls_from_sparql_query(
