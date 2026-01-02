@@ -158,6 +158,16 @@ def deploy(
     show_default=True,
     help="Client ID for token exchange",
 )
+@click.option(
+    "--convert-to",
+    type=click.Choice(["bz2", "gz", "xz"], case_sensitive=False),
+    help="Target compression format for on-the-fly conversion during download (supported: bz2, gz, xz)",
+)
+@click.option(
+    "--convert-from",
+    type=click.Choice(["bz2", "gz", "xz"], case_sensitive=False),
+    help="Source compression format to convert from (optional filter). Only files with this compression will be converted.",
+)
 def download(
     databusuris: List[str],
     localdir,
@@ -167,9 +177,12 @@ def download(
     all_versions,
     authurl,
     clientid,
+    convert_to,
+    convert_from,
 ):
     """
     Download datasets from databus, optionally using vault access if vault options are provided.
+    Supports on-the-fly compression format conversion using --convert-to and --convert-from options.
     """
     api_download(
         localDir=localdir,
@@ -180,6 +193,8 @@ def download(
         all_versions=all_versions,
         auth_url=authurl,
         client_id=clientid,
+        convert_to=convert_to,
+        convert_from=convert_from,
     )
 
 

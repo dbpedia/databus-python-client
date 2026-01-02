@@ -166,6 +166,10 @@ docker run --rm -v $(pwd):/data dbpedia/databus-python-client download $DOWNLOAD
   - If the dataset/files to be downloaded require vault authentication, you need to provide a vault token with `--vault-token /path/to/vault-token.dat`. See [Registration (Access Token)](#registration-access-token) for details on how to get a vault token.
 - `--databus-key`
   - If the databus is protected and needs API key authentication, you can provide the API key with `--databus-key YOUR_API_KEY`.
+- `--convert-to`
+  - Enables on-the-fly compression format conversion during download. Supported formats: `bz2`, `gz`, `xz`. Downloaded files will be automatically decompressed and recompressed to the target format. Example: `--convert-to gz` converts all downloaded compressed files to gzip format.
+- `--convert-from`
+  - Optional filter to specify which source compression format should be converted. Use with `--convert-to` to convert only files with a specific compression format. Example: `--convert-to gz --convert-from bz2` converts only `.bz2` files to `.gz`, leaving other formats unchanged.
 
 **Help and further information on download command:**
 ```bash
@@ -178,23 +182,33 @@ docker run --rm -v $(pwd):/data dbpedia/databus-python-client download --help
 Usage: databusclient download [OPTIONS] DATABUSURIS...
 
   Download datasets from databus, optionally using vault access if vault
-  options are provided.
+  options are provided. Supports on-the-fly compression format conversion
+  using --convert-to and --convert-from options.
 
 Options:
-  --localdir TEXT     Local databus folder (if not given, databus folder
-                      structure is created in current working directory)
-  --databus TEXT      Databus URL (if not given, inferred from databusuri,
-                      e.g. https://databus.dbpedia.org/sparql)
-  --vault-token TEXT  Path to Vault refresh token file
-  --databus-key TEXT  Databus API key to download from protected databus
-  --all-versions      When downloading artifacts, download all versions
-                      instead of only the latest
-  --authurl TEXT      Keycloak token endpoint URL  [default:
-                      https://auth.dbpedia.org/realms/dbpedia/protocol/openid-
-                      connect/token]
-  --clientid TEXT     Client ID for token exchange  [default: vault-token-
-                      exchange]
-  --help              Show this message and exit.
+  --localdir TEXT             Local databus folder (if not given, databus
+                              folder structure is created in current working
+                              directory)
+  --databus TEXT              Databus URL (if not given, inferred from
+                              databusuri, e.g.
+                              https://databus.dbpedia.org/sparql)
+  --vault-token TEXT          Path to Vault refresh token file
+  --databus-key TEXT          Databus API key to download from protected
+                              databus
+  --all-versions              When downloading artifacts, download all
+                              versions instead of only the latest
+  --authurl TEXT              Keycloak token endpoint URL  [default:
+                              https://auth.dbpedia.org/realms/dbpedia/protocol
+                              /openid-connect/token]
+  --clientid TEXT             Client ID for token exchange  [default: vault-
+                              token-exchange]
+  --convert-to [bz2|gz|xz]    Target compression format for on-the-fly
+                              conversion during download (supported: bz2, gz,
+                              xz)
+  --convert-from [bz2|gz|xz]  Source compression format to convert from
+                              (optional filter). Only files with this
+                              compression will be converted.
+  --help                      Show this message and exit.
 ```
 
 #### Examples of using the download command
@@ -245,6 +259,18 @@ docker run --rm -v $(pwd):/data dbpedia/databus-python-client download https://d
 databusclient download 'PREFIX dcat: <http://www.w3.org/ns/dcat#> SELECT ?x WHERE { ?sub dcat:downloadURL ?x . } LIMIT 10' --databus https://databus.dbpedia.org/sparql
 # Docker
 docker run --rm -v $(pwd):/data dbpedia/databus-python-client download 'PREFIX dcat: <http://www.w3.org/ns/dcat#> SELECT ?x WHERE { ?sub dcat:downloadURL ?x . } LIMIT 10' --databus https://databus.dbpedia.org/sparql
+```
+
+**Download with Compression Conversion**: download files and convert them to a different compression format on-the-fly
+```bash
+# Convert all compressed files to gzip format
+databusclient download https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals/2022.12.01 --convert-to gz
+
+# Convert only bz2 files to xz format, leaving other compressions unchanged
+databusclient download https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals --convert-to xz --convert-from bz2
+
+# Download a collection and unify all files to bz2 format
+databusclient download https://databus.dbpedia.org/dbpedia/collections/dbpedia-snapshot-2022-12 --convert-to bz2
 ```
 
 <a id="cli-deploy"></a>
