@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import json
 import os
+import re
 from typing import List
 
 import click
@@ -9,6 +10,51 @@ import databusclient.api.deploy as api_deploy
 from databusclient.api.delete import delete as api_delete
 from databusclient.api.download import download as api_download, DownloadAuthError
 from databusclient.extensions import webdav
+
+
+def parse_distribution_str(dist_str: str):
+    """
+    Parses a distribution string with format:
+    URL|key=value|...|.extension
+    
+    Returns a dictionary suitable for the deploy API.
+    """
+    parts = dist_str.split('|')
+    url = parts[0].strip()
+    
+    variants = {}
+    format_ext = None
+    compression = None
+    
+    # Iterate over the modifiers (everything after the URL)
+    for part in parts[1:]:
+        part = part.strip()
+        
+        # Case 1: Extension (starts with .)
+        if part.startswith('.'):
+            # purely heuristic: if it looks like compression (gz, zip, br), treat as compression
+            # otherwise treat as format extension
+            if part.lower() in ['.gz', '.zip', '.br', '.tar', '.zst']:
+                compression = part.lstrip('.') # remove leading dot for API compatibility if needed
+            else:
+                format_ext = part.lstrip('.')
+        
+        # Case 2: Content Variant (key=value)
+        elif '=' in part:
+            key, value = part.split('=', 1)
+            variants[key.strip()] = value.strip()
+            
+        # Case 3: Standalone tag (treat as boolean variant or ignore? 
+        # For now, we assume it's a value for a default key or warn)
+        else:
+             print(f"WARNING: Unrecognized modifier '{part}' in distribution. Expected '.ext' or 'key=val'.")
+
+    return {
+        "url": url,
+        "variants": variants,
+        "formatExtension": format_ext,
+        "compression": compression
+    }
 
 
 @click.group()
@@ -81,9 +127,16 @@ def deploy(
         click.echo("[MODE] Classic deploy with distributions")
         click.echo(f"Deploying dataset version: {version_id}")
 
+        # --- CHANGE START ---
+        # Parse the input strings into structured objects
+        parsed_distributions = [parse_distribution_str(d) for d in distributions]
+        
+        # Note: api_deploy.create_dataset now accepts this list of dicts
         dataid = api_deploy.create_dataset(
-            version_id, title, abstract, description, license_url, distributions
+            version_id, title, abstract, description, license_url, parsed_distributions
         )
+        # --- CHANGE END ---
+
         api_deploy.deploy(dataid=dataid, api_key=apikey)
         return
 

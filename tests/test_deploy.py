@@ -11,8 +11,39 @@ from databusclient.api.deploy import (
     _get_content_variants,
     BadArgumentException,
 )
+from databusclient.cli import parse_distribution_str
 
 EXAMPLE_URL = "https://raw.githubusercontent.com/dbpedia/databus/608482875276ef5df00f2360a2f81005e62b58bd/server/app/api/swagger.yml"
+
+
+def test_parse_distribution_str():
+    """Test the new pipe-separated distribution string parser"""
+    
+    # Test with multiple content variants
+    result = parse_distribution_str("http://example.com/data|lang=en|type=full|sorted=true|.ttl|.gz")
+    assert result["url"] == "http://example.com/data"
+    assert result["variants"] == {"lang": "en", "type": "full", "sorted": "true"}
+    assert result["formatExtension"] == "ttl"
+    assert result["compression"] == "gz"
+    
+    # Test with single content variant
+    result = parse_distribution_str("http://mysite.com/data.json|lang=fr|.json")
+    assert result["url"] == "http://mysite.com/data.json"
+    assert result["variants"] == {"lang": "fr"}
+    assert result["formatExtension"] == "json"
+    assert result["compression"] is None
+    
+    # Test URL only
+    result = parse_distribution_str("http://example.com/file.csv")
+    assert result["url"] == "http://example.com/file.csv"
+    assert result["variants"] == {}
+    assert result["formatExtension"] is None
+    assert result["compression"] is None
+    
+    # Test with compression only (no format extension)
+    result = parse_distribution_str("http://example.com/data|.gz")
+    assert result["url"] == "http://example.com/data"
+    assert result["compression"] == "gz"
 
 
 def test_get_content_variants():
