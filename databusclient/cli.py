@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 import json
 import os
-import re
 from typing import List
 
 import click

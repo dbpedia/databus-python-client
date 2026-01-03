@@ -58,12 +58,24 @@ def parse_content_variants_string(variants_str: str) -> dict:
     Parameters
     ----------
     variants_str : str
-        Comma-separated string of content variants, e.g., "lang=en, type=full, sorted=true"
+        Comma-separated string of content variants, e.g., "lang=en, type=full, sorted"
     
     Returns
     -------
     dict
-        Dictionary of key-value pairs, e.g., {"lang": "en", "type": "full", "sorted": "true"}
+        Dictionary of parsed content variants. For key=value pairs, both the key
+        and value are returned as strings (no type conversion is performed, so
+        "true" remains the string "true", not a boolean). For standalone values
+        without an "=" sign, the value is recorded as the boolean ``True``.
+        
+        Example: "lang=en, type=full, sorted" -> {"lang": "en", "type": "full", "sorted": True}
+    
+    Notes
+    -----
+    - All values from key=value pairs are kept as strings. If you need boolean
+      or numeric conversion, perform it after calling this function.
+    - Standalone items (e.g., "sorted") are stored with boolean ``True`` as
+      their value, indicating presence rather than a specific string value.
     """
     if not variants_str or variants_str.strip() == "":
         return {}
