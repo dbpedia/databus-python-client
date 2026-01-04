@@ -13,9 +13,12 @@ from databusclient.extensions import webdav
 
 
 @click.group()
-def app():
+@click.option("-v", "--verbose", is_flag=True, help="Enable verbose HTTP request/response output")
+@click.pass_context
+def app(ctx, verbose):
     """Databus Client CLI"""
-    pass
+    ctx.ensure_object(dict)
+    ctx.obj["verbose"] = verbose
 
 
 @app.command()
@@ -159,7 +162,9 @@ def deploy(
     show_default=True,
     help="Client ID for token exchange",
 )
+@click.pass_context
 def download(
+    ctx,
     databusuris: List[str],
     localdir,
     databus,
@@ -182,6 +187,7 @@ def download(
             all_versions=all_versions,
             auth_url=authurl,
             client_id=clientid,
+            verbose=ctx.obj.get("verbose", False),
         )
     except DownloadAuthError as e:
         raise click.ClickException(str(e))

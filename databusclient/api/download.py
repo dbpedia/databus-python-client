@@ -32,6 +32,7 @@ def _download_file(
     databus_key=None,
     auth_url=None,
     client_id=None,
+    verbose=False,
 ) -> None:
     """
     Download a file from the internet with a progress bar using tqdm.
@@ -43,6 +44,7 @@ def _download_file(
     - databus_key: Databus API key for protected downloads
     - auth_url: Keycloak token endpoint URL
     - client_id: Client ID for token exchange
+    - verbose: when True, print redacted HTTP request/response details
     """
     if localDir is None:
         _host, account, group, artifact, version, file = (
@@ -67,7 +69,15 @@ def _download_file(
     headers = {}
 
     # --- 1a. public databus ---
+    if verbose:
+        from databusclient.api.utils import log_http
+
+        log_http("HEAD", url, req_headers=headers)
     response = requests.head(url, timeout=30, allow_redirects=False)
+    if verbose:
+        from databusclient.api.utils import log_http
+
+        log_http("HEAD", url, req_headers=headers, status=response.status_code, resp_headers=response.headers)
 
     # Check for redirect and update URL if necessary
     if response.headers.get("Location") and response.status_code in [
@@ -108,9 +118,17 @@ def _download_file(
     headers["Accept-Encoding"] = (
         "identity"  # disable gzip to get correct content-length
     )
+    if verbose:
+        from databusclient.api.utils import log_http
+
+        log_http("GET", url, req_headers=headers)
     response = requests.get(
         url, headers=headers, stream=True, allow_redirects=True, timeout=30
     )
+    if verbose:
+        from databusclient.api.utils import log_http
+
+        log_http("GET", url, req_headers=headers, status=response.status_code, resp_headers=response.headers)
     www = response.headers.get("WWW-Authenticate", "")  # Check if authentication is required
 
     # --- 3. Handle authentication responses ---
@@ -136,12 +154,20 @@ def _download_file(
         # for known hosts. __get_vault_access__ handles reading the refresh
         # token and exchanging it; errors are translated to DownloadAuthError
         # for user-friendly CLI output.
-        vault_token = __get_vault_access__(url, vault_token_file, auth_url, client_id)
+        vault_token = __get_vault_access__(url, vault_token_file, auth_url, client_id, verbose=verbose)
         headers["Authorization"] = f"Bearer {vault_token}"
         headers.pop("Accept-Encoding", None)
 
         # Retry with token
+        if verbose:
+            from databusclient.api.utils import log_http
+
+            log_http("GET", url, req_headers=headers)
         response = requests.get(url, headers=headers, stream=True, timeout=30)
+        if verbose:
+            from databusclient.api.utils import log_http
+
+            log_http("GET", url, req_headers=headers, status=response.status_code, resp_headers=response.headers)
 
         # Map common auth failures to friendly messages
         if response.status_code == 401:
@@ -191,6 +217,7 @@ def _download_files(
     databus_key: str = None,
     auth_url: str = None,
     client_id: str = None,
+    verbose: bool = False,
 ) -> None:
     """
     Download multiple files from the databus.
@@ -202,6 +229,7 @@ def _download_files(
     - databus_key: Databus API key for protected downloads
     - auth_url: Keycloak token endpoint URL
     - client_id: Client ID for token exchange
+    - verbose: when True, print redacted HTTP request/response details
     """
     for url in urls:
         _download_file(
@@ -211,6 +239,7 @@ def _download_files(
             databus_key=databus_key,
             auth_url=auth_url,
             client_id=client_id,
+            verbose=verbose,
         )
 
 
@@ -294,7 +323,7 @@ def _get_file_download_urls_from_sparql_query(
 
 
 def __get_vault_access__(
-    download_url: str, token_file: str, auth_url: str, client_id: str
+    download_url: str, token_file: str, auth_url: str, client_id: str, verbose: bool = False
 ) -> str:
     """
     Get Vault access token for a protected databus download.
@@ -320,6 +349,10 @@ def __get_vault_access__(
         timeout=30,
     )
     resp.raise_for_status()
+    if verbose:
+        from databusclient.api.utils import log_http
+
+        log_http("POST", auth_url, req_headers={"client_id": client_id}, status=resp.status_code, resp_headers=resp.headers)
     access_token = resp.json()["access_token"]
 
     # 3. Extract host as audience
@@ -344,6 +377,10 @@ def __get_vault_access__(
         timeout=30,
     )
     resp.raise_for_status()
+    if verbose:
+        from databusclient.api.utils import log_http
+
+        log_http("POST", auth_url, req_headers={"client_id": client_id, "audience": audience}, status=resp.status_code, resp_headers=resp.headers)
     vault_token = resp.json()["access_token"]
 
     print(f"Using Vault access token for {download_url}")
@@ -598,6 +635,7 @@ def download(
     all_versions=None,
     auth_url="https://auth.dbpedia.org/realms/dbpedia/protocol/openid-connect/token",
     client_id="vault-token-exchange",
+    verbose: bool = False,
 ) -> None:
     """
     Download datasets from databus.
@@ -612,6 +650,7 @@ def download(
     - databus_key: Databus API key for protected downloads
     - auth_url: Keycloak token endpoint URL. Default is "https://auth.dbpedia.org/realms/dbpedia/protocol/openid-connect/token".
     - client_id: Client ID for token exchange. Default is "vault-token-exchange".
+    - verbose: when True, print redacted HTTP request/response details
     """
     for databusURI in databusURIs:
         host, account, group, artifact, version, file = (
@@ -647,8 +686,7 @@ def download(
                     vault_token_file=token,
                     databus_key=databus_key,
                     auth_url=auth_url,
-                    client_id=client_id,
-                )
+                    client_id=client_id,                    verbose=verbose,                )
             elif version is not None:
                 print(f"Downloading version: {databusURI}")
                 _download_version(
@@ -709,4 +747,5 @@ def download(
                 databus_key=databus_key,
                 auth_url=auth_url,
                 client_id=client_id,
+                verbose=verbose,
             )
