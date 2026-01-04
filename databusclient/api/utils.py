@@ -48,3 +48,45 @@ def fetch_databus_jsonld(uri: str, databus_key: str | None = None) -> str:
     response.raise_for_status()
 
     return response.text
+
+
+def _redact_headers(headers):
+    if not headers:
+        return headers
+    redacted = {}
+    for k, v in headers.items():
+        key = k.lower()
+        if key == "authorization" or key.startswith("x-api-key"):
+            redacted[k] = "REDACTED"
+        else:
+            redacted[k] = v
+    return redacted
+
+
+def log_http(method, url, req_headers=None, status=None, resp_headers=None, body_snippet=None):
+    print(f"[HTTP] {method} {url}")
+    if req_headers:
+        print("  Req headers:", _redact_headers(req_headers))
+    if status is not None:
+        print("  Status:", status)
+    if resp_headers:
+        # try to convert to dict; handle Mock or response objects gracefully
+        try:
+            resp_dict = dict(resp_headers)
+        except Exception:
+            # resp_headers might be a Mock or requests.Response; try common attributes
+            if hasattr(resp_headers, "items"):
+                try:
+                    resp_dict = dict(resp_headers.items())
+                except Exception:
+                    resp_dict = {"headers": str(resp_headers)}
+            elif hasattr(resp_headers, "headers"):
+                try:
+                    resp_dict = dict(getattr(resp_headers, "headers") or {})
+                except Exception:
+                    resp_dict = {"headers": str(resp_headers)}
+            else:
+                resp_dict = {"headers": str(resp_headers)}
+        print("  Resp headers:", _redact_headers(resp_dict))
+    if body_snippet:
+        print("  Body preview:", body_snippet[:500])
