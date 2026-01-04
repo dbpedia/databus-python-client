@@ -25,9 +25,9 @@ def app():
     help="Target databus version/dataset identifier of the form "
     "<https://databus.dbpedia.org/$ACCOUNT/$GROUP/$ARTIFACT/$VERSION>",
 )
-@click.option("--title", required=True, help="Dataset title")
-@click.option("--abstract", required=True, help="Dataset abstract max 200 chars")
-@click.option("--description", required=True, help="Dataset description")
+@click.option("--title", required=True, help="Artifact Label: the permanent name of the data series (applies to all versions)")
+@click.option("--abstract", required=True, help="Version Abstract: a short summary (max 200 chars) specific to this timestamped release")
+@click.option("--description", required=True, help="Version Description: detailed metadata for this specific release (supports Markdown)")
 @click.option(
     "--license", "license_url", required=True, help="License (see dalicc.net)"
 )
