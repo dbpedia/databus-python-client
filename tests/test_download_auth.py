@@ -3,6 +3,7 @@ from unittest.mock import Mock, patch
 import pytest
 
 import requests
+import logging
 
 import databusclient.api.download as dl
 
@@ -104,7 +105,8 @@ def test_403_reports_insufficient_permissions():
         assert "permission" in str(exc.value) or "forbidden" in str(exc.value)
 
 
-def test_verbose_redacts_authorization(monkeypatch, capsys):
+def test_verbose_redacts_authorization(monkeypatch, caplog):
+    caplog.set_level(logging.DEBUG, logger='databusclient')
     vault_host = next(iter(VAULT_REQUIRED_HOSTS))
     url = f"https://{vault_host}/protected/file.ttl"
 
@@ -126,9 +128,8 @@ def test_verbose_redacts_authorization(monkeypatch, capsys):
 
         # run download with verbose enabled
         dl._download_file(url, localDir='.', vault_token_file="/does/not/matter", verbose=True)
-        captured = capsys.readouterr()
-        assert "[HTTP] HEAD" in captured.out or "[HTTP] GET" in captured.out
-        assert "REDACTED" in captured.out
+        assert "[HTTP] HEAD" in caplog.text or "[HTTP] GET" in caplog.text
+        assert "REDACTED" in caplog.text
         # Ensure token values are not directly printed
-        assert "ACCESS" not in captured.out
-        assert "VAULT" not in captured.out
+        assert "ACCESS" not in caplog.text
+        assert "VAULT" not in caplog.text
