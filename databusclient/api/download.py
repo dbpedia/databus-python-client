@@ -66,25 +66,8 @@ def _download_file(
     # --- 1. Get redirect URL by requesting HEAD ---
     headers = {}
 
-    # Determine hostname early and fail fast if this host requires Vault token.
-    # This prevents confusing 401/403 errors later and tells the user exactly
-    # what to do (provide --vault-token).
-    parsed = urlparse(url)
-    host = parsed.hostname
-    if host in VAULT_REQUIRED_HOSTS and not vault_token_file:
-        raise DownloadAuthError(
-            f"Vault token required for host '{host}', but no token was provided. Please use --vault-token."
-        )
-
     # --- 1a. public databus ---
-    response = requests.head(url, timeout=30)
-    # --- 1b. Databus API key required ---
-    if response.status_code == 401:
-        if not databus_key:
-            raise DownloadAuthError("Databus API key not given for protected download")
-
-        headers = {"X-API-KEY": databus_key}
-        response = requests.head(url, headers=headers, timeout=30)
+    response = requests.head(url, timeout=30, allow_redirects=False)
 
     # Check for redirect and update URL if necessary
     if response.headers.get("Location") and response.status_code in [
@@ -96,6 +79,30 @@ def _download_file(
     ]:
         url = response.headers.get("Location")
         print("Redirects url: ", url)
+        # Re-do HEAD request on redirect URL
+        response = requests.head(url, timeout=30)
+
+    # Extract hostname from final URL (after redirect) to check if vault token needed.
+    # This is the actual download location that may require authentication.
+    parsed = urlparse(url)
+    host = parsed.hostname
+
+    # --- 1b. Handle 401 on HEAD request ---
+    if response.status_code == 401:
+        # Check if this is a vault-required host
+        if host in VAULT_REQUIRED_HOSTS:
+            # Vault-required host: need vault token
+            if not vault_token_file:
+                raise DownloadAuthError(
+                    f"Vault token required for host '{host}', but no token was provided. Please use --vault-token."
+                )
+            # Token provided; will handle in GET request below
+        else:
+            # Not a vault host; might need databus API key
+            if not databus_key:
+                raise DownloadAuthError("Databus API key not given for protected download")
+            headers = {"X-API-KEY": databus_key}
+            response = requests.head(url, headers=headers, timeout=30)
 
     # --- 2. Try direct GET to redirected URL ---
     headers["Accept-Encoding"] = (

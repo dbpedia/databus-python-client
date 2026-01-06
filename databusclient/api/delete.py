@@ -60,13 +60,11 @@ class DeleteQueue:
 
         Each queued URI will be deleted using `_delete_resource`.
         """
-        for uri in self.queue:
-            print(f"[DELETE] {uri}")
-            _delete_resource(
-                uri,
-                self.databus_key,
-                force=True,
-            )
+        _delete_list(
+            list(self.queue),
+            self.databus_key,
+            force=True,
+        )
 
 
 def _confirm_delete(databusURI: str) -> str:
@@ -144,6 +142,7 @@ def _delete_resource(
         queue.add_uri(databusURI)
         return
 
+    print(f"[DELETE] {databusURI}")
     headers = {"accept": "*/*", "X-API-KEY": databus_key}
     response = requests.delete(databusURI, headers=headers, timeout=30)
 

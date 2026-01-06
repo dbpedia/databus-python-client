@@ -1,7 +1,6 @@
 # project-specific
 tmp/
 vault-token.dat
-test-download/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
