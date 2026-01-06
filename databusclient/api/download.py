@@ -6,6 +6,9 @@ from urllib.parse import urlparse
 import requests
 from SPARQLWrapper import JSON, SPARQLWrapper
 from tqdm import tqdm
+import logging
+
+logger = logging.getLogger("databusclient")
 
 from databusclient.api.utils import (
     fetch_databus_jsonld,
@@ -69,12 +72,12 @@ def _download_file(
     headers = {}
 
     # --- 1a. public databus ---
-    if verbose:
+    if verbose or logger.isEnabledFor(logging.DEBUG):
         from databusclient.api.utils import log_http
 
         log_http("HEAD", url, req_headers=headers)
     response = requests.head(url, timeout=30, allow_redirects=False)
-    if verbose:
+    if verbose or logger.isEnabledFor(logging.DEBUG):
         from databusclient.api.utils import log_http
 
         log_http("HEAD", url, req_headers=headers, status=response.status_code, resp_headers=response.headers)
@@ -118,14 +121,14 @@ def _download_file(
     headers["Accept-Encoding"] = (
         "identity"  # disable gzip to get correct content-length
     )
-    if verbose:
+    if verbose or logger.isEnabledFor(logging.DEBUG):
         from databusclient.api.utils import log_http
 
         log_http("GET", url, req_headers=headers)
     response = requests.get(
         url, headers=headers, stream=True, allow_redirects=True, timeout=30
     )
-    if verbose:
+    if verbose or logger.isEnabledFor(logging.DEBUG):
         from databusclient.api.utils import log_http
 
         log_http("GET", url, req_headers=headers, status=response.status_code, resp_headers=response.headers)
@@ -159,12 +162,12 @@ def _download_file(
         headers.pop("Accept-Encoding", None)
 
         # Retry with token
-        if verbose:
+        if verbose or logger.isEnabledFor(logging.DEBUG):
             from databusclient.api.utils import log_http
 
             log_http("GET", url, req_headers=headers)
         response = requests.get(url, headers=headers, stream=True, timeout=30)
-        if verbose:
+        if verbose or logger.isEnabledFor(logging.DEBUG):
             from databusclient.api.utils import log_http
 
             log_http("GET", url, req_headers=headers, status=response.status_code, resp_headers=response.headers)
@@ -243,13 +246,14 @@ def _download_files(
         )
 
 
-def _get_sparql_query_of_collection(uri: str, databus_key: str | None = None) -> str:
+def _get_sparql_query_of_collection(uri: str, databus_key: str | None = None, verbose: bool = False) -> str:
     """
     Get SPARQL query of collection members from databus collection URI.
 
     Parameters:
     - uri: The full databus collection URI
     - databus_key: Optional Databus API key for authentication on protected resources
+    - verbose: when True, print redacted HTTP request/response details
 
     Returns:
     SPARQL query string to get download URLs of all files in the collection.
@@ -257,13 +261,22 @@ def _get_sparql_query_of_collection(uri: str, databus_key: str | None = None) ->
     headers = {"Accept": "text/sparql"}
     if databus_key is not None:
         headers["X-API-KEY"] = databus_key
+    if verbose:
+        from databusclient.api.utils import log_http
+
+        log_http("GET", uri, req_headers=headers)
 
     response = requests.get(uri, headers=headers, timeout=30)
+    if verbose:
+        from databusclient.api.utils import log_http
+
+        log_http("GET", uri, req_headers=headers, status=response.status_code, resp_headers=response.headers)
+
     response.raise_for_status()
     return response.text
 
 
-def _query_sparql_endpoint(endpoint_url, query, databus_key=None) -> dict:
+def _query_sparql_endpoint(endpoint_url, query, databus_key=None, verbose: bool = False) -> dict:
     """
     Query a SPARQL endpoint and return results in JSON format.
 
@@ -271,10 +284,17 @@ def _query_sparql_endpoint(endpoint_url, query, databus_key=None) -> dict:
     - endpoint_url: the URL of the SPARQL endpoint
     - query: the SPARQL query string
     - databus_key: Optional API key for authentication
+    - verbose: when True, print redacted HTTP request/response details
 
     Returns:
     - Dictionary containing the query results
     """
+    if verbose:
+        from databusclient.api.utils import log_http
+
+        headers = {"X-API-KEY": databus_key} if databus_key is not None else None
+        log_http("POST", endpoint_url, req_headers=headers)
+
     sparql = SPARQLWrapper(endpoint_url)
     sparql.method = "POST"
     sparql.setQuery(query)
@@ -282,11 +302,17 @@ def _query_sparql_endpoint(endpoint_url, query, databus_key=None) -> dict:
     if databus_key is not None:
         sparql.setCustomHttpHeaders({"X-API-KEY": databus_key})
     results = sparql.query().convert()
+
+    if verbose:
+        from databusclient.api.utils import log_http
+
+        log_http("POST", endpoint_url, req_headers={"X-API-KEY": databus_key} if databus_key is not None else None, status=200)
+
     return results
 
 
 def _get_file_download_urls_from_sparql_query(
-    endpoint_url, query, databus_key=None
+    endpoint_url, query, databus_key=None, verbose: bool = False
 ) -> List[str]:
     """
     Execute a SPARQL query to get databus file download URLs.
@@ -295,11 +321,12 @@ def _get_file_download_urls_from_sparql_query(
     - endpoint_url: the URL of the SPARQL endpoint
     - query: the SPARQL query string
     - databus_key: Optional API key for authentication
+    - verbose: when True, print redacted HTTP request/response details
 
     Returns:
     - List of file download URLs
     """
-    result_dict = _query_sparql_endpoint(endpoint_url, query, databus_key=databus_key)
+    result_dict = _query_sparql_endpoint(endpoint_url, query, databus_key=databus_key, verbose=verbose)
 
     bindings = result_dict.get("results", {}).get("bindings")
     if not isinstance(bindings, list):
@@ -336,7 +363,8 @@ def __get_vault_access__(
         with open(token_file, "r") as f:
             refresh_token = f.read().strip()
     if len(refresh_token) < 80:
-        print(f"Warning: token from {token_file} is short (<80 chars)")
+        logger.warning("Token from %s is short (<80 chars)", token_file)
+
 
     # 2. Refresh token -> access token
     resp = requests.post(
@@ -349,7 +377,7 @@ def __get_vault_access__(
         timeout=30,
     )
     resp.raise_for_status()
-    if verbose:
+    if verbose or logger.isEnabledFor(logging.DEBUG):
         from databusclient.api.utils import log_http
 
         log_http("POST", auth_url, req_headers={"client_id": client_id}, status=resp.status_code, resp_headers=resp.headers)
@@ -377,13 +405,13 @@ def __get_vault_access__(
         timeout=30,
     )
     resp.raise_for_status()
-    if verbose:
+    if verbose or logger.isEnabledFor(logging.DEBUG):
         from databusclient.api.utils import log_http
 
         log_http("POST", auth_url, req_headers={"client_id": client_id, "audience": audience}, status=resp.status_code, resp_headers=resp.headers)
     vault_token = resp.json()["access_token"]
 
-    print(f"Using Vault access token for {download_url}")
+    logger.debug("Using Vault access token for %s", download_url)
     return vault_token
 
 
@@ -395,6 +423,7 @@ def _download_collection(
     databus_key: str = None,
     auth_url: str = None,
     client_id: str = None,
+    verbose: bool = False,
 ) -> None:
     """
     Download all files in a databus collection.
@@ -407,10 +436,11 @@ def _download_collection(
     - databus_key: Databus API key for protected downloads
     - auth_url: Keycloak token endpoint URL
     - client_id: Client ID for token exchange
+    - verbose: when True, print redacted HTTP request/response details
     """
-    query = _get_sparql_query_of_collection(uri, databus_key=databus_key)
+    query = _get_sparql_query_of_collection(uri, databus_key=databus_key, verbose=verbose)
     file_urls = _get_file_download_urls_from_sparql_query(
-        endpoint, query, databus_key=databus_key
+        endpoint, query, databus_key=databus_key, verbose=verbose
     )
     _download_files(
         list(file_urls),
@@ -419,6 +449,7 @@ def _download_collection(
         databus_key=databus_key,
         auth_url=auth_url,
         client_id=client_id,
+        verbose=verbose,
     )
 
 
@@ -429,6 +460,7 @@ def _download_version(
     databus_key: str = None,
     auth_url: str = None,
     client_id: str = None,
+    verbose: bool = False,
 ) -> None:
     """
     Download all files in a databus artifact version.
@@ -440,8 +472,9 @@ def _download_version(
     - databus_key: Databus API key for protected downloads
     - auth_url: Keycloak token endpoint URL
     - client_id: Client ID for token exchange
+    - verbose: when True, print redacted HTTP request/response details
     """
-    json_str = fetch_databus_jsonld(uri, databus_key=databus_key)
+    json_str = fetch_databus_jsonld(uri, databus_key=databus_key, verbose=verbose)
     file_urls = _get_file_download_urls_from_artifact_jsonld(json_str)
     _download_files(
         file_urls,
@@ -450,6 +483,7 @@ def _download_version(
         databus_key=databus_key,
         auth_url=auth_url,
         client_id=client_id,
+        verbose=verbose,
     )
 
 
@@ -461,6 +495,7 @@ def _download_artifact(
     databus_key: str = None,
     auth_url: str = None,
     client_id: str = None,
+    verbose: bool = False,
 ) -> None:
     """
     Download files in a databus artifact.
@@ -473,14 +508,15 @@ def _download_artifact(
     - databus_key: Databus API key for protected downloads
     - auth_url: Keycloak token endpoint URL
     - client_id: Client ID for token exchange
+    - verbose: when True, print redacted HTTP request/response details
     """
-    json_str = fetch_databus_jsonld(uri, databus_key=databus_key)
+    json_str = fetch_databus_jsonld(uri, databus_key=databus_key, verbose=verbose)
     versions = _get_databus_versions_of_artifact(json_str, all_versions=all_versions)
     if isinstance(versions, str):
         versions = [versions]
     for version_uri in versions:
         print(f"Downloading version: {version_uri}")
-        json_str = fetch_databus_jsonld(version_uri, databus_key=databus_key)
+        json_str = fetch_databus_jsonld(version_uri, databus_key=databus_key, verbose=verbose)
         file_urls = _get_file_download_urls_from_artifact_jsonld(json_str)
         _download_files(
             file_urls,
@@ -489,6 +525,7 @@ def _download_artifact(
             databus_key=databus_key,
             auth_url=auth_url,
             client_id=client_id,
+            verbose=verbose,
         )
 
 
@@ -564,6 +601,7 @@ def _download_group(
     databus_key: str = None,
     auth_url: str = None,
     client_id: str = None,
+    verbose: bool = False,
 ) -> None:
     """
     Download files in a databus group.
@@ -576,8 +614,9 @@ def _download_group(
     - databus_key: Databus API key for protected downloads
     - auth_url: Keycloak token endpoint URL
     - client_id: Client ID for token exchange
+    - verbose: when True, print redacted HTTP request/response details
     """
-    json_str = fetch_databus_jsonld(uri, databus_key=databus_key)
+    json_str = fetch_databus_jsonld(uri, databus_key=databus_key, verbose=verbose)
     artifacts = _get_databus_artifacts_of_group(json_str)
     for artifact_uri in artifacts:
         print(f"Download artifact: {artifact_uri}")
@@ -589,6 +628,7 @@ def _download_group(
             databus_key=databus_key,
             auth_url=auth_url,
             client_id=client_id,
+            verbose=verbose,
         )
 
 
@@ -677,6 +717,7 @@ def download(
                     databus_key,
                     auth_url,
                     client_id,
+                    verbose=verbose,
                 )
             elif file is not None:
                 print(f"Downloading file: {databusURI}")
@@ -686,7 +727,9 @@ def download(
                     vault_token_file=token,
                     databus_key=databus_key,
                     auth_url=auth_url,
-                    client_id=client_id,                    verbose=verbose,                )
+                    client_id=client_id,
+                    verbose=verbose,
+                )
             elif version is not None:
                 print(f"Downloading version: {databusURI}")
                 _download_version(
@@ -696,6 +739,7 @@ def download(
                     databus_key=databus_key,
                     auth_url=auth_url,
                     client_id=client_id,
+                    verbose=verbose,
                 )
             elif artifact is not None:
                 print(
@@ -709,6 +753,7 @@ def download(
                     databus_key=databus_key,
                     auth_url=auth_url,
                     client_id=client_id,
+                    verbose=verbose,
                 )
             elif group is not None and group != "collections":
                 print(
@@ -722,6 +767,7 @@ def download(
                     databus_key=databus_key,
                     auth_url=auth_url,
                     client_id=client_id,
+                    verbose=verbose,
                 )
             elif account is not None:
                 print("accountId not supported yet")  # TODO
@@ -738,7 +784,7 @@ def download(
             if uri_endpoint is None:  # endpoint is required for queries (--databus)
                 raise ValueError("No endpoint given for query")
             res = _get_file_download_urls_from_sparql_query(
-                uri_endpoint, databusURI, databus_key=databus_key
+                uri_endpoint, databusURI, databus_key=databus_key, verbose=verbose
             )
             _download_files(
                 res,
