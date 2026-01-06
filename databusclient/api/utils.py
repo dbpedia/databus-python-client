@@ -19,16 +19,14 @@ def get_databus_id_parts_from_file_url(
     Optional[str],
     Optional[str],
 ]:
-    """
-    Extract databus ID parts from a given databus URI.
+    """Extract databus ID parts from a given databus URI.
 
-    Parameters:
-    - uri: The full databus URI of the form
-      "http(s)://host/accountId/groupId/artifactId/versionId/fileId"
+    Args:
+        uri: The full databus URI of the form "http(s)://host/accountId/groupId/artifactId/versionId/fileId".
 
     Returns:
-    A tuple containing (host, accountId, groupId, artifactId, versionId, fileId).
-    Each element is a string or None if not present.
+        A tuple containing (host, accountId, groupId, artifactId, versionId, fileId).
+        Each element is a string or None if not present.
     """
     """Split a Databus URI into its six parts.
 
