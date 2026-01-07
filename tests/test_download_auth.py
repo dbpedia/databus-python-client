@@ -8,7 +8,9 @@ import logging
 import databusclient.api.download as dl
 
 from databusclient.api.download import VAULT_REQUIRED_HOSTS, DownloadAuthError
+from unittest.mock import patch
 
+from databusclient.api.download import download, DownloadAuthError
 
 def make_response(status=200, headers=None, content=b""):
     headers = headers or {}
