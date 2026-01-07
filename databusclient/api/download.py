@@ -33,16 +33,15 @@ def _download_file(
     auth_url=None,
     client_id=None,
 ) -> None:
-    """
-    Download a file from the internet with a progress bar using tqdm.
+    """Download a file from the internet with a progress bar using tqdm.
 
-    Parameters:
-    - url: the URL of the file to download
-    - localDir: Local directory to download file to. If None, the databus folder structure is created in the current working directory.
-    - vault_token_file: Path to Vault refresh token file
-    - databus_key: Databus API key for protected downloads
-    - auth_url: Keycloak token endpoint URL
-    - client_id: Client ID for token exchange
+    Args:
+        url: The URL of the file to download.
+        localDir: Local directory to download file to. If None, the databus folder structure is created in the current working directory.
+        vault_token_file: Path to Vault refresh token file.
+        databus_key: Databus API key for protected downloads.
+        auth_url: Keycloak token endpoint URL.
+        client_id: Client ID for token exchange.
     """
     if localDir is None:
         _host, account, group, artifact, version, file = (
@@ -192,16 +191,15 @@ def _download_files(
     auth_url: str = None,
     client_id: str = None,
 ) -> None:
-    """
-    Download multiple files from the databus.
+    """Download multiple files from the databus.
 
-    Parameters:
-    - urls: List of file download URLs
-    - localDir: Local directory to download files to. If None, the databus folder structure is created in the current working directory.
-    - vault_token_file: Path to Vault refresh token file
-    - databus_key: Databus API key for protected downloads
-    - auth_url: Keycloak token endpoint URL
-    - client_id: Client ID for token exchange
+    Args:
+        urls: List of file download URLs.
+        localDir: Local directory to download files to. If None, the databus folder structure is created in the current working directory.
+        vault_token_file: Path to Vault refresh token file.
+        databus_key: Databus API key for protected downloads.
+        auth_url: Keycloak token endpoint URL.
+        client_id: Client ID for token exchange.
     """
     for url in urls:
         _download_file(
@@ -215,15 +213,14 @@ def _download_files(
 
 
 def _get_sparql_query_of_collection(uri: str, databus_key: str | None = None) -> str:
-    """
-    Get SPARQL query of collection members from databus collection URI.
+    """Get SPARQL query of collection members from databus collection URI.
 
-    Parameters:
-    - uri: The full databus collection URI
-    - databus_key: Optional Databus API key for authentication on protected resources
+    Args:
+        uri: The full databus collection URI.
+        databus_key: Optional Databus API key for authentication on protected resources.
 
     Returns:
-    SPARQL query string to get download URLs of all files in the collection.
+        SPARQL query string to get download URLs of all files in the collection.
     """
     headers = {"Accept": "text/sparql"}
     if databus_key is not None:
@@ -235,16 +232,15 @@ def _get_sparql_query_of_collection(uri: str, databus_key: str | None = None) ->
 
 
 def _query_sparql_endpoint(endpoint_url, query, databus_key=None) -> dict:
-    """
-    Query a SPARQL endpoint and return results in JSON format.
+    """Query a SPARQL endpoint and return results in JSON format.
 
-    Parameters:
-    - endpoint_url: the URL of the SPARQL endpoint
-    - query: the SPARQL query string
-    - databus_key: Optional API key for authentication
+    Args:
+        endpoint_url: The URL of the SPARQL endpoint.
+        query: The SPARQL query string.
+        databus_key: Optional API key for authentication.
 
     Returns:
-    - Dictionary containing the query results
+        Dictionary containing the query results.
     """
     sparql = SPARQLWrapper(endpoint_url)
     sparql.method = "POST"
@@ -259,16 +255,15 @@ def _query_sparql_endpoint(endpoint_url, query, databus_key=None) -> dict:
 def _get_file_download_urls_from_sparql_query(
     endpoint_url, query, databus_key=None
 ) -> List[str]:
-    """
-    Execute a SPARQL query to get databus file download URLs.
+    """Execute a SPARQL query to get databus file download URLs.
 
-    Parameters:
-    - endpoint_url: the URL of the SPARQL endpoint
-    - query: the SPARQL query string
-    - databus_key: Optional API key for authentication
+    Args:
+        endpoint_url: The URL of the SPARQL endpoint.
+        query: The SPARQL query string.
+        databus_key: Optional API key for authentication.
 
     Returns:
-    - List of file download URLs
+        List of file download URLs.
     """
     result_dict = _query_sparql_endpoint(endpoint_url, query, databus_key=databus_key)
 
@@ -359,17 +354,16 @@ def _download_collection(
     auth_url: str = None,
     client_id: str = None,
 ) -> None:
-    """
-    Download all files in a databus collection.
+    """Download all files in a databus collection.
 
-    Parameters:
-    - uri: The full databus collection URI
-    - endpoint: the databus SPARQL endpoint URL
-    - localDir: Local directory to download files to. If None, the databus folder structure is created in the current working directory.
-    - vault_token: Path to Vault refresh token file for protected downloads
-    - databus_key: Databus API key for protected downloads
-    - auth_url: Keycloak token endpoint URL
-    - client_id: Client ID for token exchange
+    Args:
+        uri: The full databus collection URI.
+        endpoint: The databus SPARQL endpoint URL.
+        localDir: Local directory to download files to. If None, the databus folder structure is created in the current working directory.
+        vault_token: Path to Vault refresh token file for protected downloads.
+        databus_key: Databus API key for protected downloads.
+        auth_url: Keycloak token endpoint URL.
+        client_id: Client ID for token exchange.
     """
     query = _get_sparql_query_of_collection(uri, databus_key=databus_key)
     file_urls = _get_file_download_urls_from_sparql_query(
@@ -393,16 +387,15 @@ def _download_version(
     auth_url: str = None,
     client_id: str = None,
 ) -> None:
-    """
-    Download all files in a databus artifact version.
+    """Download all files in a databus artifact version.
 
-    Parameters:
-    - uri: The full databus artifact version URI
-    - localDir: Local directory to download files to. If None, the databus folder structure is created in the current working directory.
-    - vault_token_file: Path to Vault refresh token file for protected downloads
-    - databus_key: Databus API key for protected downloads
-    - auth_url: Keycloak token endpoint URL
-    - client_id: Client ID for token exchange
+    Args:
+        uri: The full databus artifact version URI.
+        localDir: Local directory to download files to. If None, the databus folder structure is created in the current working directory.
+        vault_token_file: Path to Vault refresh token file for protected downloads.
+        databus_key: Databus API key for protected downloads.
+        auth_url: Keycloak token endpoint URL.
+        client_id: Client ID for token exchange.
     """
     json_str = fetch_databus_jsonld(uri, databus_key=databus_key)
     file_urls = _get_file_download_urls_from_artifact_jsonld(json_str)
@@ -425,17 +418,16 @@ def _download_artifact(
     auth_url: str = None,
     client_id: str = None,
 ) -> None:
-    """
-    Download files in a databus artifact.
+    """Download files in a databus artifact.
 
-    Parameters:
-    - uri: The full databus artifact URI
-    - localDir: Local directory to download files to. If None, the databus folder structure is created in the current working directory.
-    - all_versions: If True, download all versions of the artifact; otherwise, only download the latest version
-    - vault_token_file: Path to Vault refresh token file for protected downloads
-    - databus_key: Databus API key for protected downloads
-    - auth_url: Keycloak token endpoint URL
-    - client_id: Client ID for token exchange
+    Args:
+        uri: The full databus artifact URI.
+        localDir: Local directory to download files to. If None, the databus folder structure is created in the current working directory.
+        all_versions: If True, download all versions of the artifact; otherwise, only download the latest version.
+        vault_token_file: Path to Vault refresh token file for protected downloads.
+        databus_key: Databus API key for protected downloads.
+        auth_url: Keycloak token endpoint URL.
+        client_id: Client ID for token exchange.
     """
     json_str = fetch_databus_jsonld(uri, databus_key=databus_key)
     versions = _get_databus_versions_of_artifact(json_str, all_versions=all_versions)
@@ -458,16 +450,15 @@ def _download_artifact(
 def _get_databus_versions_of_artifact(
     json_str: str, all_versions: bool
 ) -> str | List[str]:
-    """
-    Parse the JSON-LD of a databus artifact to extract URLs of its versions.
+    """Parse the JSON-LD of a databus artifact to extract URLs of its versions.
 
-    Parameters:
-    - json_str: JSON-LD string of the databus artifact
-    - all_versions: If True, return all version URLs; otherwise, return only the latest version URL
+    Args:
+        json_str: JSON-LD string of the databus artifact.
+        all_versions: If True, return all version URLs; otherwise, return only the latest version URL.
 
     Returns:
-    - If all_versions is True: List of all version URLs
-    - If all_versions is False: URL of the latest version
+        If all_versions is True: List of all version URLs.
+        If all_versions is False: URL of the latest version.
     """
     json_dict = json.loads(json_str)
     versions = json_dict.get("databus:hasVersion")
@@ -495,15 +486,15 @@ def _get_databus_versions_of_artifact(
 
 
 def _get_file_download_urls_from_artifact_jsonld(json_str: str) -> List[str]:
-    """
-    Parse the JSON-LD of a databus artifact version to extract download URLs.
+    """Parse the JSON-LD of a databus artifact version to extract download URLs.
+    
     Don't get downloadURLs directly from the JSON-LD, but follow the "file" links to count access to databus accurately.
 
-    Parameters:
-    - json_str: JSON-LD string of the databus artifact version
+    Args:
+        json_str: JSON-LD string of the databus artifact version.
 
     Returns:
-    List of all file download URLs in the artifact version.
+        List of all file download URLs in the artifact version.
     """
 
     databusIdUrl: List[str] = []
@@ -528,17 +519,16 @@ def _download_group(
     auth_url: str = None,
     client_id: str = None,
 ) -> None:
-    """
-    Download files in a databus group.
+    """Download files in a databus group.
 
-    Parameters:
-    - uri: The full databus group URI
-    - localDir: Local directory to download files to. If None, the databus folder structure is created in the current working directory.
-    - all_versions: If True, download all versions of each artifact in the group; otherwise, only download the latest version
-    - vault_token_file: Path to Vault refresh token file for protected downloads
-    - databus_key: Databus API key for protected downloads
-    - auth_url: Keycloak token endpoint URL
-    - client_id: Client ID for token exchange
+    Args:
+        uri: The full databus group URI.
+        localDir: Local directory to download files to. If None, the databus folder structure is created in the current working directory.
+        all_versions: If True, download all versions of each artifact in the group; otherwise, only download the latest version.
+        vault_token_file: Path to Vault refresh token file for protected downloads.
+        databus_key: Databus API key for protected downloads.
+        auth_url: Keycloak token endpoint URL.
+        client_id: Client ID for token exchange.
     """
     json_str = fetch_databus_jsonld(uri, databus_key=databus_key)
     artifacts = _get_databus_artifacts_of_group(json_str)
@@ -599,19 +589,18 @@ def download(
     auth_url="https://auth.dbpedia.org/realms/dbpedia/protocol/openid-connect/token",
     client_id="vault-token-exchange",
 ) -> None:
-    """
-    Download datasets from databus.
+    """Download datasets from databus.
 
     Download of files, versions, artifacts, groups or databus collections via their databus URIs or user-defined SPARQL queries that return file download URLs.
 
-    Parameters:
-    - localDir: Local directory to download datasets to. If None, the databus folder structure is created in the current working directory.
-    - endpoint: the databus endpoint URL. If None, inferred from databusURI. Required for user-defined SPARQL queries.
-    - databusURIs: databus identifiers to specify datasets to download.
-    - token: Path to Vault refresh token file for protected downloads
-    - databus_key: Databus API key for protected downloads
-    - auth_url: Keycloak token endpoint URL. Default is "https://auth.dbpedia.org/realms/dbpedia/protocol/openid-connect/token".
-    - client_id: Client ID for token exchange. Default is "vault-token-exchange".
+    Args:
+        localDir: Local directory to download datasets to. If None, the databus folder structure is created in the current working directory.
+        endpoint: The databus endpoint URL. If None, inferred from databusURI. Required for user-defined SPARQL queries.
+        databusURIs: Databus identifiers to specify datasets to download.
+        token: Path to Vault refresh token file for protected downloads.
+        databus_key: Databus API key for protected downloads.
+        auth_url: Keycloak token endpoint URL. Default is "https://auth.dbpedia.org/realms/dbpedia/protocol/openid-connect/token".
+        client_id: Client ID for token exchange. Default is "vault-token-exchange".
     """
     for databusURI in databusURIs:
         host, account, group, artifact, version, file = (

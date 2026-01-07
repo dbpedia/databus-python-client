@@ -1,3 +1,10 @@
+"""Build and publish Databus datasets (JSON-LD) from provided metadata.
+
+This module exposes helpers to create distribution strings, compute file
+information (sha256 and size), construct dataset JSON-LD payloads and
+publish them to a Databus instance using the Databus publish API.
+"""
+
 import hashlib
 import json
 from enum import Enum
@@ -25,6 +32,13 @@ class DeployLogLevel(Enum):
 
 
 def _get_content_variants(distribution_str: str) -> Optional[Dict[str, str]]:
+    """Parse content-variant key/value pairs from a distribution string.
+
+    The CLI supports passing a distribution as ``url|lang=en_type=parsed|...``.
+    This helper extracts the ``lang``/``type`` style key/value pairs as a
+    dictionary.
+    """
+
     args = distribution_str.split("|")
 
     # cv string is ALWAYS at position 1 after the URL
@@ -50,6 +64,12 @@ def _get_content_variants(distribution_str: str) -> Optional[Dict[str, str]]:
 def _get_filetype_definition(
     distribution_str: str,
 ) -> Tuple[Optional[str], Optional[str]]:
+    """Extract an explicit file format and compression from a distribution string.
+
+    Returns (file_extension, compression) where each may be ``None`` if the
+    format should be inferred from the URL path.
+    """
+
     file_ext = None
     compression = None
 
@@ -87,6 +107,12 @@ def _get_filetype_definition(
 
 
 def _get_extensions(distribution_str: str) -> Tuple[str, str, str]:
+    """Return tuple `(extension_part, format_extension, compression)`.
+
+    ``extension_part`` is the textual extension appended to generated
+    filenames (e.g. ".ttl.gz").
+    """
+
     extension_part = ""
     format_extension, compression = _get_filetype_definition(distribution_str)
 
@@ -126,6 +152,11 @@ def _get_extensions(distribution_str: str) -> Tuple[str, str, str]:
 
 
 def _get_file_stats(distribution_str: str) -> Tuple[Optional[str], Optional[int]]:
+    """Parse an optional ``sha256sum:length`` tuple from a distribution string.
+
+    Returns (sha256sum, content_length) or (None, None) when not provided.
+    """
+
     metadata_list = distribution_str.split("|")[1:]
     # check whether there is the shasum:length tuple separated by :
     if len(metadata_list) == 0 or ":" not in metadata_list[-1]:
@@ -146,6 +177,12 @@ def _get_file_stats(distribution_str: str) -> Tuple[Optional[str], Optional[int]
 
 
 def _load_file_stats(url: str) -> Tuple[str, int]:
+    """Download the file at ``url`` and compute its SHA-256 and length.
+
+    This is used as a fallback when the caller did not supply checksum/size
+    information in the CLI or metadata file.
+    """
+
     resp = requests.get(url, timeout=30)
     if resp.status_code >= 400:
         raise requests.exceptions.RequestException(response=resp)
@@ -156,6 +193,11 @@ def _load_file_stats(url: str) -> Tuple[str, int]:
 
 
 def get_file_info(distribution_str: str) -> Tuple[Dict[str, str], str, str, str, int]:
+    """Return parsed file information for a distribution string.
+
+    Returns a tuple `(cvs, format_extension, compression, sha256sum, size)`.
+    """
+
     cvs = _get_content_variants(distribution_str)
     extension_part, format_extension, compression = _get_extensions(distribution_str)
 

@@ -13,7 +13,11 @@ from databusclient.extensions import webdav
 
 @click.group()
 def app():
-    """Databus Client CLI"""
+    """Databus Client CLI.
+
+    Provides `deploy`, `download`, and `delete` commands for interacting
+    with the DBpedia Databus.
+    """
     pass
 
 
