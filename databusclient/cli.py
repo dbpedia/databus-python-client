@@ -13,23 +13,13 @@ from databusclient.extensions import webdav
 
 
 @click.group()
-@click.option("-v", "--verbose", is_flag=True, help="Enable verbose HTTP request/response output")
-@click.pass_context
-def app(ctx, verbose):
-    """Databus Client CLI"""
-    import logging
+def app():
+    """Databus Client CLI.
 
-    ctx.ensure_object(dict)
-    ctx.obj["verbose"] = verbose
-
-    # Configure databusclient logger when verbose flag is used
-    logger = logging.getLogger("databusclient")
-    if verbose:
-        handler = logging.StreamHandler()
-        handler.setFormatter(logging.Formatter("%(message)s"))
-        if not logger.hasHandlers():
-            logger.addHandler(handler)
-        logger.setLevel(logging.DEBUG)
+    Provides `deploy`, `download`, and `delete` commands for interacting
+    with the DBpedia Databus.
+    """
+    pass
 
 
 @app.command()
