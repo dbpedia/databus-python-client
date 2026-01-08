@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 import json
 import os
+import re
 from typing import List
 
 import click
-import re
 
 import databusclient.api.deploy as api_deploy
 from databusclient.api.delete import delete as api_delete
@@ -16,7 +16,11 @@ from databusclient.extensions import webdav
 @click.option("-v", "--verbose", is_flag=True, help="Enable verbose HTTP request/response output")
 @click.pass_context
 def app(ctx, verbose):
-    """Databus Client CLI"""
+    """Databus Client CLI.
+
+    Provides `deploy`, `download`, and `delete` commands for interacting
+    with the DBpedia Databus.
+    """
     import logging
 
     ctx.ensure_object(dict)
@@ -75,20 +79,23 @@ def deploy(
     distributions: List[str],
 ):
     """
-    Flexible deploy to Databus command supporting three modes:\n
-    - Classic deploy (distributions as arguments)\n
-    - Metadata-based deploy (--metadata <file>)\n
+    Flexible deploy to Databus command supporting three modes:
+
+    - Classic deploy (distributions as arguments)
+    - Metadata-based deploy (--metadata <file>)
     - Upload & deploy via Nextcloud (--webdav-url, --remote, --path)
     """
 
     # Sanity checks for conflicting options
     if metadata_file and any([distributions, webdav_url, remote, path]):
         raise click.UsageError(
-            "Invalid combination: when using --metadata, do not provide --webdav-url, --remote, --path, or distributions."
+            "Invalid combination: when using --metadata, do not provide "
+            "--webdav-url, --remote, --path, or distributions."
         )
     if any([webdav_url, remote, path]) and not all([webdav_url, remote, path]):
         raise click.UsageError(
-            "Invalid combination: when using WebDAV/Nextcloud mode, please provide --webdav-url, --remote, and --path together."
+            "Invalid combination: when using WebDAV/Nextcloud mode, please "
+            "provide --webdav-url, --remote, and --path together."
         )
 
     # === Mode 1: Classic Deploy ===
@@ -119,7 +126,6 @@ def deploy(
                 "Please provide files to upload when using WebDAV/Nextcloud mode."
             )
 
-        # Check that all given paths exist and are files or directories.
         invalid = [f for f in distributions if not os.path.exists(f)]
         if invalid:
             raise click.UsageError(
@@ -185,9 +191,7 @@ def download(
     authurl,
     clientid,
 ):
-    """
-    Download datasets from databus, optionally using vault access if vault options are provided.
-    """
+    """Download datasets from databus."""
     try:
         api_download(
             localDir=localdir,
@@ -216,13 +220,7 @@ def download(
     "--force", is_flag=True, help="Force deletion without confirmation prompt"
 )
 def delete(databusuris: List[str], databus_key: str, dry_run: bool, force: bool):
-    """
-    Delete a dataset from the databus.
-
-    Delete a group, artifact, or version identified by the given databus URI.
-    Will recursively delete all data associated with the dataset.
-    """
-
+    """Delete a dataset from the databus."""
     api_delete(
         databusURIs=databusuris,
         databus_key=databus_key,
@@ -240,7 +238,6 @@ def delete(databusuris: List[str], databus_key: str, dry_run: bool, force: bool)
 @click.option("--json-output", is_flag=True, help="Output JSON distribution object instead of plain string")
 def mkdist(url, cvs, file_format, compression, sha_length, json_output):
     """Create a distribution string from components."""
-    # Validate CVs
     cvs_dict = {}
     for cv in cvs:
         if "=" not in cv:
@@ -252,27 +249,30 @@ def mkdist(url, cvs, file_format, compression, sha_length, json_output):
             raise click.BadParameter(f"Duplicate content-variant key '{key}'")
         cvs_dict[key] = val
 
-    # Validate sha-length
     sha_tuple = None
     if sha_length:
-        if not re.match(r'^[A-Fa-f0-9]{64}:\d+$', sha_length):
+        if not re.match(r"^[A-Fa-f0-9]{64}:\d+$", sha_length):
             raise click.BadParameter("Invalid --sha-length; expected SHA256HEX:length")
         sha, length = sha_length.split(":", 1)
         sha_tuple = (sha, int(length))
 
-    # Deterministic ordering
     sorted_cvs = {k: cvs_dict[k] for k in sorted(cvs_dict)}
 
-    dist = api_deploy.create_distribution(url=url, cvs=sorted_cvs, file_format=file_format, compression=compression, sha256_length_tuple=sha_tuple)
+    dist = api_deploy.create_distribution(
+        url=url,
+        cvs=sorted_cvs,
+        file_format=file_format,
+        compression=compression,
+        sha256_length_tuple=sha_tuple,
+    )
     if json_output:
-        import json as _json
-        click.echo(_json.dumps({"distribution": dist}))
+        click.echo(json.dumps({"distribution": dist}))
     else:
         click.echo(dist)
 
 
 @app.command()
-@click.argument("shell", type=click.Choice(["bash","zsh","fish","powershell"]), required=False)
+@click.argument("shell", type=click.Choice(["bash", "zsh", "fish", "powershell"]), required=False)
 def completion(shell="bash"):
     click.echo(f"Run: eval \"$(_DATABUSCLIENT_COMPLETE=source_{shell} python -m databusclient)\"")
 
