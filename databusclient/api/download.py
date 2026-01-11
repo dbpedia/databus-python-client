@@ -84,7 +84,7 @@ def _extract_checksums_from_jsonld(json_str: str) -> dict:
         jd = json.loads(json_str)
     except Exception:
         return {}
-    if isinstance(jd, list):
+    if isinstance(jd, dict):
         graph = jd.get("@graph", [])
     elif isinstance(jd, list):
         graph = jd
@@ -830,7 +830,7 @@ def download(
                             checks = _extract_checksums_from_jsonld(json_str)
                             expected = checks.get(databusURI) or checks.get(
                                 "https://" + databusURI.removeprefix("http://").removeprefix("https://")
-                           )
+                            )
                     except Exception as e:
                         print(f"WARNING: Could not fetch checksum for single file: {e}")
 
