@@ -268,9 +268,9 @@ def _create_distributions_from_metadata(
 
 def create_dataset(
     version_id: str,
-    title: str,
-    abstract: str,
-    description: str,
+    artifact_title: str,
+    artifact_abstract: str,
+    artifact_description: str,
     license_url: str,
     distributions: List[str],
     attribution: str = None,
