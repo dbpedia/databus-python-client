@@ -1,5 +1,5 @@
 from typing import Optional, Tuple
-
+import hashlib
 import requests
 
 
@@ -48,3 +48,15 @@ def fetch_databus_jsonld(uri: str, databus_key: str | None = None) -> str:
     response.raise_for_status()
 
     return response.text
+
+def compute_sha256_and_length(filepath):
+    sha256 = hashlib.sha256()
+    total_length = 0
+    with open(filepath, "rb") as f:
+        while True:
+            chunk = f.read(4096)
+            if not chunk:
+                break
+            sha256.update(chunk)
+            total_length += len(chunk)
+    return sha256.hexdigest(), total_length

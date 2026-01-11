@@ -1,5 +1,6 @@
 import json
 import os
+import re
 from typing import List
 from urllib.parse import urlparse
 
@@ -12,7 +13,10 @@ from databusclient.api.utils import (
     get_databus_id_parts_from_file_url,
 )
 
-from databusclient.extensions.webdav import compute_sha256_and_length
+from databusclient.api.utils import compute_sha256_and_length
+
+# compiled regex for SHA-256 hex strings
+_SHA256_RE = re.compile(r"^[0-9a-fA-F]{64}$")
 
 def _extract_checksum_from_node(node) -> str | None:
     """
@@ -20,12 +24,12 @@ def _extract_checksum_from_node(node) -> str | None:
     Handles these common shapes:
     - checksum or sha256sum fields as plain string
     - checksum fields as dict with '@value'
-    - nested values (recursively search strings for a 64-char hex)
+    - nested values under the allowed keys (lists or '@value' objects)
     """
     def find_in_value(v):
         if isinstance(v, str):
             s = v.strip()
-            if len(s) == 64 and all(c in "0123456789abcdefABCDEF" for c in s):
+            if _SHA256_RE.match(s):
                 return s
         if isinstance(v, dict):
             # common JSON-LD value object
@@ -45,18 +49,13 @@ def _extract_checksum_from_node(node) -> str | None:
                     return res
         return None
 
-    # direct keys to try first
+    # Only inspect the explicitly allowed keys to avoid false positives.
     for key in ("checksum", "sha256sum", "sha256", "databus:checksum"):
         if key in node:
             res = find_in_value(node[key])
             if res:
                 return res
 
-    # fallback: search all values recursively for a 64-char hex string
-    for v in node.values():
-        res = find_in_value(v)
-        if res:
-            return res
     return None
 
 
@@ -72,6 +71,67 @@ class DownloadAuthError(Exception):
     """Raised when an authorization problem occurs during download."""
 
 
+
+def _extract_checksums_from_jsonld(json_str: str) -> dict:
+    """
+    Parse a JSON-LD string and return a mapping of file URI (and @id) -> checksum.
+
+    Uses the existing _extract_checksum_from_node logic to extract checksums
+    from `Part` nodes. Both the node's `file` and `@id` (if present and a
+    string) are mapped to the checksum to preserve existing lookup behavior.
+    """
+    try:
+        jd = json.loads(json_str)
+    except Exception:
+        return {}
+    graph = jd.get("@graph", [])
+    checksums: dict = {}
+    for node in graph:
+        if node.get("@type") == "Part":
+            expected = _extract_checksum_from_node(node)
+            if not expected:
+                continue
+            file_uri = node.get("file")
+            if isinstance(file_uri, str):
+                checksums[file_uri] = expected
+            node_id = node.get("@id")
+            if isinstance(node_id, str):
+                checksums[node_id] = expected
+    return checksums
+
+
+def _resolve_checksums_for_urls(file_urls: List[str], databus_key: str | None) -> dict:
+    """
+    Group file URLs by their Version URI, fetch each Version JSON-LD once,
+    and return a combined url->checksum mapping for the provided URLs.
+
+    Best-effort: failures to fetch or parse individual versions are skipped.
+    """
+    versions_map: dict = {}
+    for file_url in file_urls:
+        try:
+            host, accountId, groupId, artifactId, versionId, fileId = get_databus_id_parts_from_file_url(file_url)
+        except Exception:
+            continue
+        if versionId is None:
+            continue
+        if host is None or accountId is None or groupId is None or artifactId is None:
+            continue
+        version_uri = f"https://{host}/{accountId}/{groupId}/{artifactId}/{versionId}"
+        versions_map.setdefault(version_uri, []).append(file_url)
+
+    checksums: dict = {}
+    for version_uri, urls_in_version in versions_map.items():
+        try:
+            json_str = fetch_databus_jsonld(version_uri, databus_key=databus_key)
+            extracted_checksums = _extract_checksums_from_jsonld(json_str)
+            for url in urls_in_version:
+                if url in extracted_checksums:
+                    checksums[url] = extracted_checksums[url]
+        except Exception:
+            # Best-effort: skip versions we cannot fetch or parse
+            continue
+    return checksums
 
 def _download_file(
     url,
@@ -248,8 +308,10 @@ def _download_file(
             print(f"WARNING: could not compute checksum for {filename}; skipping validation")
         else:
             if actual.lower() != expected_checksum.lower():
-                try: os.remove(filename)  # delete corrupted file
-                except OSError: pass
+                try: 
+                    os.remove(filename)  # delete corrupted file
+                except OSError: 
+                    pass
                 raise IOError(
                     f"Checksum mismatch for {filename}: expected {expected_checksum}, got {actual}"
                 )
@@ -456,41 +518,9 @@ def _download_collection(
     )
 
     # If checksum validation requested, attempt to build url->checksum mapping
-    # by fetching the Version JSON-LD for each file's version. We group files
-    # by their version URI to avoid fetching the same metadata repeatedly.
     checksums: dict = {}
     if validate_checksum:
-        # Map version_uri -> list of file urls
-        versions_map: dict = {}
-        for fu in file_urls:
-            try:
-                h, acc, grp, art, ver, f = get_databus_id_parts_from_file_url(fu)
-            except Exception:
-                continue
-            if ver is None:
-                continue
-            if h is None or acc is None or grp is None or art is None:
-                continue
-            version_uri = f"https://{h}/{acc}/{grp}/{art}/{ver}"
-            versions_map.setdefault(version_uri, []).append(fu)
-
-        # Fetch each version's JSON-LD once and extract checksums for its files
-        for version_uri, urls_in_version in versions_map.items():
-            try:
-                json_str = fetch_databus_jsonld(version_uri, databus_key=databus_key)
-                jd = json.loads(json_str)
-                graph = jd.get("@graph", [])
-                for node in graph:
-                    if node.get("@type") == "Part":
-                        file_uri = node.get("file")
-                        if not isinstance(file_uri, str):
-                            continue
-                        expected = _extract_checksum_from_node(node)
-                        if expected and file_uri in urls_in_version:
-                            checksums[file_uri] = expected
-            except Exception:
-                # Best-effort: if fetching a version fails, skip it
-                continue
+        checksums = _resolve_checksums_for_urls(list(file_urls), databus_key)
 
     _download_files(
         list(file_urls),
@@ -529,16 +559,7 @@ def _download_version(
     # build url -> checksum mapping from JSON-LD when available
     checksums: dict = {}
     try:
-        json_dict = json.loads(json_str)
-        graph = json_dict.get("@graph", [])
-        for node in graph:
-            if node.get("@type") == "Part":
-                file_uri = node.get("file")
-                if not isinstance(file_uri, str):
-                    continue
-                expected = _extract_checksum_from_node(node)
-                if expected:
-                    checksums[file_uri] = expected
+        checksums = _extract_checksums_from_jsonld(json_str)
     except Exception:
         checksums = {}
 
@@ -587,16 +608,7 @@ def _download_artifact(
         # extract checksums for this version
         checksums: dict = {}
         try:
-            jd = json.loads(json_str)
-            graph = jd.get("@graph", [])
-            for node in graph:
-                if node.get("@type") == "Part":
-                    file_uri = node.get("file")
-                    if not isinstance(file_uri, str):
-                        continue
-                    expected = _extract_checksum_from_node(node)
-                    if expected:
-                        checksums[file_uri] = expected
+            checksums = _extract_checksums_from_jsonld(json_str)
         except Exception:
             checksums = {}
 
@@ -806,15 +818,13 @@ def download(
                 expected = None
                 if validate_checksum:
                     try:
-                        version_uri = f"https://{host}/{account}/{group}/{artifact}/{version}"
-                        json_str = fetch_databus_jsonld(version_uri, databus_key=databus_key)
-                        json_dict = json.loads(json_str)
-                        graph = json_dict.get("@graph", [])
-                        for node in graph:
-                            if node.get("file") == databusURI or node.get("@id") == databusURI:
-                                expected = _extract_checksum_from_node(node)
-                                if expected:
-                                    break
+                            version_uri = f"https://{host}/{account}/{group}/{artifact}/{version}"
+                            json_str = fetch_databus_jsonld(version_uri, databus_key=databus_key)
+                            checks = _extract_checksums_from_jsonld(json_str)
+                            expected = checks.get(databusURI)
+                            if expected is None:
+                                # fallback: try lookup by @id (helper already maps @id too)
+                                expected = checks.get(databusURI)
                     except Exception as e:
                         print(f"WARNING: Could not fetch checksum for single file: {e}")
 
@@ -880,13 +890,19 @@ def download(
         # query as argument
         else:
             print("QUERY {}", databusURI.replace("\n", " "))
-            if validate_checksum:
-                print("WARNING: Checksum validation is not supported for user-defined SPARQL queries.")
             if uri_endpoint is None:  # endpoint is required for queries (--databus)
                 raise ValueError("No endpoint given for query")
             res = _get_file_download_urls_from_sparql_query(
                 uri_endpoint, databusURI, databus_key=databus_key
             )
+
+            # If checksum validation requested, try to build url->checksum mapping
+            checksums: dict = {}
+            if validate_checksum:
+                checksums = _resolve_checksums_for_urls(res, databus_key)
+                if not checksums:
+                    print("WARNING: Checksum validation enabled but no checksums found for query results.")
+
             _download_files(
                 res,
                 localDir,
@@ -895,4 +911,5 @@ def download(
                 auth_url=auth_url,
                 client_id=client_id,
                 validate_checksum=validate_checksum,
+                checksums=checksums if checksums else None,
             )
