@@ -162,6 +162,11 @@ def deploy(
     show_default=True,
     help="Client ID for token exchange",
 )
+@click.option(
+    "--validate-checksum",
+    is_flag=True,
+    help="Validate checksums of downloaded files"
+)
 def download(
     databusuris: List[str],
     localdir,
@@ -171,7 +176,8 @@ def download(
     all_versions,
     authurl,
     clientid,
-):
+    validate_checksum,
+):    
     """
     Download datasets from databus, optionally using vault access if vault options are provided.
     """
@@ -185,7 +191,8 @@ def download(
             all_versions=all_versions,
             auth_url=authurl,
             client_id=clientid,
-        )
+            validate_checksum=validate_checksum
+        )            
     except DownloadAuthError as e:
         raise click.ClickException(str(e))
 
