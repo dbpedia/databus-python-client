@@ -84,7 +84,13 @@ def _extract_checksums_from_jsonld(json_str: str) -> dict:
         jd = json.loads(json_str)
     except Exception:
         return {}
-    graph = jd.get("@graph", [])
+    if isinstance(jd, list):
+        graph = jd.get("@graph", [])
+    elif isinstance(jd, list):
+        graph = jd
+    else:
+        return{}
+                    
     checksums: dict = {}
     for node in graph:
         if node.get("@type") == "Part":
@@ -248,7 +254,7 @@ def _download_file(
         # for user-friendly CLI output.
         vault_token = __get_vault_access__(url, vault_token_file, auth_url, client_id)
         headers["Authorization"] = f"Bearer {vault_token}"
-        headers.pop("Accept-Encoding", None)
+        headers["Accept-Encoding"] = "identity"
 
         # Retry with token
         response = requests.get(url, headers=headers, stream=True, timeout=30)
@@ -818,13 +824,13 @@ def download(
                 expected = None
                 if validate_checksum:
                     try:
+                        if version is not None:
                             version_uri = f"https://{host}/{account}/{group}/{artifact}/{version}"
                             json_str = fetch_databus_jsonld(version_uri, databus_key=databus_key)
                             checks = _extract_checksums_from_jsonld(json_str)
-                            expected = checks.get(databusURI)
-                            if expected is None:
-                                # fallback: try lookup by @id (helper already maps @id too)
-                                expected = checks.get(databusURI)
+                            expected = checks.get(databusURI) or checks.get(
+                                "https://" + databusURI.removeprefix("http://").removeprefix("https://")
+                           )
                     except Exception as e:
                         print(f"WARNING: Could not fetch checksum for single file: {e}")
 
