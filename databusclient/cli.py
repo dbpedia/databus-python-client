@@ -171,6 +171,8 @@ def deploy(
     "--convert-from",
     type=click.Choice(["bz2", "gz", "xz"], case_sensitive=False),
     help="Source compression format to convert from (optional filter). Only files with this compression will be converted.",
+)
+@click.option(
     "--validate-checksum",
     is_flag=True,
     help="Validate checksums of downloaded files"
@@ -186,25 +188,12 @@ def download(
     clientid,
     convert_to,
     convert_from,
-):
     validate_checksum,
-):    
+):
     """
     Download datasets from databus, optionally using vault access if vault options are provided.
     Supports on-the-fly compression format conversion using --convert-to and --convert-from options.
     """
-    api_download(
-        localDir=localdir,
-        endpoint=databus,
-        databusURIs=databusuris,
-        token=vault_token,
-        databus_key=databus_key,
-        all_versions=all_versions,
-        auth_url=authurl,
-        client_id=clientid,
-        convert_to=convert_to,
-        convert_from=convert_from,
-    )
     try:
         api_download(
             localDir=localdir,
@@ -215,8 +204,10 @@ def download(
             all_versions=all_versions,
             auth_url=authurl,
             client_id=clientid,
-            validate_checksum=validate_checksum
-        )            
+            convert_to=convert_to,
+            convert_from=convert_from,
+            validate_checksum=validate_checksum,
+        )
     except DownloadAuthError as e:
         raise click.ClickException(str(e))
 

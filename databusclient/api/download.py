@@ -5,7 +5,6 @@ import gzip
 import lzma
 from typing import List, Optional, Tuple
 import re
-from typing import List
 from urllib.parse import urlparse
 
 import requests
@@ -15,6 +14,7 @@ from tqdm import tqdm
 from databusclient.api.utils import (
     fetch_databus_jsonld,
     get_databus_id_parts_from_file_url,
+    compute_sha256_and_length,
 )
 
 # Compression format mappings
@@ -139,8 +139,6 @@ def _convert_compression_format(
         if os.path.exists(target_file):
             os.remove(target_file)
         raise RuntimeError(f"Compression conversion failed: {e}")
-
-from databusclient.api.utils import compute_sha256_and_length
 
 # compiled regex for SHA-256 hex strings
 _SHA256_RE = re.compile(r"^[0-9a-fA-F]{64}$")
@@ -275,19 +273,6 @@ def _download_file(
     client_id=None,
     convert_to=None,
     convert_from=None,
-) -> None:
-    """
-    Download a file from the internet with a progress bar using tqdm.
-
-    Parameters:
-    - url: the URL of the file to download
-    - localDir: Local directory to download file to. If None, the databus folder structure is created in the current working directory.
-    - vault_token_file: Path to Vault refresh token file
-    - databus_key: Databus API key for protected downloads
-    - auth_url: Keycloak token endpoint URL
-    - client_id: Client ID for token exchange
-    - convert_to: Target compression format for on-the-fly conversion
-    - convert_from: Optional source compression format filter
     validate_checksum: bool = False,
     expected_checksum: str | None = None,
 ) -> None:
@@ -300,6 +285,10 @@ def _download_file(
         databus_key: Databus API key for protected downloads.
         auth_url: Keycloak token endpoint URL.
         client_id: Client ID for token exchange.
+        convert_to: Target compression format for on-the-fly conversion.
+        convert_from: Optional source compression format filter.
+        validate_checksum: Whether to validate checksums after downloading.
+        expected_checksum: The expected checksum of the file.
     """
     if localDir is None:
         _host, account, group, artifact, version, file = (
@@ -479,19 +468,6 @@ def _download_files(
     client_id: str = None,
     convert_to: str = None,
     convert_from: str = None,
-) -> None:
-    """
-    Download multiple files from the databus.
-
-    Parameters:
-    - urls: List of file download URLs
-    - localDir: Local directory to download files to. If None, the databus folder structure is created in the current working directory.
-    - vault_token_file: Path to Vault refresh token file
-    - databus_key: Databus API key for protected downloads
-    - auth_url: Keycloak token endpoint URL
-    - client_id: Client ID for token exchange
-    - convert_to: Target compression format for on-the-fly conversion
-    - convert_from: Optional source compression format filter
     validate_checksum: bool = False,
     checksums: dict | None = None,
 ) -> None:
@@ -504,6 +480,10 @@ def _download_files(
         databus_key: Databus API key for protected downloads.
         auth_url: Keycloak token endpoint URL.
         client_id: Client ID for token exchange.
+        convert_to: Target compression format for on-the-fly conversion.
+        convert_from: Optional source compression format filter.
+        validate_checksum: Whether to validate checksums after downloading.
+        checksums: Dictionary mapping URLs to their expected checksums.
     """
     for url in urls:
         expected = None
@@ -666,21 +646,7 @@ def _download_collection(
     client_id: str = None,
     convert_to: str = None,
     convert_from: str = None,
-) -> None:
-    """
-    Download all files in a databus collection.
-
-    Parameters:
-    - uri: The full databus collection URI
-    - endpoint: the databus SPARQL endpoint URL
-    - localDir: Local directory to download files to. If None, the databus folder structure is created in the current working directory.
-    - vault_token: Path to Vault refresh token file for protected downloads
-    - databus_key: Databus API key for protected downloads
-    - auth_url: Keycloak token endpoint URL
-    - client_id: Client ID for token exchange
-    - convert_to: Target compression format for on-the-fly conversion
-    - convert_from: Optional source compression format filter
-    validate_checksum: bool = False
+    validate_checksum: bool = False,
 ) -> None:
     """Download all files in a databus collection.
 
@@ -692,6 +658,9 @@ def _download_collection(
         databus_key: Databus API key for protected downloads.
         auth_url: Keycloak token endpoint URL.
         client_id: Client ID for token exchange.
+        convert_to: Target compression format for on-the-fly conversion.
+        convert_from: Optional source compression format filter.
+        validate_checksum: Whether to validate checksums after downloading.
     """
     query = _get_sparql_query_of_collection(uri, databus_key=databus_key)
     file_urls = _get_file_download_urls_from_sparql_query(
@@ -726,19 +695,6 @@ def _download_version(
     client_id: str = None,
     convert_to: str = None,
     convert_from: str = None,
-) -> None:
-    """
-    Download all files in a databus artifact version.
-
-    Parameters:
-    - uri: The full databus artifact version URI
-    - localDir: Local directory to download files to. If None, the databus folder structure is created in the current working directory.
-    - vault_token_file: Path to Vault refresh token file for protected downloads
-    - databus_key: Databus API key for protected downloads
-    - auth_url: Keycloak token endpoint URL
-    - client_id: Client ID for token exchange
-    - convert_to: Target compression format for on-the-fly conversion
-    - convert_from: Optional source compression format filter
     validate_checksum: bool = False,
 ) -> None:
     """Download all files in a databus artifact version.
@@ -750,6 +706,9 @@ def _download_version(
         databus_key: Databus API key for protected downloads.
         auth_url: Keycloak token endpoint URL.
         client_id: Client ID for token exchange.
+        convert_to: Target compression format for on-the-fly conversion.
+        convert_from: Optional source compression format filter.
+        validate_checksum: Whether to validate checksums after downloading.
     """
     json_str = fetch_databus_jsonld(uri, databus_key=databus_key)
     file_urls = _get_file_download_urls_from_artifact_jsonld(json_str)
@@ -784,20 +743,6 @@ def _download_artifact(
     client_id: str = None,
     convert_to: str = None,
     convert_from: str = None,
-) -> None:
-    """
-    Download files in a databus artifact.
-
-    Parameters:
-    - uri: The full databus artifact URI
-    - localDir: Local directory to download files to. If None, the databus folder structure is created in the current working directory.
-    - all_versions: If True, download all versions of the artifact; otherwise, only download the latest version
-    - vault_token_file: Path to Vault refresh token file for protected downloads
-    - databus_key: Databus API key for protected downloads
-    - auth_url: Keycloak token endpoint URL
-    - client_id: Client ID for token exchange
-    - convert_to: Target compression format for on-the-fly conversion
-    - convert_from: Optional source compression format filter
     validate_checksum: bool = False,
 ) -> None:
     """Download files in a databus artifact.
@@ -810,6 +755,9 @@ def _download_artifact(
         databus_key: Databus API key for protected downloads.
         auth_url: Keycloak token endpoint URL.
         client_id: Client ID for token exchange.
+        convert_to: Target compression format for on-the-fly conversion.
+        convert_from: Optional source compression format filter.
+        validate_checksum: Whether to validate checksums after downloading.
     """
     json_str = fetch_databus_jsonld(uri, databus_key=databus_key)
     versions = _get_databus_versions_of_artifact(json_str, all_versions=all_versions)
@@ -880,8 +828,6 @@ def _get_databus_versions_of_artifact(
 
 def _get_file_download_urls_from_artifact_jsonld(json_str: str) -> List[str]:
     """Parse the JSON-LD of a databus artifact version to extract download URLs.
-    
-    Don't get downloadURLs directly from the JSON-LD, but follow the "file" links to count access to databus accurately.
 
     Args:
         json_str: JSON-LD string of the databus artifact version.
@@ -913,20 +859,6 @@ def _download_group(
     client_id: str = None,
     convert_to: str = None,
     convert_from: str = None,
-) -> None:
-    """
-    Download files in a databus group.
-
-    Parameters:
-    - uri: The full databus group URI
-    - localDir: Local directory to download files to. If None, the databus folder structure is created in the current working directory.
-    - all_versions: If True, download all versions of each artifact in the group; otherwise, only download the latest version
-    - vault_token_file: Path to Vault refresh token file for protected downloads
-    - databus_key: Databus API key for protected downloads
-    - auth_url: Keycloak token endpoint URL
-    - client_id: Client ID for token exchange
-    - convert_to: Target compression format for on-the-fly conversion
-    - convert_from: Optional source compression format filter
     validate_checksum: bool = False,
 ) -> None:
     """Download files in a databus group.
@@ -939,6 +871,9 @@ def _download_group(
         databus_key: Databus API key for protected downloads.
         auth_url: Keycloak token endpoint URL.
         client_id: Client ID for token exchange.
+        convert_to: Target compression format for on-the-fly conversion.
+        convert_from: Optional source compression format filter.
+        validate_checksum: Whether to validate checksums after downloading.
     """
     json_str = fetch_databus_jsonld(uri, databus_key=databus_key)
     artifacts = _get_databus_artifacts_of_group(json_str)
@@ -1009,16 +944,6 @@ def download(
 
     Download of files, versions, artifacts, groups or databus collections via their databus URIs or user-defined SPARQL queries that return file download URLs.
 
-    Parameters:
-    - localDir: Local directory to download datasets to. If None, the databus folder structure is created in the current working directory.
-    - endpoint: the databus endpoint URL. If None, inferred from databusURI. Required for user-defined SPARQL queries.
-    - databusURIs: databus identifiers to specify datasets to download.
-    - token: Path to Vault refresh token file for protected downloads
-    - databus_key: Databus API key for protected downloads
-    - auth_url: Keycloak token endpoint URL. Default is "https://auth.dbpedia.org/realms/dbpedia/protocol/openid-connect/token".
-    - client_id: Client ID for token exchange. Default is "vault-token-exchange".
-    - convert_to: Target compression format for on-the-fly conversion (supported: bz2, gz, xz)
-    - convert_from: Optional source compression format filter
     Args:
         localDir: Local directory to download datasets to. If None, the databus folder structure is created in the current working directory.
         endpoint: The databus endpoint URL. If None, inferred from databusURI. Required for user-defined SPARQL queries.
@@ -1027,6 +952,9 @@ def download(
         databus_key: Databus API key for protected downloads.
         auth_url: Keycloak token endpoint URL. Default is "https://auth.dbpedia.org/realms/dbpedia/protocol/openid-connect/token".
         client_id: Client ID for token exchange. Default is "vault-token-exchange".
+        convert_to: Target compression format for on-the-fly conversion (supported: bz2, gz, xz).
+        convert_from: Optional source compression format filter.
+        validate_checksum: Whether to validate checksums after downloading.
     """
     for databusURI in databusURIs:
         host, account, group, artifact, version, file = (
