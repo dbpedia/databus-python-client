@@ -50,10 +50,26 @@ python3 -m pip install --upgrade databusclient==0.15
 You can then use the client in the command line:
 
 ```bash
+# Python
 databusclient --help
-databusclient deploy --help
-databusclient delete --help
-databusclient download --help
+
+# Example output:
+# Usage: databusclient [OPTIONS] COMMAND [ARGS]...
+#
+# Options:
+#   --install-completion [bash|zsh|fish|powershell|pwsh]  Install completion for the specified shell.
+#   --show-completion [bash|zsh|fish|powershell|pwsh]     Show completion for the specified shell.
+#   --help                                               Show this message and exit.
+#
+# Commands:
+#   deploy
+#   download
+#   delete
+#   mkdist
+#   completion
+```
+
+### Download command
 ```
 
 ### Docker
@@ -172,6 +188,8 @@ docker run --rm -v $(pwd):/data dbpedia/databus-python-client download $DOWNLOAD
   - If the dataset/files to be downloaded require vault authentication, you need to provide a vault token with `--vault-token /path/to/vault-token.dat`. See [Registration (Access Token)](#registration-access-token) for details on how to get a vault token.
   
   Note: Vault tokens are only required for certain protected Databus hosts (for example: `data.dbpedia.io`, `data.dev.dbpedia.link`). The client now detects those hosts and will fail early with a clear message if a token is required but not provided. Do not pass `--vault-token` for public downloads.
+- `-v, --verbose`
+  - Enable verbose HTTP request/response output for debugging. Headers that may contain secrets (for example `Authorization` and `X-API-KEY`) are redacted in the output. Use with caution and avoid enabling in public CI logs.
 - `--databus-key`
   - If the databus is protected and needs API key authentication, you can provide the API key with `--databus-key YOUR_API_KEY`.
 
@@ -289,7 +307,7 @@ Usage: databusclient deploy [OPTIONS] [DISTRIBUTIONS]...
   - Upload & deploy via Nextcloud (--webdav-url, --remote, --path)
 
 Options:
-  --version-id TEXT   Target databus version/dataset identifier of the form <h
+  --versionid TEXT   Target databus version/dataset identifier of the form <h
                       ttps://databus.dbpedia.org/$ACCOUNT/$GROUP/$ARTIFACT/$VE
                       RSION>  [required]
   --title TEXT        Dataset title  [required]
@@ -303,6 +321,18 @@ Options:
   --remote TEXT       rclone remote name (e.g., 'nextcloud')
   --path TEXT         Remote path on Nextcloud (e.g., 'datasets/mydataset')
   --help              Show this message and exit.
+<<<<<<< HEAD
+  
+```
+#### Examples of using deploy command
+##### Mode 1: Classic Deploy (Distributions)
+```
+databusclient deploy --versionid https://databus.dbpedia.org/user1/group1/artifact1/2022-05-18 --title title1 --abstract abstract1 --description description1 --license http://dalicc.net/licenselibrary/AdaptivePublicLicense10 --apikey MYSTERIOUS 'https://raw.githubusercontent.com/dbpedia/databus/master/server/app/api/swagger.yml|type=swagger'  
+```
+
+```
+databusclient deploy --versionid https://dev.databus.dbpedia.org/denis/group1/artifact1/2022-05-18 --title "Client Testing" --abstract "Testing the client...." --description "Testing the client...." --license http://dalicc.net/licenselibrary/AdaptivePublicLicense10 --apikey MYSTERIOUS 'https://raw.githubusercontent.com/dbpedia/databus/master/server/app/api/swagger.yml|type=swagger'  
+=======
 ```
 
 ### Mode 1: Classic Deploy (Distributions)
@@ -326,6 +356,7 @@ docker run --rm -v $(pwd):/data dbpedia/databus-python-client deploy \
 --license http://dalicc.net/licenselibrary/AdaptivePublicLicense10 \
 --apikey MYSTERIOUS \
 'https://raw.githubusercontent.com/dbpedia/databus/master/server/app/api/swagger.yml|type=swagger
+>>>>>>> upstream/main
 ```
 A few more notes for CLI usage:
 
@@ -342,6 +373,10 @@ All files referenced there will be registered on the Databus.
 ```bash
 # Python
 databusclient deploy \
+<<<<<<< HEAD
+  --metadata /home/metadata.json \
+  --versionid https://databus.org/user/dataset/version/1.0 \
+=======
   --metadata ./metadata.json \
   --version-id https://databus.dbpedia.org/user1/group1/artifact1/1.0 \
   --title "Metadata Deploy Example" \
@@ -353,6 +388,7 @@ databusclient deploy \
 docker run --rm -v $(pwd):/data dbpedia/databus-python-client deploy \
   --metadata ./metadata.json \
   --version-id https://databus.dbpedia.org/user1/group1/artifact1/1.0 \
+>>>>>>> upstream/main
   --title "Metadata Deploy Example" \
   --abstract "This is a short abstract of the dataset." \
   --description "This dataset was uploaded using metadata.json." \
@@ -388,6 +424,9 @@ databusclient deploy \
   --webdav-url https://cloud.example.com/remote.php/webdav \
   --remote nextcloud \
   --path datasets/mydataset \
+<<<<<<< HEAD
+  --versionid https://databus.org/user/dataset/version/1.0 \
+=======
   --version-id https://databus.dbpedia.org/user1/group1/artifact1/1.0 \
   --title "Test Dataset" \
   --abstract "Short abstract of dataset" \
@@ -402,6 +441,7 @@ docker run --rm -v $(pwd):/data dbpedia/databus-python-client deploy \
   --remote nextcloud \
   --path datasets/mydataset \
   --version-id https://databus.dbpedia.org/user1/group1/artifact1/1.0 \
+>>>>>>> upstream/main
   --title "Test Dataset" \
   --abstract "Short abstract of dataset" \
   --description "This dataset was uploaded for testing the Nextcloud → Databus pipeline." \
@@ -485,6 +525,48 @@ docker run --rm -v $(pwd):/data dbpedia/databus-python-client delete https://dat
 databusclient delete https://databus.dbpedia.org/dbpedia/collections/dbpedia-snapshot-2022-12 --databus-key YOUR_API_KEY
 # Docker
 docker run --rm -v $(pwd):/data dbpedia/databus-python-client delete https://databus.dbpedia.org/dbpedia/collections/dbpedia-snapshot-2022-12 --databus-key YOUR_API_KEY
+```
+
+### mkdist command
+
+Create a distribution string from components.
+
+Usage:
+```
+databusclient mkdist URL --cv key=value --cv key2=value2 --format ttl --compression gz --sha-length <sha256hex>:<length>
+```
+
+Example:
+```
+python -m databusclient mkdist "https://example.org/file.ttl" --cv lang=en --cv part=sorted --format ttl --compression gz --sha-length aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:12345
+```
+
+## Completion
+
+Enable shell completion (bash example):
+```
+eval "$(_DATABUSCLIENT_COMPLETE=source_bash python -m databusclient)"
+```
+
+### mkdist command
+
+Create a distribution string from components.
+
+Usage:
+```
+databusclient mkdist URL --cv key=value --cv key2=value2 --format ttl --compression gz --sha-length <sha256hex>:<length>
+```
+
+Example:
+```
+python -m databusclient mkdist "https://example.org/file.ttl" --cv lang=en --cv part=sorted --format ttl --compression gz --sha-length aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa:12345
+```
+
+## Completion
+
+Enable shell completion (bash example):
+```
+eval "$(_DATABUSCLIENT_COMPLETE=source_bash python -m databusclient)"
 ```
 
 ## Module Usage
