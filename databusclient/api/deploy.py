@@ -288,11 +288,11 @@ def create_dataset(
     ----------
     version_id: str
         The version ID representing the Dataset. Needs to be in the form of $DATABUS_BASE/$ACCOUNT/$GROUP/$ARTIFACT/$VERSION
-    title: str
+    artifact_title: str
         The title text of the dataset
-    abstract: str
+    artifact_abstract: str
         A short (one or two sentences) description of the dataset
-    description: str
+    artifact_description: str
         A long description of the dataset. Markdown syntax is supported
     license_url: str
         The license of the dataset as a URI.
@@ -380,9 +380,9 @@ def create_dataset(
     artifact_graph = {
         "@id": artifact_id,
         "@type": "Artifact",
-        "title": title,
-        "abstract": abstract,
-        "description": description,
+        "title": artifact_title,
+        "abstract": artifact_abstract,
+        "description": artifact_description,
     }
     graphs.append(artifact_graph)
 
@@ -392,9 +392,9 @@ def create_dataset(
         "@type": ["Version", "Dataset"],
         "@id": _versionId,
         "hasVersion": version,
-        "title": title,
-        "abstract": abstract,
-        "description": description,
+        "title": artifact_title,
+        "abstract": artifact_abstract,
+        "description": artifact_description,
         "license": license_url,
         "distribution": distribution_list,
     }
@@ -470,9 +470,9 @@ def deploy(
 def deploy_from_metadata(
     metadata: List[Dict[str, Union[str, int]]],
     version_id: str,
-    title: str,
-    abstract: str,
-    description: str,
+    artifact_title: str,
+    artifact_abstract: str,
+    artifact_description: str,
     license_url: str,
     apikey: str,
 ) -> None:
@@ -485,12 +485,12 @@ def deploy_from_metadata(
         List of file metadata entries (see _create_distributions_from_metadata)
     version_id : str
         Dataset version ID in the form $DATABUS_BASE/$ACCOUNT/$GROUP/$ARTIFACT/$VERSION
-    title : str
-        Dataset title
-    abstract : str
-        Short description of the dataset
-    description : str
-        Long description (Markdown supported)
+    artifact_title : str
+        Artifact title: the permanent name of the data series (applies to all versions)
+    artifact_abstract : str
+        Version Abstract: a short summary (max 200 chars) specific to this timestamped release
+    artifact_description : str
+        Version Description: detailed metadata for this specific release (supports Markdown)
     license_url : str
         License URI
     apikey : str
@@ -500,9 +500,9 @@ def deploy_from_metadata(
 
     dataset = create_dataset(
         version_id=version_id,
-        title=title,
-        abstract=abstract,
-        description=description,
+        artifact_title=artifact_title,
+        artifact_abstract=artifact_abstract,
+        artifact_description=artifact_description,
         license_url=license_url,
         distributions=distributions,
     )

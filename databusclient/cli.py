@@ -82,7 +82,12 @@ def deploy(
         click.echo(f"Deploying dataset version: {version_id}")
 
         dataid = api_deploy.create_dataset(
-            version_id, title, abstract, description, license_url, distributions
+            version_id=version_id,
+            artifact_title=title,
+            artifact_abstract=abstract,
+            artifact_description=description,
+            license_url=license_url,
+            distributions=distributions
         )
         api_deploy.deploy(dataid=dataid, api_key=apikey)
         return
