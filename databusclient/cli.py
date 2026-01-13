@@ -179,7 +179,11 @@ def deploy(
     show_default=True,
     help="Client ID for token exchange",
 )
-@click.pass_context
+@click.option(
+    "--validate-checksum",
+    is_flag=True,
+    help="Validate checksums of downloaded files"
+)
 def download(
     ctx,
     databusuris: List[str],
@@ -190,8 +194,11 @@ def download(
     all_versions,
     authurl,
     clientid,
-):
-    """Download datasets from databus."""
+    validate_checksum,
+):    
+    """
+    Download datasets from databus, optionally using vault access if vault options are provided.
+    """
     try:
         api_download(
             localDir=localdir,
@@ -202,8 +209,8 @@ def download(
             all_versions=all_versions,
             auth_url=authurl,
             client_id=clientid,
-            verbose=ctx.obj.get("verbose", False),
-        )
+            validate_checksum=validate_checksum
+        )            
     except DownloadAuthError as e:
         raise click.ClickException(str(e))
 
