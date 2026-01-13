@@ -7,13 +7,17 @@ import click
 
 import databusclient.api.deploy as api_deploy
 from databusclient.api.delete import delete as api_delete
-from databusclient.api.download import download as api_download
+from databusclient.api.download import download as api_download, DownloadAuthError
 from databusclient.extensions import webdav
 
 
 @click.group()
 def app():
-    """Databus Client CLI"""
+    """Databus Client CLI.
+
+    Provides `deploy`, `download`, and `delete` commands for interacting
+    with the DBpedia Databus.
+    """
     pass
 
 
@@ -167,6 +171,9 @@ def deploy(
     "--convert-from",
     type=click.Choice(["bz2", "gz", "xz"], case_sensitive=False),
     help="Source compression format to convert from (optional filter). Only files with this compression will be converted.",
+    "--validate-checksum",
+    is_flag=True,
+    help="Validate checksums of downloaded files"
 )
 def download(
     databusuris: List[str],
@@ -180,6 +187,8 @@ def download(
     convert_to,
     convert_from,
 ):
+    validate_checksum,
+):    
     """
     Download datasets from databus, optionally using vault access if vault options are provided.
     Supports on-the-fly compression format conversion using --convert-to and --convert-from options.
@@ -196,6 +205,20 @@ def download(
         convert_to=convert_to,
         convert_from=convert_from,
     )
+    try:
+        api_download(
+            localDir=localdir,
+            endpoint=databus,
+            databusURIs=databusuris,
+            token=vault_token,
+            databus_key=databus_key,
+            all_versions=all_versions,
+            auth_url=authurl,
+            client_id=clientid,
+            validate_checksum=validate_checksum
+        )            
+    except DownloadAuthError as e:
+        raise click.ClickException(str(e))
 
 
 @app.command()

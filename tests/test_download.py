@@ -28,5 +28,6 @@ def test_with_query():
 
 
 @pytest.mark.skip(reason="Live collection download is long-running and flakes on network timeouts")
+@pytest.mark.skip(reason="Integration test: requires live databus.dbpedia.org connection")
 def test_with_collection():
     api_download("tmp", DEFAULT_ENDPOINT, [TEST_COLLECTION])

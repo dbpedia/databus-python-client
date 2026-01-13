@@ -10,7 +10,7 @@ Command-line and Python client for downloading and deploying datasets on DBpedia
 - [DBpedia](#dbpedia)
   - [Registration (Access Token)](#registration-access-token)
   - [DBpedia Knowledge Graphs](#dbpedia-knowledge-graphs)
-    - [Download Live Fusion KG Snapshot (BUSL 1.1, registration needed)](#download-live-fusion-kg-snapshot-busl-11-registration-needed)
+    - [Download Live Fusion KG Dump (BUSL 1.1, registration needed)](#download-live-fusion-kg-dump-busl-11-registration-needed)
     - [Download Enriched Knowledge Graphs (BUSL 1.1, registration needed)](#download-enriched-knowledge-graphs-busl-11-registration-needed)
     - [Download DBpedia Wikipedia Knowledge Graphs (CC-BY-SA, no registration needed)](#download-dbpedia-wikipedia-knowledge-graphs-cc-by-sa-no-registration-needed)
     - [Download DBpedia Wikidata Knowledge Graphs (CC-BY-SA, no registration needed)](#download-dbpedia-wikidata-knowledge-graphs-cc-by-sa-no-registration-needed)
@@ -39,6 +39,12 @@ Before using the client, install it via pip:
 
 ```bash
 python3 -m pip install databusclient
+```
+
+Note: the PyPI release was updated and this repository prepares version `0.15`. If you previously installed `databusclient` via `pip` and observe different CLI behavior, upgrade to the latest release:
+
+```bash
+python3 -m pip install --upgrade databusclient==0.15
 ```
 
 You can then use the client in the command line:
@@ -77,48 +83,48 @@ To download BUSL 1.1 licensed datasets, you need to register and get an access t
 
 ### DBpedia Knowledge Graphs
 
-#### Download Live Fusion KG Snapshot (BUSL 1.1, registration needed)
-High-frequency, conflict-resolved knowledge graph that merges Live Wikipedia and Wikidata signals into a single, queryable snapshot for enterprise consumption. [More information](https://databus.dev.dbpedia.link/fhofer/live-fusion-kg-dump)
+#### Download Live Fusion KG Dump (BUSL 1.1, registration needed)
+High-frequency, conflict-resolved knowledge graph that merges Live Wikipedia and Wikidata signals into a single, queryable dump for enterprise consumption. [More information](https://databus.dbpedia.org/dbpedia-enterprise/live-fusion-kg-dump)
 ```bash
 # Python
-databusclient download https://databus.dev.dbpedia.link/fhofer/live-fusion-kg-dump --vault-token vault-token.dat
+databusclient download https://databus.dbpedia.org/dbpedia-enterprise/live-fusion-kg-dump --vault-token vault-token.dat
 # Docker
-docker run --rm -v $(pwd):/data dbpedia/databus-python-client download https://databus.dev.dbpedia.link/fhofer/live-fusion-kg-dump --vault-token vault-token.dat
+docker run --rm -v $(pwd):/data dbpedia/databus-python-client download https://databus.dbpedia.org/dbpedia-enterprise/live-fusion-kg-dump --vault-token vault-token.dat
 ```
 
 #### Download Enriched Knowledge Graphs (BUSL 1.1, registration needed)
 
 **DBpedia Wikipedia Extraction Enriched**
 
-DBpedia-based enrichment of structured Wikipedia extractions (currently EN DBpedia only). [More information](https://databus.dev.dbpedia.link/fhofer/dbpedia-wikipedia-kg-enriched-dump)
+DBpedia-based enrichment of structured Wikipedia extractions (currently EN DBpedia only). [More information](https://databus.dbpedia.org/dbpedia-enterprise/dbpedia-wikipedia-kg-enriched-dump)
 
 ```bash
 # Python
-databusclient download https://databus.dev.dbpedia.link/fhofer/dbpedia-wikipedia-kg-enriched-dump --vault-token vault-token.dat
+databusclient download https://databus.dbpedia.org/dbpedia-enterprise/dbpedia-wikipedia-kg-enriched-dump --vault-token vault-token.dat
 # Docker
-docker run --rm -v $(pwd):/data dbpedia/databus-python-client download https://databus.dev.dbpedia.link/fhofer/dbpedia-wikipedia-kg-enriched-dump --vault-token vault-token.dat
+docker run --rm -v $(pwd):/data dbpedia/databus-python-client download https://databus.dbpedia.org/dbpedia-enterprise/dbpedia-wikipedia-kg-enriched-dump --vault-token vault-token.dat
 ```
 
 #### Download DBpedia Wikipedia Knowledge Graphs (CC-BY-SA, no registration needed)
 
-Original extraction of structured Wikipedia data before enrichment. [More information](https://databus.dev.dbpedia.link/fhofer/dbpedia-wikipedia-kg-dump)
+Original extraction of structured Wikipedia data before enrichment. [More information](https://databus.dbpedia.org/dbpedia/dbpedia-wikipedia-kg-dump)
 
 ```bash
 # Python
-databusclient download https://databus.dev.dbpedia.link/fhofer/dbpedia-wikipedia-kg-dump
+databusclient download https://databus.dbpedia.org/dbpedia/dbpedia-wikipedia-kg-dump
 # Docker
-docker run --rm -v $(pwd):/data dbpedia/databus-python-client download https://databus.dev.dbpedia.link/fhofer/dbpedia-wikipedia-kg-dump
+docker run --rm -v $(pwd):/data dbpedia/databus-python-client download https://databus.dbpedia.org/dbpedia/dbpedia-wikipedia-kg-dump
 ```
 
 #### Download DBpedia Wikidata Knowledge Graphs (CC-BY-SA, no registration needed)
 
-Original extraction of structured Wikidata data before enrichment. [More information](https://databus.dev.dbpedia.link/fhofer/dbpedia-wikidata-kg-dump)
+Original extraction of structured Wikidata data before enrichment. [More information](https://databus.dbpedia.org/dbpedia/dbpedia-wikidata-kg-dump)
 
 ```bash
 # Python
-databusclient download https://databus.dev.dbpedia.link/fhofer/dbpedia-wikidata-kg-dump
+databusclient download https://databus.dbpedia.org/dbpedia/dbpedia-wikidata-kg-dump
 # Docker
-docker run --rm -v $(pwd):/data dbpedia/databus-python-client download https://databus.dev.dbpedia.link/fhofer/dbpedia-wikidata-kg-dump
+docker run --rm -v $(pwd):/data dbpedia/databus-python-client download https://databus.dbpedia.org/dbpedia/dbpedia-wikidata-kg-dump
 ```
 
 ## CLI Usage
@@ -164,6 +170,8 @@ docker run --rm -v $(pwd):/data dbpedia/databus-python-client download $DOWNLOAD
   - If no `--localdir` is provided, the current working directory is used as base directory. The downloaded files will be stored in the working directory in a folder structure according to the Databus layout, i.e. `./$ACCOUNT/$GROUP/$ARTIFACT/$VERSION/`.
 - `--vault-token`
   - If the dataset/files to be downloaded require vault authentication, you need to provide a vault token with `--vault-token /path/to/vault-token.dat`. See [Registration (Access Token)](#registration-access-token) for details on how to get a vault token.
+  
+  Note: Vault tokens are only required for certain protected Databus hosts (for example: `data.dbpedia.io`, `data.dev.dbpedia.link`). The client now detects those hosts and will fail early with a clear message if a token is required but not provided. Do not pass `--vault-token` for public downloads.
 - `--databus-key`
   - If the databus is protected and needs API key authentication, you can provide the API key with `--databus-key YOUR_API_KEY`.
 - `--convert-to`

@@ -4,6 +4,9 @@ import bz2
 import gzip
 import lzma
 from typing import List, Optional, Tuple
+import re
+from typing import List
+from urllib.parse import urlparse
 
 import requests
 from SPARQLWrapper import JSON, SPARQLWrapper
@@ -137,6 +140,131 @@ def _convert_compression_format(
             os.remove(target_file)
         raise RuntimeError(f"Compression conversion failed: {e}")
 
+from databusclient.api.utils import compute_sha256_and_length
+
+# compiled regex for SHA-256 hex strings
+_SHA256_RE = re.compile(r"^[0-9a-fA-F]{64}$")
+
+def _extract_checksum_from_node(node) -> str | None:
+    """
+    Try to extract a 64-char hex checksum from a JSON-LD file node.
+    Handles these common shapes:
+    - checksum or sha256sum fields as plain string
+    - checksum fields as dict with '@value'
+    - nested values under the allowed keys (lists or '@value' objects)
+    """
+    def find_in_value(v):
+        if isinstance(v, str):
+            s = v.strip()
+            if _SHA256_RE.match(s):
+                return s
+        if isinstance(v, dict):
+            # common JSON-LD value object
+            if "@value" in v and isinstance(v["@value"], str):
+                res = find_in_value(v["@value"])
+                if res:
+                    return res
+            # try all nested dict values
+            for vv in v.values():
+                res = find_in_value(vv)
+                if res:
+                    return res
+        if isinstance(v, list):
+            for item in v:
+                res = find_in_value(item)
+                if res:
+                    return res
+        return None
+
+    # Only inspect the explicitly allowed keys to avoid false positives.
+    for key in ("checksum", "sha256sum", "sha256", "databus:checksum"):
+        if key in node:
+            res = find_in_value(node[key])
+            if res:
+                return res
+
+    return None
+
+
+
+# Hosts that require Vault token based authentication. Central source of truth.
+VAULT_REQUIRED_HOSTS = {
+    "data.dbpedia.io",
+    "data.dev.dbpedia.link",
+}
+
+
+class DownloadAuthError(Exception):
+    """Raised when an authorization problem occurs during download."""
+
+
+
+def _extract_checksums_from_jsonld(json_str: str) -> dict:
+    """
+    Parse a JSON-LD string and return a mapping of file URI (and @id) -> checksum.
+
+    Uses the existing _extract_checksum_from_node logic to extract checksums
+    from `Part` nodes. Both the node's `file` and `@id` (if present and a
+    string) are mapped to the checksum to preserve existing lookup behavior.
+    """
+    try:
+        jd = json.loads(json_str)
+    except Exception:
+        return {}
+    if isinstance(jd, dict):
+        graph = jd.get("@graph", [])
+    elif isinstance(jd, list):
+        graph = jd
+    else:
+        return{}
+                    
+    checksums: dict = {}
+    for node in graph:
+        if node.get("@type") == "Part":
+            expected = _extract_checksum_from_node(node)
+            if not expected:
+                continue
+            file_uri = node.get("file")
+            if isinstance(file_uri, str):
+                checksums[file_uri] = expected
+            node_id = node.get("@id")
+            if isinstance(node_id, str):
+                checksums[node_id] = expected
+    return checksums
+
+
+def _resolve_checksums_for_urls(file_urls: List[str], databus_key: str | None) -> dict:
+    """
+    Group file URLs by their Version URI, fetch each Version JSON-LD once,
+    and return a combined url->checksum mapping for the provided URLs.
+
+    Best-effort: failures to fetch or parse individual versions are skipped.
+    """
+    versions_map: dict = {}
+    for file_url in file_urls:
+        try:
+            host, accountId, groupId, artifactId, versionId, fileId = get_databus_id_parts_from_file_url(file_url)
+        except Exception:
+            continue
+        if versionId is None:
+            continue
+        if host is None or accountId is None or groupId is None or artifactId is None:
+            continue
+        version_uri = f"https://{host}/{accountId}/{groupId}/{artifactId}/{versionId}"
+        versions_map.setdefault(version_uri, []).append(file_url)
+
+    checksums: dict = {}
+    for version_uri, urls_in_version in versions_map.items():
+        try:
+            json_str = fetch_databus_jsonld(version_uri, databus_key=databus_key)
+            extracted_checksums = _extract_checksums_from_jsonld(json_str)
+            for url in urls_in_version:
+                if url in extracted_checksums:
+                    checksums[url] = extracted_checksums[url]
+        except Exception:
+            # Best-effort: skip versions we cannot fetch or parse
+            continue
+    return checksums
 
 def _download_file(
     url,
@@ -160,6 +288,18 @@ def _download_file(
     - client_id: Client ID for token exchange
     - convert_to: Target compression format for on-the-fly conversion
     - convert_from: Optional source compression format filter
+    validate_checksum: bool = False,
+    expected_checksum: str | None = None,
+) -> None:
+    """Download a file from the internet with a progress bar using tqdm.
+
+    Args:
+        url: The URL of the file to download.
+        localDir: Local directory to download file to. If None, the databus folder structure is created in the current working directory.
+        vault_token_file: Path to Vault refresh token file.
+        databus_key: Databus API key for protected downloads.
+        auth_url: Keycloak token endpoint URL.
+        client_id: Client ID for token exchange.
     """
     if localDir is None:
         _host, account, group, artifact, version, file = (
@@ -182,16 +322,9 @@ def _download_file(
         os.makedirs(dirpath, exist_ok=True)  # Create the necessary directories
     # --- 1. Get redirect URL by requesting HEAD ---
     headers = {}
-    # --- 1a. public databus ---
-    response = requests.head(url, timeout=30)
-    # --- 1b. Databus API key required ---
-    if response.status_code == 401:
-        # print(f"API key required for {url}")
-        if not databus_key:
-            raise ValueError("Databus API key not given for protected download")
 
-        headers = {"X-API-KEY": databus_key}
-        response = requests.head(url, headers=headers, timeout=30)
+    # --- 1a. public databus ---
+    response = requests.head(url, timeout=30, allow_redirects=False)
 
     # Check for redirect and update URL if necessary
     if response.headers.get("Location") and response.status_code in [
@@ -203,6 +336,30 @@ def _download_file(
     ]:
         url = response.headers.get("Location")
         print("Redirects url: ", url)
+        # Re-do HEAD request on redirect URL
+        response = requests.head(url, timeout=30)
+
+    # Extract hostname from final URL (after redirect) to check if vault token needed.
+    # This is the actual download location that may require authentication.
+    parsed = urlparse(url)
+    host = parsed.hostname
+
+    # --- 1b. Handle 401 on HEAD request ---
+    if response.status_code == 401:
+        # Check if this is a vault-required host
+        if host in VAULT_REQUIRED_HOSTS:
+            # Vault-required host: need vault token
+            if not vault_token_file:
+                raise DownloadAuthError(
+                    f"Vault token required for host '{host}', but no token was provided. Please use --vault-token."
+                )
+            # Token provided; will handle in GET request below
+        else:
+            # Not a vault host; might need databus API key
+            if not databus_key:
+                raise DownloadAuthError("Databus API key not given for protected download")
+            headers = {"X-API-KEY": databus_key}
+            response = requests.head(url, headers=headers, timeout=30)
 
     # --- 2. Try direct GET to redirected URL ---
     headers["Accept-Encoding"] = (
@@ -211,24 +368,53 @@ def _download_file(
     response = requests.get(
         url, headers=headers, stream=True, allow_redirects=True, timeout=30
     )
-    www = response.headers.get(
-        "WWW-Authenticate", ""
-    )  # Check if authentication is required
+    www = response.headers.get("WWW-Authenticate", "")  # Check if authentication is required
 
-    # --- 3. If redirected to authentication 401 Unauthorized, get Vault token and retry ---
+    # --- 3. Handle authentication responses ---
+    # 3a. Server requests Bearer auth. Only attempt token exchange for hosts
+    # we explicitly consider Vault-protected (VAULT_REQUIRED_HOSTS). This avoids
+    # sending tokens to unrelated hosts and makes auth behavior predictable.
     if response.status_code == 401 and "bearer" in www.lower():
-        print(f"Authentication required for {url}")
-        if not (vault_token_file):
-            raise ValueError("Vault token file not given for protected download")
+        # If host is not configured for Vault, do not attempt token exchange.
+        if host not in VAULT_REQUIRED_HOSTS:
+            raise DownloadAuthError(
+                "Server requests Bearer authentication but this host is not configured for Vault token exchange."
+                " Try providing a databus API key with --databus-key or contact your administrator."
+            )
 
-        # --- 3a. Fetch Vault token ---
-        # TODO: cache token
+        # Host requires Vault; ensure token file provided.
+        if not vault_token_file:
+            raise DownloadAuthError(
+                f"Vault token required for host '{host}', but no token was provided. Please use --vault-token."
+            )
+
+        # --- 3b. Fetch Vault token and retry ---
+        # Token exchange is potentially sensitive and should only be performed
+        # for known hosts. __get_vault_access__ handles reading the refresh
+        # token and exchanging it; errors are translated to DownloadAuthError
+        # for user-friendly CLI output.
         vault_token = __get_vault_access__(url, vault_token_file, auth_url, client_id)
         headers["Authorization"] = f"Bearer {vault_token}"
-        headers.pop("Accept-Encoding")
+        headers["Accept-Encoding"] = "identity"
 
-        # --- 3b. Retry with token ---
+        # Retry with token
         response = requests.get(url, headers=headers, stream=True, timeout=30)
+
+        # Map common auth failures to friendly messages
+        if response.status_code == 401:
+            raise DownloadAuthError("Vault token is invalid or expired. Please generate a new token.")
+        if response.status_code == 403:
+            raise DownloadAuthError("Vault token is valid but has insufficient permissions to access this file.")
+
+    # 3c. Generic forbidden without Bearer challenge
+    if response.status_code == 403:
+        raise DownloadAuthError("Access forbidden: your token or API key does not have permission to download this file.")
+
+    # 3d. Generic unauthorized without Bearer
+    if response.status_code == 401:
+        raise DownloadAuthError(
+            "Unauthorized: access denied. Check your --databus-key or --vault-token settings."
+        )
 
     try:
         response.raise_for_status()  # Raise if still failing
@@ -260,6 +446,28 @@ def _download_file(
         target_filename = _get_converted_filename(file, source_format, convert_to)
         target_filepath = os.path.join(localDir, target_filename)
         _convert_compression_format(filename, target_filepath, source_format, convert_to)
+    # --- 6. Optional checksum validation ---
+    if validate_checksum:
+        # reuse compute_sha256_and_length from webdav extension
+        try:
+            actual, _ = compute_sha256_and_length(filename)
+        except (OSError, IOError) as e:
+            print(f"WARNING: error computing checksum for {filename}: {e}")
+            actual = None
+
+        if expected_checksum is None:
+            print(f"WARNING: no expected checksum available for {filename}; skipping validation")
+        elif actual is None:
+            print(f"WARNING: could not compute checksum for {filename}; skipping validation")
+        else:
+            if actual.lower() != expected_checksum.lower():
+                try: 
+                    os.remove(filename)  # delete corrupted file
+                except OSError: 
+                    pass
+                raise IOError(
+                    f"Checksum mismatch for {filename}: expected {expected_checksum}, got {actual}"
+                )
 
 
 def _download_files(
@@ -284,8 +492,23 @@ def _download_files(
     - client_id: Client ID for token exchange
     - convert_to: Target compression format for on-the-fly conversion
     - convert_from: Optional source compression format filter
+    validate_checksum: bool = False,
+    checksums: dict | None = None,
+) -> None:
+    """Download multiple files from the databus.
+
+    Args:
+        urls: List of file download URLs.
+        localDir: Local directory to download files to. If None, the databus folder structure is created in the current working directory.
+        vault_token_file: Path to Vault refresh token file.
+        databus_key: Databus API key for protected downloads.
+        auth_url: Keycloak token endpoint URL.
+        client_id: Client ID for token exchange.
     """
     for url in urls:
+        expected = None
+        if checksums and isinstance(checksums, dict):
+            expected = checksums.get(url)
         _download_file(
             url=url,
             localDir=localDir,
@@ -295,19 +518,20 @@ def _download_files(
             client_id=client_id,
             convert_to=convert_to,
             convert_from=convert_from,
+            validate_checksum=validate_checksum,
+            expected_checksum=expected,
         )
 
 
 def _get_sparql_query_of_collection(uri: str, databus_key: str | None = None) -> str:
-    """
-    Get SPARQL query of collection members from databus collection URI.
+    """Get SPARQL query of collection members from databus collection URI.
 
-    Parameters:
-    - uri: The full databus collection URI
-    - databus_key: Optional Databus API key for authentication on protected resources
+    Args:
+        uri: The full databus collection URI.
+        databus_key: Optional Databus API key for authentication on protected resources.
 
     Returns:
-    SPARQL query string to get download URLs of all files in the collection.
+        SPARQL query string to get download URLs of all files in the collection.
     """
     headers = {"Accept": "text/sparql"}
     if databus_key is not None:
@@ -319,16 +543,15 @@ def _get_sparql_query_of_collection(uri: str, databus_key: str | None = None) ->
 
 
 def _query_sparql_endpoint(endpoint_url, query, databus_key=None) -> dict:
-    """
-    Query a SPARQL endpoint and return results in JSON format.
+    """Query a SPARQL endpoint and return results in JSON format.
 
-    Parameters:
-    - endpoint_url: the URL of the SPARQL endpoint
-    - query: the SPARQL query string
-    - databus_key: Optional API key for authentication
+    Args:
+        endpoint_url: The URL of the SPARQL endpoint.
+        query: The SPARQL query string.
+        databus_key: Optional API key for authentication.
 
     Returns:
-    - Dictionary containing the query results
+        Dictionary containing the query results.
     """
     sparql = SPARQLWrapper(endpoint_url)
     sparql.method = "POST"
@@ -343,16 +566,15 @@ def _query_sparql_endpoint(endpoint_url, query, databus_key=None) -> dict:
 def _get_file_download_urls_from_sparql_query(
     endpoint_url, query, databus_key=None
 ) -> List[str]:
-    """
-    Execute a SPARQL query to get databus file download URLs.
+    """Execute a SPARQL query to get databus file download URLs.
 
-    Parameters:
-    - endpoint_url: the URL of the SPARQL endpoint
-    - query: the SPARQL query string
-    - databus_key: Optional API key for authentication
+    Args:
+        endpoint_url: The URL of the SPARQL endpoint.
+        query: The SPARQL query string.
+        databus_key: Optional API key for authentication.
 
     Returns:
-    - List of file download URLs
+        List of file download URLs.
     """
     result_dict = _query_sparql_endpoint(endpoint_url, query, databus_key=databus_key)
 
@@ -458,11 +680,29 @@ def _download_collection(
     - client_id: Client ID for token exchange
     - convert_to: Target compression format for on-the-fly conversion
     - convert_from: Optional source compression format filter
+    validate_checksum: bool = False
+) -> None:
+    """Download all files in a databus collection.
+
+    Args:
+        uri: The full databus collection URI.
+        endpoint: The databus SPARQL endpoint URL.
+        localDir: Local directory to download files to. If None, the databus folder structure is created in the current working directory.
+        vault_token: Path to Vault refresh token file for protected downloads.
+        databus_key: Databus API key for protected downloads.
+        auth_url: Keycloak token endpoint URL.
+        client_id: Client ID for token exchange.
     """
     query = _get_sparql_query_of_collection(uri, databus_key=databus_key)
     file_urls = _get_file_download_urls_from_sparql_query(
         endpoint, query, databus_key=databus_key
     )
+
+    # If checksum validation requested, attempt to build url->checksum mapping
+    checksums: dict = {}
+    if validate_checksum:
+        checksums = _resolve_checksums_for_urls(list(file_urls), databus_key)
+
     _download_files(
         list(file_urls),
         localDir,
@@ -472,6 +712,8 @@ def _download_collection(
         client_id=client_id,
         convert_to=convert_to,
         convert_from=convert_from,
+        validate_checksum=validate_checksum,
+        checksums=checksums if checksums else None,
     )
 
 
@@ -497,9 +739,27 @@ def _download_version(
     - client_id: Client ID for token exchange
     - convert_to: Target compression format for on-the-fly conversion
     - convert_from: Optional source compression format filter
+    validate_checksum: bool = False,
+) -> None:
+    """Download all files in a databus artifact version.
+
+    Args:
+        uri: The full databus artifact version URI.
+        localDir: Local directory to download files to. If None, the databus folder structure is created in the current working directory.
+        vault_token_file: Path to Vault refresh token file for protected downloads.
+        databus_key: Databus API key for protected downloads.
+        auth_url: Keycloak token endpoint URL.
+        client_id: Client ID for token exchange.
     """
     json_str = fetch_databus_jsonld(uri, databus_key=databus_key)
     file_urls = _get_file_download_urls_from_artifact_jsonld(json_str)
+    # build url -> checksum mapping from JSON-LD when available
+    checksums: dict = {}
+    try:
+        checksums = _extract_checksums_from_jsonld(json_str)
+    except Exception:
+        checksums = {}
+
     _download_files(
         file_urls,
         localDir,
@@ -509,6 +769,8 @@ def _download_version(
         client_id=client_id,
         convert_to=convert_to,
         convert_from=convert_from,
+        validate_checksum=validate_checksum,
+        checksums=checksums,
     )
 
 
@@ -536,6 +798,18 @@ def _download_artifact(
     - client_id: Client ID for token exchange
     - convert_to: Target compression format for on-the-fly conversion
     - convert_from: Optional source compression format filter
+    validate_checksum: bool = False,
+) -> None:
+    """Download files in a databus artifact.
+
+    Args:
+        uri: The full databus artifact URI.
+        localDir: Local directory to download files to. If None, the databus folder structure is created in the current working directory.
+        all_versions: If True, download all versions of the artifact; otherwise, only download the latest version.
+        vault_token_file: Path to Vault refresh token file for protected downloads.
+        databus_key: Databus API key for protected downloads.
+        auth_url: Keycloak token endpoint URL.
+        client_id: Client ID for token exchange.
     """
     json_str = fetch_databus_jsonld(uri, databus_key=databus_key)
     versions = _get_databus_versions_of_artifact(json_str, all_versions=all_versions)
@@ -545,6 +819,13 @@ def _download_artifact(
         print(f"Downloading version: {version_uri}")
         json_str = fetch_databus_jsonld(version_uri, databus_key=databus_key)
         file_urls = _get_file_download_urls_from_artifact_jsonld(json_str)
+        # extract checksums for this version
+        checksums: dict = {}
+        try:
+            checksums = _extract_checksums_from_jsonld(json_str)
+        except Exception:
+            checksums = {}
+
         _download_files(
             file_urls,
             localDir,
@@ -554,22 +835,23 @@ def _download_artifact(
             client_id=client_id,
             convert_to=convert_to,
             convert_from=convert_from,
+            validate_checksum=validate_checksum,
+            checksums=checksums,
         )
 
 
 def _get_databus_versions_of_artifact(
     json_str: str, all_versions: bool
 ) -> str | List[str]:
-    """
-    Parse the JSON-LD of a databus artifact to extract URLs of its versions.
+    """Parse the JSON-LD of a databus artifact to extract URLs of its versions.
 
-    Parameters:
-    - json_str: JSON-LD string of the databus artifact
-    - all_versions: If True, return all version URLs; otherwise, return only the latest version URL
+    Args:
+        json_str: JSON-LD string of the databus artifact.
+        all_versions: If True, return all version URLs; otherwise, return only the latest version URL.
 
     Returns:
-    - If all_versions is True: List of all version URLs
-    - If all_versions is False: URL of the latest version
+        If all_versions is True: List of all version URLs.
+        If all_versions is False: URL of the latest version.
     """
     json_dict = json.loads(json_str)
     versions = json_dict.get("databus:hasVersion")
@@ -597,15 +879,15 @@ def _get_databus_versions_of_artifact(
 
 
 def _get_file_download_urls_from_artifact_jsonld(json_str: str) -> List[str]:
-    """
-    Parse the JSON-LD of a databus artifact version to extract download URLs.
+    """Parse the JSON-LD of a databus artifact version to extract download URLs.
+    
     Don't get downloadURLs directly from the JSON-LD, but follow the "file" links to count access to databus accurately.
 
-    Parameters:
-    - json_str: JSON-LD string of the databus artifact version
+    Args:
+        json_str: JSON-LD string of the databus artifact version.
 
     Returns:
-    List of all file download URLs in the artifact version.
+        List of all file download URLs in the artifact version.
     """
 
     databusIdUrl: List[str] = []
@@ -645,6 +927,18 @@ def _download_group(
     - client_id: Client ID for token exchange
     - convert_to: Target compression format for on-the-fly conversion
     - convert_from: Optional source compression format filter
+    validate_checksum: bool = False,
+) -> None:
+    """Download files in a databus group.
+
+    Args:
+        uri: The full databus group URI.
+        localDir: Local directory to download files to. If None, the databus folder structure is created in the current working directory.
+        all_versions: If True, download all versions of each artifact in the group; otherwise, only download the latest version.
+        vault_token_file: Path to Vault refresh token file for protected downloads.
+        databus_key: Databus API key for protected downloads.
+        auth_url: Keycloak token endpoint URL.
+        client_id: Client ID for token exchange.
     """
     json_str = fetch_databus_jsonld(uri, databus_key=databus_key)
     artifacts = _get_databus_artifacts_of_group(json_str)
@@ -660,6 +954,7 @@ def _download_group(
             client_id=client_id,
             convert_to=convert_to,
             convert_from=convert_from,
+            validate_checksum=validate_checksum,
         )
 
 
@@ -708,9 +1003,9 @@ def download(
     client_id="vault-token-exchange",
     convert_to=None,
     convert_from=None,
+    validate_checksum: bool = False
 ) -> None:
-    """
-    Download datasets from databus.
+    """Download datasets from databus.
 
     Download of files, versions, artifacts, groups or databus collections via their databus URIs or user-defined SPARQL queries that return file download URLs.
 
@@ -724,6 +1019,14 @@ def download(
     - client_id: Client ID for token exchange. Default is "vault-token-exchange".
     - convert_to: Target compression format for on-the-fly conversion (supported: bz2, gz, xz)
     - convert_from: Optional source compression format filter
+    Args:
+        localDir: Local directory to download datasets to. If None, the databus folder structure is created in the current working directory.
+        endpoint: The databus endpoint URL. If None, inferred from databusURI. Required for user-defined SPARQL queries.
+        databusURIs: Databus identifiers to specify datasets to download.
+        token: Path to Vault refresh token file for protected downloads.
+        databus_key: Databus API key for protected downloads.
+        auth_url: Keycloak token endpoint URL. Default is "https://auth.dbpedia.org/realms/dbpedia/protocol/openid-connect/token".
+        client_id: Client ID for token exchange. Default is "vault-token-exchange".
     """
     for databusURI in databusURIs:
         host, account, group, artifact, version, file = (
@@ -752,9 +1055,25 @@ def download(
                     client_id,
                     convert_to,
                     convert_from,
+                    validate_checksum=validate_checksum,
                 )
             elif file is not None:
                 print(f"Downloading file: {databusURI}")
+                # Try to fetch expected checksum from the parent Version metadata
+                expected = None
+                if validate_checksum:
+                    try:
+                        if version is not None:
+                            version_uri = f"https://{host}/{account}/{group}/{artifact}/{version}"
+                            json_str = fetch_databus_jsonld(version_uri, databus_key=databus_key)
+                            checks = _extract_checksums_from_jsonld(json_str)
+                            expected = checks.get(databusURI) or checks.get(
+                                "https://" + databusURI.removeprefix("http://").removeprefix("https://")
+                            )
+                    except Exception as e:
+                        print(f"WARNING: Could not fetch checksum for single file: {e}")
+
+                # Call the worker to download the single file (passes expected checksum)
                 _download_file(
                     databusURI,
                     localDir,
@@ -764,6 +1083,8 @@ def download(
                     client_id=client_id,
                     convert_to=convert_to,
                     convert_from=convert_from,
+                    validate_checksum=validate_checksum,
+                    expected_checksum=expected,
                 )
             elif version is not None:
                 print(f"Downloading version: {databusURI}")
@@ -776,6 +1097,7 @@ def download(
                     client_id=client_id,
                     convert_to=convert_to,
                     convert_from=convert_from,
+                    validate_checksum=validate_checksum,
                 )
             elif artifact is not None:
                 print(
@@ -791,6 +1113,7 @@ def download(
                     client_id=client_id,
                     convert_to=convert_to,
                     convert_from=convert_from,
+                    validate_checksum=validate_checksum,
                 )
             elif group is not None and group != "collections":
                 print(
@@ -806,6 +1129,7 @@ def download(
                     client_id=client_id,
                     convert_to=convert_to,
                     convert_from=convert_from,
+                    validate_checksum=validate_checksum,
                 )
             elif account is not None:
                 print("accountId not supported yet")  # TODO
@@ -824,6 +1148,14 @@ def download(
             res = _get_file_download_urls_from_sparql_query(
                 uri_endpoint, databusURI, databus_key=databus_key
             )
+
+            # If checksum validation requested, try to build url->checksum mapping
+            checksums: dict = {}
+            if validate_checksum:
+                checksums = _resolve_checksums_for_urls(res, databus_key)
+                if not checksums:
+                    print("WARNING: Checksum validation enabled but no checksums found for query results.")
+
             _download_files(
                 res,
                 localDir,
@@ -833,4 +1165,6 @@ def download(
                 client_id=client_id,
                 convert_to=convert_to,
                 convert_from=convert_from,
+                validate_checksum=validate_checksum,
+                checksums=checksums if checksums else None,
             )
