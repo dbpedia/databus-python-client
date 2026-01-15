@@ -32,14 +32,13 @@ COMPRESSION_MODULES = {
 
 
 def _detect_compression_format(filename: str) -> Optional[str]:
-    """
-    Detect compression format from file extension.
+    """Detect compression format from file extension.
     
-    Parameters:
-    - filename: Name of the file
+    Args:
+        filename: Name of the file.
     
     Returns:
-    - Compression format string ('bz2', 'gz', 'xz') or None if not compressed
+        Compression format string ('bz2', 'gz', 'xz') or None if not compressed.
     """
     filename_lower = filename.lower()
     for fmt, ext in COMPRESSION_EXTENSIONS.items():
@@ -51,16 +50,15 @@ def _detect_compression_format(filename: str) -> Optional[str]:
 def _should_convert_file(
     filename: str, convert_to: Optional[str], convert_from: Optional[str]
 ) -> Tuple[bool, Optional[str]]:
-    """
-    Determine if a file should be converted and what the source format is.
+    """Determine if a file should be converted and what the source format is.
     
-    Parameters:
-    - filename: Name of the file
-    - convert_to: Target compression format
-    - convert_from: Optional source compression format filter
+    Args:
+        filename: Name of the file.
+        convert_to: Target compression format ('bz2', 'gz', 'xz').
+        convert_from: Optional source compression format filter.
     
     Returns:
-    - Tuple of (should_convert: bool, source_format: Optional[str])
+        Tuple of (should_convert: bool, source_format: Optional[str]).
     """
     if not convert_to:
         return False, None
@@ -83,21 +81,21 @@ def _should_convert_file(
 
 
 def _get_converted_filename(filename: str, source_format: str, target_format: str) -> str:
-    """
-    Generate the new filename after compression format conversion.
+    """Generate the new filename after compression format conversion.
     
-    Parameters:
-    - filename: Original filename
-    - source_format: Source compression format ('bz2', 'gz', 'xz')
-    - target_format: Target compression format ('bz2', 'gz', 'xz')
+    Args:
+        filename: Original filename.
+        source_format: Source compression format ('bz2', 'gz', 'xz').
+        target_format: Target compression format ('bz2', 'gz', 'xz').
     
     Returns:
-    - New filename with updated extension
+        New filename with updated extension.
     """
     source_ext = COMPRESSION_EXTENSIONS[source_format]
     target_ext = COMPRESSION_EXTENSIONS[target_format]
-    
-    if filename.endswith(source_ext):
+
+    # Handle case-insensitive extension matching
+    if filename.lower().endswith(source_ext):
         return filename[:-len(source_ext)] + target_ext
     return filename + target_ext
 
@@ -105,15 +103,24 @@ def _get_converted_filename(filename: str, source_format: str, target_format: st
 def _convert_compression_format(
     source_file: str, target_file: str, source_format: str, target_format: str
 ) -> None:
-    """
-    Convert a compressed file from one format to another.
+    """Convert a compressed file from one format to another.
     
-    Parameters:
-    - source_file: Path to source compressed file
-    - target_file: Path to target compressed file
-    - source_format: Source compression format ('bz2', 'gz', 'xz')
-    - target_format: Target compression format ('bz2', 'gz', 'xz')
+    Args:
+        source_file: Path to source compressed file.
+        target_file: Path to target compressed file.
+        source_format: Source compression format ('bz2', 'gz', 'xz').
+        target_format: Target compression format ('bz2', 'gz', 'xz').
+    
+    Raises:
+        ValueError: If source_format or target_format is not supported.
+        RuntimeError: If compression conversion fails.
     """
+    # Validate compression formats
+    if source_format not in COMPRESSION_MODULES:
+        raise ValueError(f"Unsupported source compression format: {source_format}. Supported formats: {list(COMPRESSION_MODULES.keys())}")
+    if target_format not in COMPRESSION_MODULES:
+        raise ValueError(f"Unsupported target compression format: {target_format}. Supported formats: {list(COMPRESSION_MODULES.keys())}")
+    
     source_module = COMPRESSION_MODULES[source_format]
     target_module = COMPRESSION_MODULES[target_format]
     
@@ -419,10 +426,10 @@ def _download_file(
     block_size = 1024  # 1 KiB
 
     progress_bar = tqdm(total=total_size_in_bytes, unit="iB", unit_scale=True)
-    with open(filename, "wb") as file:
+    with open(filename, "wb") as f:
         for data in response.iter_content(block_size):
             progress_bar.update(len(data))
-            file.write(data)
+            f.write(data)
     progress_bar.close()
 
     # --- 5. Verify download size ---

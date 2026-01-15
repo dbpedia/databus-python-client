@@ -134,5 +134,65 @@ def test_convert_xz_to_bz2():
         assert decompressed == test_data
 
 
+def test_case_insensitive_filename_conversion():
+    """Test that uppercase extensions are handled correctly (addresses PR feedback)"""
+    # Test uppercase extension matching
+    assert _get_converted_filename("FILE.BZ2", "bz2", "gz") == "FILE.gz"
+    assert _get_converted_filename("data.GZ", "gz", "xz") == "data.xz"
+    assert _get_converted_filename("archive.XZ", "xz", "bz2") == "archive.bz2"
+    
+    # Test mixed case
+    assert _get_converted_filename("File.Bz2", "bz2", "gz") == "File.gz"
+
+
+def test_invalid_source_format_validation():
+    """Test that invalid source format raises ValueError (addresses PR feedback)"""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        source_file = os.path.join(tmpdir, "test.zip")
+        target_file = os.path.join(tmpdir, "test.gz")
+        
+        # Create a dummy file
+        with open(source_file, 'wb') as f:
+            f.write(b"test data")
+        
+        # Should raise ValueError for unsupported format
+        with pytest.raises(ValueError, match="Unsupported source compression format"):
+            _convert_compression_format(source_file, target_file, "zip", "gz")
+
+
+def test_invalid_target_format_validation():
+    """Test that invalid target format raises ValueError (addresses PR feedback)"""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        source_file = os.path.join(tmpdir, "test.gz")
+        target_file = os.path.join(tmpdir, "test.rar")
+        
+        # Create a valid gz file
+        test_data = b"test data"
+        with gzip.open(source_file, 'wb') as f:
+            f.write(test_data)
+        
+        # Should raise ValueError for unsupported format
+        with pytest.raises(ValueError, match="Unsupported target compression format"):
+            _convert_compression_format(source_file, target_file, "gz", "rar")
+
+
+def test_corrupted_file_handling():
+    """Test that corrupted files are handled gracefully and target file is cleaned up"""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        source_file = os.path.join(tmpdir, "corrupted.bz2")
+        target_file = os.path.join(tmpdir, "target.gz")
+        
+        # Create a file with .bz2 extension but invalid content
+        with open(source_file, 'wb') as f:
+            f.write(b"This is not valid bz2 compressed data")
+        
+        # Should raise RuntimeError
+        with pytest.raises(RuntimeError, match="Compression conversion failed"):
+            _convert_compression_format(source_file, target_file, "bz2", "gz")
+        
+        # Verify target file was cleaned up
+        assert not os.path.exists(target_file)
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
