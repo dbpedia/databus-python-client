@@ -25,9 +25,9 @@ def app():
     help="Target databus version/dataset identifier of the form "
     "<https://databus.dbpedia.org/$ACCOUNT/$GROUP/$ARTIFACT/$VERSION>",
 )
-@click.option("--title", required=True, help="Artifact title: the permanent name of the data series (applies to all versions)")
-@click.option("--abstract", required=True, help="Version Abstract: a short summary (max 200 chars) specific to this timestamped release")
-@click.option("--description", required=True, help="Version Description: detailed metadata for this specific release (supports Markdown)")
+@click.option("--title", required=True, help="Artifact & Version Title: used for BOTH artifact and version. Keep stable across releases; identifies the data series.")
+@click.option("--abstract", required=True, help="Artifact & Version Abstract: used for BOTH artifact and version (max 200 chars). Updating it changes both artifact and version metadata.")
+@click.option("--description", required=True, help="Artifact & Version Description: used for BOTH artifact and version. Supports Markdown. Updating it changes both artifact and version metadata.")
 @click.option(
     "--license", "license_url", required=True, help="License (see dalicc.net)"
 )
@@ -83,9 +83,9 @@ def deploy(
 
         dataid = api_deploy.create_dataset(
             version_id=version_id,
-            artifact_title=title,
-            artifact_abstract=abstract,
-            artifact_description=description,
+            artifact_version_title=title,
+            artifact_version_abstract=abstract,
+            artifact_version_description=description,
             license_url=license_url,
             distributions=distributions
         )
