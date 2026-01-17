@@ -310,9 +310,9 @@ def _create_distributions_from_metadata(
 
 def create_dataset(
     version_id: str,
-    title: str,
-    abstract: str,
-    description: str,
+    artifact_version_title: str,
+    artifact_version_abstract: str,
+    artifact_version_description: str,
     license_url: str,
     distributions: List[str],
     attribution: str = None,
@@ -330,12 +330,12 @@ def create_dataset(
     ----------
     version_id: str
         The version ID representing the Dataset. Needs to be in the form of $DATABUS_BASE/$ACCOUNT/$GROUP/$ARTIFACT/$VERSION
-    title: str
-        The title text of the dataset
-    abstract: str
-        A short (one or two sentences) description of the dataset
-    description: str
-        A long description of the dataset. Markdown syntax is supported
+    artifact_version_title: str
+        Artifact & Version Title: used for BOTH artifact and version. Keep stable across releases; identifies the data series.
+    artifact_version_abstract: str
+        Artifact & Version Abstract: used for BOTH artifact and version (max 200 chars). Updating it changes both artifact and version metadata.
+    artifact_version_description: str
+        Artifact & Version Description: used for BOTH artifact and version. Supports Markdown. Updating it changes both artifact and version metadata.
     license_url: str
         The license of the dataset as a URI.
     distributions: str
@@ -422,9 +422,9 @@ def create_dataset(
     artifact_graph = {
         "@id": artifact_id,
         "@type": "Artifact",
-        "title": title,
-        "abstract": abstract,
-        "description": description,
+        "title": artifact_version_title,
+        "abstract": artifact_version_abstract,
+        "description": artifact_version_description,
     }
     graphs.append(artifact_graph)
 
@@ -434,9 +434,9 @@ def create_dataset(
         "@type": ["Version", "Dataset"],
         "@id": _versionId,
         "hasVersion": version,
-        "title": title,
-        "abstract": abstract,
-        "description": description,
+        "title": artifact_version_title,
+        "abstract": artifact_version_abstract,
+        "description": artifact_version_description,
         "license": license_url,
         "distribution": distribution_list,
     }
@@ -512,9 +512,9 @@ def deploy(
 def deploy_from_metadata(
     metadata: List[Dict[str, Union[str, int]]],
     version_id: str,
-    title: str,
-    abstract: str,
-    description: str,
+    artifact_version_title: str,
+    artifact_version_abstract: str,
+    artifact_version_description: str,
     license_url: str,
     apikey: str,
 ) -> None:
@@ -527,12 +527,12 @@ def deploy_from_metadata(
         List of file metadata entries (see _create_distributions_from_metadata)
     version_id : str
         Dataset version ID in the form $DATABUS_BASE/$ACCOUNT/$GROUP/$ARTIFACT/$VERSION
-    title : str
-        Dataset title
-    abstract : str
-        Short description of the dataset
-    description : str
-        Long description (Markdown supported)
+    artifact_version_title : str
+        Artifact & Version Title: used for BOTH artifact and version.
+    artifact_version_abstract : str
+        Artifact & Version Abstract: used for BOTH artifact and version.
+    artifact_version_description : str
+        Artifact & Version Description: used for BOTH artifact and version.
     license_url : str
         License URI
     apikey : str
@@ -542,9 +542,9 @@ def deploy_from_metadata(
 
     dataset = create_dataset(
         version_id=version_id,
-        title=title,
-        abstract=abstract,
-        description=description,
+        artifact_version_title=artifact_version_title,
+        artifact_version_abstract=artifact_version_abstract,
+        artifact_version_description=artifact_version_description,
         license_url=license_url,
         distributions=distributions,
     )
