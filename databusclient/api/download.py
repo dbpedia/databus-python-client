@@ -436,13 +436,7 @@ def _download_file(
     if total_size_in_bytes != 0 and progress_bar.n != total_size_in_bytes:
         raise IOError("Downloaded size does not match Content-Length header")
 
-    # --- 6. Convert compression format if requested ---
-    should_convert, source_format = _should_convert_file(file, convert_to, convert_from)
-    if should_convert and source_format:
-        target_filename = _get_converted_filename(file, source_format, convert_to)
-        target_filepath = os.path.join(localDir, target_filename)
-        _convert_compression_format(filename, target_filepath, source_format, convert_to)
-    # --- 6. Optional checksum validation ---
+    # --- 6. Validate checksum on original downloaded file (BEFORE conversion) ---
     if validate_checksum:
         # reuse compute_sha256_and_length from webdav extension
         try:
@@ -464,6 +458,13 @@ def _download_file(
                 raise IOError(
                     f"Checksum mismatch for {filename}: expected {expected_checksum}, got {actual}"
                 )
+
+    # --- 7. Convert compression format if requested (AFTER validation) ---
+    should_convert, source_format = _should_convert_file(file, convert_to, convert_from)
+    if should_convert and source_format:
+        target_filename = _get_converted_filename(file, source_format, convert_to)
+        target_filepath = os.path.join(localDir, target_filename)
+        _convert_compression_format(filename, target_filepath, source_format, convert_to)
 
 
 def _download_files(
