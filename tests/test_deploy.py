@@ -38,6 +38,11 @@ def test_get_content_variants():
     with pytest.raises(BadArgumentException):
         _ = _get_content_variants("https://example.com/file.ttl|invalidformat")
 
+    # Regression test for Issue #24: verify that providing a URL without variants 
+    # returns an empty dict instead of crashing with IndexError.
+    cvs = _get_content_variants("https://data.openflaas.de/milandoj/group-1/artifact-1/version-1/file.txt.bz2")
+    assert cvs == {}
+
 
 # @pytest.mark.skip(reason="temporarily disabled since code needs fixing")
 def test_distribution_cases():
