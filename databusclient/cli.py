@@ -32,17 +32,17 @@ def app():
 @click.option(
     "--title",
     required=True,
-    help="Artifact & version title (applied to both artifact and version)",
+    help="Artifact & Version Title: used for BOTH artifact and version. Keep stable across releases; identifies the data series.",
 )
 @click.option(
     "--abstract",
     required=True,
-    help="Artifact & version abstract (max 200 chars; applied to both artifact and version)",
+    help="Artifact & Version Abstract: used for BOTH artifact and version (max 200 chars). Updating it changes both artifact and version metadata.",
 )
 @click.option(
     "--description",
     required=True,
-    help="Artifact & version description (applied to both artifact and version)",
+    help="Artifact & Version Description: used for BOTH artifact and version. Supports Markdown. Updating it changes both artifact and version metadata.",
 )
 
 @click.option(
@@ -99,7 +99,12 @@ def deploy(
         click.echo(f"Deploying dataset version: {version_id}")
 
         dataid = api_deploy.create_dataset(
-            version_id, title, abstract, description, license_url, distributions
+            version_id=version_id,
+            artifact_version_title=title,
+            artifact_version_abstract=abstract,
+            artifact_version_description=description,
+            license_url=license_url,
+            distributions=distributions
         )
         api_deploy.deploy(dataid=dataid, api_key=apikey)
         return
@@ -176,6 +181,16 @@ def deploy(
     help="Client ID for token exchange",
 )
 @click.option(
+    "--convert-to",
+    type=click.Choice(["bz2", "gz", "xz"], case_sensitive=False),
+    help="Target compression format for on-the-fly conversion during download (supported: bz2, gz, xz)",
+)
+@click.option(
+    "--convert-from",
+    type=click.Choice(["bz2", "gz", "xz"], case_sensitive=False),
+    help="Source compression format to convert from (optional filter). Only files with this compression will be converted.",
+)
+@click.option(
     "--validate-checksum",
     is_flag=True,
     help="Validate checksums of downloaded files and fail on mismatch"
@@ -190,10 +205,13 @@ def download(
     all_versions,
     authurl,
     clientid,
+    convert_to,
+    convert_from,
     validate_checksum,
-):    
+):
     """
     Download datasets from databus, optionally using vault access if vault options are provided.
+    Supports on-the-fly compression format conversion using --convert-to and --convert-from options.
     """
     try:
         api_download(
@@ -205,8 +223,10 @@ def download(
             all_versions=all_versions,
             auth_url=authurl,
             client_id=clientid,
-            validate_checksum=validate_checksum
-        )            
+            convert_to=convert_to,
+            convert_from=convert_from,
+            validate_checksum=validate_checksum,
+        )
     except DownloadAuthError as e:
         raise click.ClickException(str(e))
 

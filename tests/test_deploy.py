@@ -93,9 +93,9 @@ def test_empty_cvs():
 
     dataset = create_dataset(
         version_id="https://dev.databus.dbpedia.org/user/group/artifact/1970.01.01/",
-        title="Test Title",
-        abstract="Test abstract blabla",
-        description="Test description blabla",
+        artifact_version_title="Test Title",
+        artifact_version_abstract="Test abstract blabla",
+        artifact_version_description="Test description blabla",
         license_url="https://license.url/test/",
         distributions=dst,
     )
