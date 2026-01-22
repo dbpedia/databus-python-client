@@ -178,8 +178,9 @@ def deploy(
 @click.option(
     "--validate-checksum",
     is_flag=True,
-    help="Validate checksums of downloaded files"
+    help="Validate checksums of downloaded files and fail on mismatch"
 )
+
 def download(
     databusuris: List[str],
     localdir,

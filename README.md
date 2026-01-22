@@ -294,9 +294,9 @@ Options:
   --version-id TEXT   Target databus version/dataset identifier of the form <h
                       ttps://databus.dbpedia.org/$ACCOUNT/$GROUP/$ARTIFACT/$VE
                       RSION>  [required]
-  --title TEXT        Artifact & version title (applied to both)
-  --abstract TEXT     Artifact & version abstract (max 200 chars; applied to both)
-  --description TEXT  Artifact & version description (applied to both)
+  --title TEXT        Artifact & version title (applied to both)  [required]
+  --abstract TEXT     Artifact & version abstract (max 200 chars; applied to both)  [required]
+  --description TEXT  Artifact & version description (applied to both)  [required]
   --license TEXT      License (see dalicc.net)  [required]
   --apikey TEXT       API key  [required]
   --metadata PATH     Path to metadata JSON file (for metadata mode)
