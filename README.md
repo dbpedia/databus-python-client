@@ -197,6 +197,8 @@ Options:
   --databus-key TEXT  Databus API key to download from protected databus
   --all-versions      When downloading artifacts, download all versions
                       instead of only the latest
+  --validate-checksum Validate checksums of downloaded files and fail on mismatch
+
   --authurl TEXT      Keycloak token endpoint URL  [default:
                       https://auth.dbpedia.org/realms/dbpedia/protocol/openid-
                       connect/token]
@@ -292,9 +294,9 @@ Options:
   --version-id TEXT   Target databus version/dataset identifier of the form <h
                       ttps://databus.dbpedia.org/$ACCOUNT/$GROUP/$ARTIFACT/$VE
                       RSION>  [required]
-  --title TEXT        Dataset title  [required]
-  --abstract TEXT     Dataset abstract max 200 chars  [required]
-  --description TEXT  Dataset description  [required]
+  --title TEXT        Artifact & version title (applied to both)
+  --abstract TEXT     Artifact & version abstract (max 200 chars; applied to both)
+  --description TEXT  Artifact & version description (applied to both)
   --license TEXT      License (see dalicc.net)  [required]
   --apikey TEXT       API key  [required]
   --metadata PATH     Path to metadata JSON file (for metadata mode)
