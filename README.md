@@ -194,29 +194,36 @@ Usage: databusclient download [OPTIONS] DATABUSURIS...
   using --convert-to and --convert-from options.
 
 Options:
+Options:
+
   --localdir TEXT             Local databus folder (if not given, databus
                               folder structure is created in current working
                               directory)
+
   --databus TEXT              Databus URL (if not given, inferred from
                               databusuri, e.g.
                               https://databus.dbpedia.org/sparql)
+
   --vault-token TEXT          Path to Vault refresh token file
+
   --databus-key TEXT          Databus API key to download from protected
                               databus
+
   --all-versions              When downloading artifacts, download all
                               versions instead of only the latest
+
+  --validate-checksum         Validate checksums of downloaded files and fail
+                              on mismatch
+
   --authurl TEXT              Keycloak token endpoint URL  [default:
                               https://auth.dbpedia.org/realms/dbpedia/protocol
-                              /openid-connect/token]
-  --clientid TEXT             Client ID for token exchange  [default: vault-
-                              token-exchange]
-  --convert-to [bz2|gz|xz]    Target compression format for on-the-fly
-                              conversion during download (supported: bz2, gz,
-                              xz)
-  --convert-from [bz2|gz|xz]  Source compression format to convert from
-                              (optional filter). Only files with this
-                              compression will be converted.
+                              openid-connect/token]
+
+  --clientid TEXT             Client ID for token exchange  [default:
+                              vault-token-exchange]
+
   --help                      Show this message and exit.
+
 ```
 
 #### Examples of using the download command
@@ -318,9 +325,9 @@ Options:
   --version-id TEXT   Target databus version/dataset identifier of the form <h
                       ttps://databus.dbpedia.org/$ACCOUNT/$GROUP/$ARTIFACT/$VE
                       RSION>  [required]
-  --title TEXT        Dataset title  [required]
-  --abstract TEXT     Dataset abstract max 200 chars  [required]
-  --description TEXT  Dataset description  [required]
+  --title TEXT        Artifact & version title (applied to both)  [required]
+  --abstract TEXT     Artifact & version abstract (max 200 chars; applied to both)  [required]
+  --description TEXT  Artifact & version description (applied to both)  [required]
   --license TEXT      License (see dalicc.net)  [required]
   --apikey TEXT       API key  [required]
   --metadata PATH     Path to metadata JSON file (for metadata mode)

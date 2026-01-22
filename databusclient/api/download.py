@@ -391,7 +391,6 @@ def _download_file(
         # for user-friendly CLI output.
         vault_token = __get_vault_access__(url, vault_token_file, auth_url, client_id)
         headers["Authorization"] = f"Bearer {vault_token}"
-        headers["Accept-Encoding"] = "identity"
 
         # Retry with token
         response = requests.get(url, headers=headers, stream=True, timeout=30)

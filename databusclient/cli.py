@@ -29,9 +29,22 @@ def app():
     help="Target databus version/dataset identifier of the form "
     "<https://databus.dbpedia.org/$ACCOUNT/$GROUP/$ARTIFACT/$VERSION>",
 )
-@click.option("--title", required=True, help="Artifact & Version Title: used for BOTH artifact and version. Keep stable across releases; identifies the data series.")
-@click.option("--abstract", required=True, help="Artifact & Version Abstract: used for BOTH artifact and version (max 200 chars). Updating it changes both artifact and version metadata.")
-@click.option("--description", required=True, help="Artifact & Version Description: used for BOTH artifact and version. Supports Markdown. Updating it changes both artifact and version metadata.")
+@click.option(
+    "--title",
+    required=True,
+    help="Artifact & Version Title: used for BOTH artifact and version. Keep stable across releases; identifies the data series.",
+)
+@click.option(
+    "--abstract",
+    required=True,
+    help="Artifact & Version Abstract: used for BOTH artifact and version (max 200 chars). Updating it changes both artifact and version metadata.",
+)
+@click.option(
+    "--description",
+    required=True,
+    help="Artifact & Version Description: used for BOTH artifact and version. Supports Markdown. Updating it changes both artifact and version metadata.",
+)
+
 @click.option(
     "--license", "license_url", required=True, help="License (see dalicc.net)"
 )
@@ -180,8 +193,9 @@ def deploy(
 @click.option(
     "--validate-checksum",
     is_flag=True,
-    help="Validate checksums of downloaded files"
+    help="Validate checksums of downloaded files and fail on mismatch"
 )
+
 def download(
     databusuris: List[str],
     localdir,
