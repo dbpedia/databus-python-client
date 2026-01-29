@@ -1,14 +1,46 @@
 """Client tests"""
-import pytest
-from databusclient.client import create_dataset, create_distribution, __get_file_info
+
 from collections import OrderedDict
 
+import pytest
+
+from databusclient.api.deploy import (
+    create_dataset,
+    create_distribution,
+    get_file_info,
+    _get_content_variants,
+    BadArgumentException,
+)
 
 EXAMPLE_URL = "https://raw.githubusercontent.com/dbpedia/databus/608482875276ef5df00f2360a2f81005e62b58bd/server/app/api/swagger.yml"
 
+
+def test_get_content_variants():
+    # With content variants
+    cvs = _get_content_variants(
+        "https://example.com/file.ttl|lang=en_type=parsed|ttl|none|sha256hash|12345"
+    )
+    assert cvs == {
+        "lang": "en",
+        "type": "parsed",
+    }
+
+    # Without content variants
+    cvs = _get_content_variants(
+        "https://example.com/file.ttl||ttl|none|sha256hash|12345"
+    )
+    assert cvs == {}
+
+    csv = _get_content_variants("https://example.com/file.ttl")
+    assert csv == {}
+
+    # Wrong format
+    with pytest.raises(BadArgumentException):
+        _ = _get_content_variants("https://example.com/file.ttl|invalidformat")
+
+
 @pytest.mark.skip(reason="temporarily disabled since code needs fixing")
 def test_distribution_cases():
-
     metadata_args_with_filler = OrderedDict()
 
     metadata_args_with_filler["type=config_source=databus"] = ""
@@ -24,7 +56,6 @@ def test_distribution_cases():
     parameters = list(metadata_args_with_filler.keys())
 
     for i in range(0, len(metadata_args_with_filler.keys())):
-
         if i == 1:
             continue
 
@@ -47,7 +78,7 @@ def test_distribution_cases():
             compression,
             sha256sum,
             content_length,
-        ) = __get_file_info(artifact_name, dst_string)
+        ) = get_file_info(artifact_name, dst_string)
 
         created_dst_str = create_distribution(
             uri, cvs, formatExtension, compression, (sha256sum, content_length)
@@ -58,14 +89,13 @@ def test_distribution_cases():
 
 @pytest.mark.skip(reason="temporarily disabled since code needs fixing")
 def test_empty_cvs():
-
     dst = [create_distribution(url=EXAMPLE_URL, cvs={})]
 
     dataset = create_dataset(
         version_id="https://dev.databus.dbpedia.org/user/group/artifact/1970.01.01/",
-        title="Test Title",
-        abstract="Test abstract blabla",
-        description="Test description blabla",
+        artifact_version_title="Test Title",
+        artifact_version_abstract="Test abstract blabla",
+        artifact_version_description="Test description blabla",
         license_url="https://license.url/test/",
         distributions=dst,
     )
