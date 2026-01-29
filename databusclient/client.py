@@ -157,8 +157,6 @@ def __get_file_info(distribution_str: str) -> Tuple[Dict[str, str], str, str, st
     cvs = __get_content_variants(distribution_str)
     extension_part, format_extension, compression = __get_extensions(distribution_str)
 
-    content_variant_part = "_".join([f"{key}={value}" for key, value in cvs.items()])
-
     if __debug:
         print("DEBUG", distribution_str, extension_part)
 

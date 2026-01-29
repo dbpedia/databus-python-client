@@ -1,5 +1,4 @@
 """Download Tests"""
-import pytest
 import databusclient.client as cl
 
 DEFAULT_ENDPOINT="https://databus.dbpedia.org/sparql"
