@@ -1,4 +1,8 @@
 """Download Tests"""
+<<<<<<< HEAD
+import databusclient.client as cl
+=======
+>>>>>>> main
 
 import pytest
 
