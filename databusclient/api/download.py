@@ -203,7 +203,6 @@ class DownloadAuthError(Exception):
     """Raised when an authorization problem occurs during download."""
 
 
-
 def _extract_checksums_from_jsonld(json_str: str) -> dict:
     """
     Parse a JSON-LD string and return a mapping of file URI (and @id) -> checksum.
@@ -466,7 +465,6 @@ def _download_file(
         target_filepath = os.path.join(localDir, target_filename)
         _convert_compression_format(filename, target_filepath, source_format, convert_to)
 
-
 def _download_files(
     urls: List[str],
     localDir: str,
@@ -679,7 +677,6 @@ def _download_collection(
     checksums: dict = {}
     if validate_checksum:
         checksums = _resolve_checksums_for_urls(list(file_urls), databus_key)
-
     _download_files(
         list(file_urls),
         localDir,
@@ -1010,6 +1007,7 @@ def download(
                         print(f"WARNING: Could not fetch checksum for single file: {e}")
 
                 # Call the worker to download the single file (passes expected checksum)
+                
                 _download_file(
                     databusURI,
                     localDir,
