@@ -4,7 +4,6 @@ import pytest
 
 import requests
 import logging
-
 import databusclient.api.download as dl
 
 from databusclient.api.download import VAULT_REQUIRED_HOSTS, DownloadAuthError
@@ -105,7 +104,6 @@ def test_403_reports_insufficient_permissions():
             dl._download_file(url, localDir='.', vault_token_file="/some/token/file")
 
         assert "permission" in str(exc.value) or "forbidden" in str(exc.value)
-
 
 def test_verbose_redacts_authorization(monkeypatch, caplog):
     caplog.set_level(logging.DEBUG, logger='databusclient')

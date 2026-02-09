@@ -5,7 +5,7 @@ Contains small parsing helpers and HTTP helpers that are shared by
 """
 
 from typing import Optional, Tuple
-
+import hashlib
 import requests
 
 
@@ -54,59 +54,19 @@ def fetch_databus_jsonld(uri: str, databus_key: str | None = None) -> str:
     headers = {"Accept": "application/ld+json"}
     if databus_key is not None:
         headers["X-API-KEY"] = databus_key
-    if verbose:
-        log_http("GET", uri, req_headers=headers)
     response = requests.get(uri, headers=headers, timeout=30)
-    if verbose:
-        log_http("GET", uri, req_headers=headers, status=response.status_code, resp_headers=response.headers)
     response.raise_for_status()
 
     return response.text
 
-
-def _redact_headers(headers):
-    if not headers:
-        return headers
-    redacted = {}
-    for k, v in headers.items():
-        key = k.lower()
-        if key == "authorization" or key.startswith("x-api-key"):
-            redacted[k] = "REDACTED"
-        else:
-            redacted[k] = v
-    return redacted
-
-
-import logging
-
-
-def log_http(method, url, req_headers=None, status=None, resp_headers=None, body_snippet=None):
-    """Log HTTP request/response details at DEBUG level with sanitized headers."""
-    logger = logging.getLogger("databusclient")
-    msg_lines = [f"[HTTP] {method} {url}"]
-    if req_headers:
-        msg_lines.append(f"  Req headers: {_redact_headers(req_headers)}")
-    if status is not None:
-        msg_lines.append(f"  Status: {status}")
-    if resp_headers:
-        # try to convert to dict; handle Mock or response objects gracefully
-        try:
-            resp_dict = dict(resp_headers)
-        except Exception:
-            # resp_headers might be a Mock or requests.Response; try common attributes
-            if hasattr(resp_headers, "items"):
-                try:
-                    resp_dict = dict(resp_headers.items())
-                except Exception:
-                    resp_dict = {"headers": str(resp_headers)}
-            elif hasattr(resp_headers, "headers"):
-                try:
-                    resp_dict = dict(getattr(resp_headers, "headers") or {})
-                except Exception:
-                    resp_dict = {"headers": str(resp_headers)}
-            else:
-                resp_dict = {"headers": str(resp_headers)}
-        msg_lines.append(f"  Resp headers: {_redact_headers(resp_dict)}")
-    if body_snippet:
-        msg_lines.append("  Body preview: " + body_snippet[:500])
-    logger.debug("\n".join(msg_lines))
+def compute_sha256_and_length(filepath):
+    sha256 = hashlib.sha256()
+    total_length = 0
+    with open(filepath, "rb") as f:
+        while True:
+            chunk = f.read(4096)
+            if not chunk:
+                break
+            sha256.update(chunk)
+            total_length += len(chunk)
+    return sha256.hexdigest(), total_length

@@ -4,8 +4,6 @@ import os
 from typing import List
 
 import click
-import re
-
 import databusclient.api.deploy as api_deploy
 from databusclient.api.delete import delete as api_delete
 from databusclient.api.download import download as api_download, DownloadAuthError
@@ -30,9 +28,9 @@ def app():
     help="Target databus version/dataset identifier of the form "
     "<https://databus.dbpedia.org/$ACCOUNT/$GROUP/$ARTIFACT/$VERSION>",
 )
-@click.option("--title", required=True, help="Dataset title")
-@click.option("--abstract", required=True, help="Dataset abstract max 200 chars")
-@click.option("--description", required=True, help="Dataset description")
+@click.option("--title", required=True, help="Artifact & Version Title: used for BOTH artifact and version. Keep stable across releases; identifies the data series.")
+@click.option("--abstract", required=True, help="Artifact & Version Abstract: used for BOTH artifact and version (max 200 chars). Updating it changes both artifact and version metadata.")
+@click.option("--description", required=True, help="Artifact & Version Description: used for BOTH artifact and version. Supports Markdown. Updating it changes both artifact and version metadata.")
 @click.option(
     "--license", "license_url", required=True, help="License (see dalicc.net)"
 )
@@ -87,7 +85,12 @@ def deploy(
         click.echo(f"Deploying dataset version: {version_id}")
 
         dataid = api_deploy.create_dataset(
-            version_id, title, abstract, description, license_url, distributions
+            version_id=version_id,
+            artifact_version_title=title,
+            artifact_version_abstract=abstract,
+            artifact_version_description=description,
+            license_url=license_url,
+            distributions=distributions
         )
         api_deploy.deploy(dataid=dataid, api_key=apikey)
         return
@@ -163,9 +166,22 @@ def deploy(
     show_default=True,
     help="Client ID for token exchange",
 )
-@click.pass_context
+@click.option(
+    "--convert-to",
+    type=click.Choice(["bz2", "gz", "xz"], case_sensitive=False),
+    help="Target compression format for on-the-fly conversion during download (supported: bz2, gz, xz)",
+)
+@click.option(
+    "--convert-from",
+    type=click.Choice(["bz2", "gz", "xz"], case_sensitive=False),
+    help="Source compression format to convert from (optional filter). Only files with this compression will be converted.",
+)
+@click.option(
+    "--validate-checksum",
+    is_flag=True,
+    help="Validate checksums of downloaded files"
+)
 def download(
-    ctx,
     databusuris: List[str],
     localdir,
     databus,
@@ -174,9 +190,13 @@ def download(
     all_versions,
     authurl,
     clientid,
+    convert_to,
+    convert_from,
+    validate_checksum,
 ):
     """
     Download datasets from databus, optionally using vault access if vault options are provided.
+    Supports on-the-fly compression format conversion using --convert-to and --convert-from options.
     """
     try:
         api_download(
@@ -188,7 +208,9 @@ def download(
             all_versions=all_versions,
             auth_url=authurl,
             client_id=clientid,
-            verbose=ctx.obj.get("verbose", False),
+            convert_to=convert_to,
+            convert_from=convert_from,
+            validate_checksum=validate_checksum,
         )
     except DownloadAuthError as e:
         raise click.ClickException(str(e))
