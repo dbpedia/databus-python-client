@@ -23,6 +23,7 @@ TEST_COLLECTION = (
 )
 
 
+@pytest.mark.skip(reason="Integration test: requires live databus.dbpedia.org connection")
 def test_with_query():
     api_download("tmp", DEFAULT_ENDPOINT, [TEST_QUERY])
 
