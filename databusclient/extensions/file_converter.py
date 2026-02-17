@@ -19,24 +19,28 @@ class FileConverter:
         input_stream: BinaryIO,
         output_stream: BinaryIO,
         validate_checksum: bool = False,
-        expected_checksum: Optional[str] = None
     ) -> Optional[str]:
-        """Decompress gzip stream with optional checksum validation.
+        """Decompress gzip stream with optional checksum computation.
+
+        Decompresses *input_stream* into *output_stream*.  When
+        *validate_checksum* is ``True`` the SHA-256 digest of the
+        **decompressed** bytes is computed on-the-fly and returned.
+
+        To validate the checksum of the **compressed** input, use
+        :meth:`validate_checksum_stream` on the input stream before
+        calling this method.
 
         Args:
-            input_stream: Input gzip compressed stream
-            output_stream: Output decompressed stream
-            validate_checksum: Whether to compute checksum during decompression
-            expected_checksum: Expected SHA256 checksum (for source file)
+            input_stream: Input gzip compressed stream.
+            output_stream: Output decompressed stream.
+            validate_checksum: Whether to compute a SHA-256 checksum of
+                the decompressed output.
 
         Returns:
-            Computed checksum if validate_checksum is True, None otherwise
-
-        Raises:
-            IOError: If checksum validation fails
+            Hex-encoded SHA-256 checksum of the decompressed data when
+            *validate_checksum* is ``True``, otherwise ``None``.
         """
         hasher = hashlib.sha256() if validate_checksum else None
-        source_hasher = hashlib.sha256() if expected_checksum else None
 
         with gzip.open(input_stream, 'rb') as gz:
             while True:
