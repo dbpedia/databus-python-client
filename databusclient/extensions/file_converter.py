@@ -79,7 +79,9 @@ class FileConverter:
         """Validate SHA256 checksum of a stream.
 
         Args:
-            input_stream: Input stream to validate
+            input_stream: Input stream to validate. Must be seekable; the stream
+                is rewound to position 0 both before reading and after a
+                successful validation.
             expected_checksum: Expected SHA256 checksum
 
         Returns:
@@ -103,5 +105,5 @@ class FileConverter:
                 f"Checksum mismatch: expected {expected_checksum}, "
                 f"got {computed}"
             )
-        
+        input_stream.seek(0)
         return True
