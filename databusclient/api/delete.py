@@ -1,3 +1,10 @@
+"""Helpers for deleting Databus resources via the Databus HTTP API.
+
+This module provides utilities to delete groups, artifacts and versions on a
+Databus instance using authenticated HTTP requests. The class `DeleteQueue`
+also allows batching of deletions.
+"""
+
 import json
 from typing import List
 
@@ -16,23 +23,43 @@ class DeleteQueue:
     """
 
     def __init__(self, databus_key: str):
+        """Create a DeleteQueue bound to a given Databus API key.
+
+        Args:
+            databus_key: API key used to authenticate deletion requests.
+        """
         self.databus_key = databus_key
         self.queue: set[str] = set()
 
     def add_uri(self, databusURI: str):
+        """Add a single Databus URI to the deletion queue.
+
+        The URI will be deleted when `execute()` is called.
+        """
         self.queue.add(databusURI)
 
     def add_uris(self, databusURIs: List[str]):
+        """Add multiple Databus URIs to the deletion queue.
+
+        Args:
+            databusURIs: Iterable of full Databus URIs.
+        """
         for uri in databusURIs:
             self.queue.add(uri)
 
     def is_empty(self) -> bool:
+        """Return True if the queue is empty."""
         return len(self.queue) == 0
 
     def is_not_empty(self) -> bool:
+        """Return True if the queue contains any URIs."""
         return len(self.queue) > 0
 
     def execute(self):
+        """Execute all queued deletions.
+
+        Each queued URI will be deleted using `_delete_resource`.
+        """
         _delete_list(
             list(self.queue),
             self.databus_key,
@@ -41,16 +68,15 @@ class DeleteQueue:
 
 
 def _confirm_delete(databusURI: str) -> str:
-    """
-    Confirm deletion of a Databus resource with the user.
+    """Confirm deletion of a Databus resource with the user.
 
-    Parameters:
-    - databusURI: The full databus URI of the resource to delete
+    Args:
+        databusURI: The full databus URI of the resource to delete.
 
     Returns:
-    - "confirm" if the user confirms deletion
-    - "skip" if the user chooses to skip deletion
-    - "cancel" if the user chooses to cancel the entire deletion process
+        "confirm" if the user confirms deletion.
+        "skip" if the user chooses to skip deletion.
+        "cancel" if the user chooses to cancel the entire deletion process.
     """
     print(f"Are you sure you want to delete: {databusURI}?")
     print(
@@ -81,18 +107,17 @@ def _delete_resource(
     force: bool = False,
     queue: DeleteQueue = None,
 ):
-    """
-    Delete a single Databus resource (version, artifact, group).
+    """Delete a single Databus resource (version, artifact, group).
 
     Equivalent to:
     curl -X DELETE "<databusURI>" -H "accept: */*" -H "X-API-KEY: <key>"
 
-    Parameters:
-    - databusURI: The full databus URI of the resource to delete
-    - databus_key: Databus API key to authenticate the deletion request
-    - dry_run: If True, do not perform the deletion but only print what would be deleted
-    - force: If True, skip confirmation prompt and proceed with deletion
-    - queue: If queue is provided, add the URI to the queue instead of deleting immediately
+    Args:
+        databusURI: The full databus URI of the resource to delete.
+        databus_key: Databus API key to authenticate the deletion request.
+        dry_run: If True, do not perform the deletion but only print what would be deleted.
+        force: If True, skip confirmation prompt and proceed with deletion.
+        queue: If queue is provided, add the URI to the queue instead of deleting immediately.
     """
 
     # Confirm the deletion request, skip the request or cancel deletion process
@@ -134,15 +159,14 @@ def _delete_list(
     force: bool = False,
     queue: DeleteQueue = None,
 ):
-    """
-    Delete a list of Databus resources.
+    """Delete a list of Databus resources.
 
-    Parameters:
-    - databusURIs: List of full databus URIs of the resources to delete
-    - databus_key: Databus API key to authenticate the deletion requests
-    - dry_run: If True, do not perform the deletion but only print what would be deleted
-    - force: If True, skip confirmation prompt and proceed with deletion
-    - queue: If queue is provided, add the URIs to the queue instead of deleting immediately
+    Args:
+        databusURIs: List of full databus URIs of the resources to delete.
+        databus_key: Databus API key to authenticate the deletion requests.
+        dry_run: If True, do not perform the deletion but only print what would be deleted.
+        force: If True, skip confirmation prompt and proceed with deletion.
+        queue: If queue is provided, add the URIs to the queue instead of deleting immediately.
     """
     for databusURI in databusURIs:
         _delete_resource(
@@ -157,18 +181,17 @@ def _delete_artifact(
     force: bool = False,
     queue: DeleteQueue = None,
 ):
-    """
-    Delete an artifact and all its versions.
+    """Delete an artifact and all its versions.
 
     This function first retrieves all versions of the artifact and then deletes them one by one.
     Finally, it deletes the artifact itself.
 
-    Parameters:
-    - databusURI: The full databus URI of the artifact to delete
-    - databus_key: Databus API key to authenticate the deletion requests
-    - dry_run: If True, do not perform the deletion but only print what would be deleted
-    - force: If True, skip confirmation prompt and proceed with deletion
-    - queue: If queue is provided, add the URI to the queue instead of deleting immediately
+    Args:
+        databusURI: The full databus URI of the artifact to delete.
+        databus_key: Databus API key to authenticate the deletion requests.
+        dry_run: If True, do not perform the deletion but only print what would be deleted.
+        force: If True, skip confirmation prompt and proceed with deletion.
+        queue: If queue is provided, add the URI to the queue instead of deleting immediately.
     """
     artifact_body = fetch_databus_jsonld(databusURI, databus_key)
 
@@ -204,18 +227,17 @@ def _delete_group(
     force: bool = False,
     queue: DeleteQueue = None,
 ):
-    """
-    Delete a group and all its artifacts and versions.
+    """Delete a group and all its artifacts and versions.
 
     This function first retrieves all artifacts of the group, then deletes each artifact (which in turn deletes its versions).
     Finally, it deletes the group itself.
 
-    Parameters:
-    - databusURI: The full databus URI of the group to delete
-    - databus_key: Databus API key to authenticate the deletion requests
-    - dry_run: If True, do not perform the deletion but only print what would be deleted
-    - force: If True, skip confirmation prompt and proceed with deletion
-    - queue: If queue is provided, add the URI to the queue instead of deleting immediately
+    Args:
+        databusURI: The full databus URI of the group to delete.
+        databus_key: Databus API key to authenticate the deletion requests.
+        dry_run: If True, do not perform the deletion but only print what would be deleted.
+        force: If True, skip confirmation prompt and proceed with deletion.
+        queue: If queue is provided, add the URI to the queue instead of deleting immediately.
     """
     group_body = fetch_databus_jsonld(databusURI, databus_key)
 
@@ -242,17 +264,16 @@ def _delete_group(
 
 
 def delete(databusURIs: List[str], databus_key: str, dry_run: bool, force: bool):
-    """
-    Delete a dataset from the databus.
+    """Delete a dataset from the databus.
 
     Delete a group, artifact, or version identified by the given databus URI.
     Will recursively delete all data associated with the dataset.
 
-    Parameters:
-    - databusURIs: List of full databus URIs of the resources to delete
-    - databus_key: Databus API key to authenticate the deletion requests
-    - dry_run: If True, will only print what would be deleted without performing actual deletions
-    - force: If True, skip confirmation prompt and proceed with deletion
+    Args:
+        databusURIs: List of full databus URIs of the resources to delete.
+        databus_key: Databus API key to authenticate the deletion requests.
+        dry_run: If True, will only print what would be deleted without performing actual deletions.
+        force: If True, skip confirmation prompt and proceed with deletion.
     """
 
     queue = DeleteQueue(databus_key)
