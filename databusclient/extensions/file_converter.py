@@ -80,8 +80,8 @@ class FileConverter:
 
         Args:
             input_stream: Input stream to validate. Must be seekable; the stream
-                is rewound to position 0 both before reading and after a
-                successful validation.
+                is rewound to position 0 both before reading and after
+                validation (even when a checksum mismatch raises IOError).
             expected_checksum: Expected SHA256 checksum
 
         Returns:
@@ -100,10 +100,10 @@ class FileConverter:
             hasher.update(chunk)
         
         computed = hasher.hexdigest()
+        input_stream.seek(0)
         if computed.lower() != expected_checksum.lower():
             raise IOError(
                 f"Checksum mismatch: expected {expected_checksum}, "
                 f"got {computed}"
             )
-        input_stream.seek(0)
         return True
