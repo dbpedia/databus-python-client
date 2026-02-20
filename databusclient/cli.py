@@ -169,13 +169,20 @@ def deploy(
 )
 @click.option(
     "--convert-to",
-    type=click.Choice(["bz2", "gz", "xz"], case_sensitive=False),
-    help="Target compression format for on-the-fly conversion during download (supported: bz2, gz, xz)",
+    type=click.Choice(["bz2", "gz", "xz", "none"], case_sensitive=False),
+    help="Target compression format for on-the-fly conversion during download. "
+    "Use 'none' to decompress files to raw format.",
 )
 @click.option(
     "--convert-from",
-    type=click.Choice(["bz2", "gz", "xz"], case_sensitive=False),
-    help="Source compression format to convert from (optional filter). Only files with this compression will be converted.",
+    type=click.Choice(["bz2", "gz", "xz", "none"], case_sensitive=False),
+    help="Source compression format to convert from (optional filter). "
+    "Use 'none' when compressing uncompressed files.",
+)
+@click.option(
+    "--decompress",
+    is_flag=True,
+    help="Decompress downloaded files to raw format. Shorthand for --convert-to none.",
 )
 @click.option(
     "--validate-checksum",
@@ -193,12 +200,23 @@ def download(
     clientid,
     convert_to,
     convert_from,
+    decompress,
     validate_checksum,
 ):
     """
     Download datasets from databus, optionally using vault access if vault options are provided.
     Supports on-the-fly compression format conversion using --convert-to and --convert-from options.
+    Use --decompress (or --convert-to none) to download and decompress files to raw format.
     """
+    # --decompress is shorthand for --convert-to none
+    if decompress:
+        if convert_to is not None:
+            raise click.UsageError(
+                "Cannot use --decompress together with --convert-to. "
+                "Use one or the other."
+            )
+        convert_to = "none"
+
     try:
         api_download(
             localDir=localdir,

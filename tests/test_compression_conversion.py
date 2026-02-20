@@ -19,7 +19,7 @@ def test_detect_compression_format():
     assert _detect_compression_format("file.txt.bz2") == "bz2"
     assert _detect_compression_format("file.txt.gz") == "gz"
     assert _detect_compression_format("file.txt.xz") == "xz"
-    assert _detect_compression_format("file.txt") is None
+    assert _detect_compression_format("file.txt") == "none"
     assert _detect_compression_format("FILE.TXT.GZ") == "gz"  # case insensitive
 
 
@@ -30,7 +30,7 @@ def test_should_convert_file():
     assert should_convert is False
     assert source is None
 
-    # Uncompressed file
+    # Uncompressed file, no convert_from='none' -> don't convert
     should_convert, source = _should_convert_file("file.txt", "gz", None)
     assert should_convert is False
     assert source is None

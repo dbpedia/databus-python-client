@@ -1,8 +1,6 @@
+import hashlib
 import json
 import os
-import bz2
-import gzip
-import lzma
 from typing import List, Optional, Tuple
 import re
 from urllib.parse import urlparse
@@ -16,136 +14,80 @@ from databusclient.api.utils import (
     get_databus_id_parts_from_file_url,
     compute_sha256_and_length,
 )
-
-# Compression format mappings
-COMPRESSION_EXTENSIONS = {
-    "bz2": ".bz2",
-    "gz": ".gz",
-    "xz": ".xz",
-}
-
-COMPRESSION_MODULES = {
-    "bz2": bz2,
-    "gz": gzip,
-    "xz": lzma,
-}
+from databusclient.extensions.file_converter import (
+    FileConverter,
+    COMPRESSION_EXTENSIONS,
+    COMPRESSION_MODULES,
+)
 
 
 def _detect_compression_format(filename: str) -> Optional[str]:
     """Detect compression format from file extension.
-    
-    Args:
-        filename: Name of the file.
-    
-    Returns:
-        Compression format string ('bz2', 'gz', 'xz') or None if not compressed.
+
+    Delegates to :meth:`FileConverter.detect_format`.  Returns the format
+    string (``'bz2'``, ``'gz'``, ``'xz'``, ``'zstd'``) or ``'none'`` when
+    the file has no recognised compressed extension.
+
+    .. note:: Prior versions returned ``None`` for uncompressed files;
+       callers should now compare against ``'none'``.
     """
-    filename_lower = filename.lower()
-    for fmt, ext in COMPRESSION_EXTENSIONS.items():
-        if filename_lower.endswith(ext):
-            return fmt
-    return None
+    return FileConverter.detect_format(filename)
 
 
 def _should_convert_file(
     filename: str, convert_to: Optional[str], convert_from: Optional[str]
 ) -> Tuple[bool, Optional[str]]:
     """Determine if a file should be converted and what the source format is.
-    
-    Args:
-        filename: Name of the file.
-        convert_to: Target compression format ('bz2', 'gz', 'xz').
-        convert_from: Optional source compression format filter.
-    
-    Returns:
-        Tuple of (should_convert: bool, source_format: Optional[str]).
+
+    Supports ``convert_to='none'`` (decompress to raw) and
+    ``source_format='none'`` with ``convert_from='none'`` (compress raw).
     """
     if not convert_to:
         return False, None
-    
+
     source_format = _detect_compression_format(filename)
-    
-    # If file is not compressed, don't convert
-    if source_format is None:
+
+    # Decompress: convert_to='none', any compressed source is eligible
+    if convert_to == "none":
+        if source_format == "none":
+            return False, None  # already uncompressed
+        if convert_from and source_format != convert_from:
+            return False, None
+        return True, source_format
+
+    # Compress raw file: source is uncompressed
+    if source_format == "none":
+        # Only convert if caller explicitly asks for raw-file compression
+        if convert_from == "none":
+            return True, "none"
         return False, None
-    
-    # If source and target are the same, skip conversion
+
+    # Same format → skip
     if source_format == convert_to:
         return False, None
-    
-    # If convert_from is specified, only convert matching formats
+
+    # Filter by convert_from
     if convert_from and source_format != convert_from:
         return False, None
-    
+
     return True, source_format
 
 
-def _get_converted_filename(filename: str, source_format: str, target_format: str) -> str:
-    """Generate the new filename after compression format conversion.
-    
-    Args:
-        filename: Original filename.
-        source_format: Source compression format ('bz2', 'gz', 'xz').
-        target_format: Target compression format ('bz2', 'gz', 'xz').
-    
-    Returns:
-        New filename with updated extension.
-    """
-    source_ext = COMPRESSION_EXTENSIONS[source_format]
-    target_ext = COMPRESSION_EXTENSIONS[target_format]
-
-    # Handle case-insensitive extension matching
-    if filename.lower().endswith(source_ext):
-        return filename[:-len(source_ext)] + target_ext
-    return filename + target_ext
+def _get_converted_filename(
+    filename: str, source_format: str, target_format: str
+) -> str:
+    """Generate the new filename after compression format conversion."""
+    return FileConverter.get_converted_filename(filename, source_format, target_format)
 
 
 def _convert_compression_format(
     source_file: str, target_file: str, source_format: str, target_format: str
 ) -> None:
     """Convert a compressed file from one format to another.
-    
-    Args:
-        source_file: Path to source compressed file.
-        target_file: Path to target compressed file.
-        source_format: Source compression format ('bz2', 'gz', 'xz').
-        target_format: Target compression format ('bz2', 'gz', 'xz').
-    
-    Raises:
-        ValueError: If source_format or target_format is not supported.
-        RuntimeError: If compression conversion fails.
+
+    Delegates to :meth:`FileConverter.convert_file`.
     """
-    # Validate compression formats
-    if source_format not in COMPRESSION_MODULES:
-        raise ValueError(f"Unsupported source compression format: {source_format}. Supported formats: {list(COMPRESSION_MODULES.keys())}")
-    if target_format not in COMPRESSION_MODULES:
-        raise ValueError(f"Unsupported target compression format: {target_format}. Supported formats: {list(COMPRESSION_MODULES.keys())}")
-    
-    source_module = COMPRESSION_MODULES[source_format]
-    target_module = COMPRESSION_MODULES[target_format]
-    
-    print(f"Converting {source_format} → {target_format}: {os.path.basename(source_file)}")
-    
-    # Decompress and recompress with progress indication
-    chunk_size = 8192
-    
-    try:
-        with source_module.open(source_file, 'rb') as sf:
-            with target_module.open(target_file, 'wb') as tf:
-                while True:
-                    chunk = sf.read(chunk_size)
-                    if not chunk:
-                        break
-                    tf.write(chunk)
-        
-        # Remove the original file after successful conversion
-        os.remove(source_file)
-        print(f"Conversion complete: {os.path.basename(target_file)}")
-    except Exception as e:
-        # If conversion fails, ensure the partial target file is removed
-        if os.path.exists(target_file):
-            os.remove(target_file)
-        raise RuntimeError(f"Compression conversion failed: {e}")
+    FileConverter.convert_file(source_file, target_file, source_format, target_format)
 
 # compiled regex for SHA-256 hex strings
 _SHA256_RE = re.compile(r"^[0-9a-fA-F]{64}$")
@@ -421,50 +363,95 @@ def _download_file(
         else:
             raise e
 
-    # --- 4. Download with progress bar ---
+    # --- 4. Determine if streaming conversion is possible ---
+    should_convert, source_format = _should_convert_file(file, convert_to, convert_from)
+    streaming = should_convert and source_format is not None
+
+    if streaming:
+        target_filename = _get_converted_filename(file, source_format, convert_to)
+        target_filepath = os.path.join(localDir, target_filename)
+    else:
+        target_filepath = filename
+
     total_size_in_bytes = int(response.headers.get("content-length", 0))
     block_size = 1024  # 1 KiB
 
-    progress_bar = tqdm(total=total_size_in_bytes, unit="iB", unit_scale=True)
-    with open(filename, "wb") as f:
-        for data in response.iter_content(block_size):
-            progress_bar.update(len(data))
-            f.write(data)
-    progress_bar.close()
+    if streaming:
+        # --- 4a. Streaming download + conversion in a single pass ---
+        print(f"Streaming conversion {source_format} → {convert_to}: {file}")
+        # Write raw bytes to a temp file first so we can validate checksum
+        # on the original compressed stream, then convert.
+        # (Streaming directly through decompression would lose ability to
+        #  checksum the *compressed* bytes the server sent.)
+        progress_bar = tqdm(total=total_size_in_bytes, unit="iB", unit_scale=True)
+        checksum_hasher = hashlib.sha256() if validate_checksum else None
 
-    # --- 5. Verify download size ---
-    if total_size_in_bytes != 0 and progress_bar.n != total_size_in_bytes:
-        raise IOError("Downloaded size does not match Content-Length header")
+        with open(filename, "wb") as f:
+            for data in response.iter_content(block_size):
+                progress_bar.update(len(data))
+                f.write(data)
+                if checksum_hasher:
+                    checksum_hasher.update(data)
+        progress_bar.close()
 
-    # --- 6. Validate checksum on original downloaded file (BEFORE conversion) ---
-    if validate_checksum:
-        # reuse compute_sha256_and_length from webdav extension
-        try:
-            actual, _ = compute_sha256_and_length(filename)
-        except (OSError, IOError) as e:
-            print(f"WARNING: error computing checksum for {filename}: {e}")
-            actual = None
+        # Verify download size
+        if total_size_in_bytes != 0 and progress_bar.n != total_size_in_bytes:
+            raise IOError("Downloaded size does not match Content-Length header")
 
-        if expected_checksum is None:
-            print(f"WARNING: no expected checksum available for {filename}; skipping validation")
-        elif actual is None:
-            print(f"WARNING: could not compute checksum for {filename}; skipping validation")
-        else:
-            if actual.lower() != expected_checksum.lower():
-                try: 
-                    os.remove(filename)  # delete corrupted file
-                except OSError: 
-                    pass
-                raise IOError(
-                    f"Checksum mismatch for {filename}: expected {expected_checksum}, got {actual}"
-                )
+        # Validate checksum of the original compressed file
+        if validate_checksum:
+            actual = checksum_hasher.hexdigest() if checksum_hasher else None
+            if expected_checksum is None:
+                print(f"WARNING: no expected checksum available for {filename}; skipping validation")
+            elif actual is None:
+                print(f"WARNING: could not compute checksum for {filename}; skipping validation")
+            else:
+                if actual.lower() != expected_checksum.lower():
+                    try:
+                        os.remove(filename)
+                    except OSError:
+                        pass
+                    raise IOError(
+                        f"Checksum mismatch for {filename}: expected {expected_checksum}, got {actual}"
+                    )
 
-    # --- 7. Convert compression format if requested (AFTER validation) ---
-    should_convert, source_format = _should_convert_file(file, convert_to, convert_from)
-    if should_convert and source_format:
-        target_filename = _get_converted_filename(file, source_format, convert_to)
-        target_filepath = os.path.join(localDir, target_filename)
+        # Now convert the downloaded file
         _convert_compression_format(filename, target_filepath, source_format, convert_to)
+
+    else:
+        # --- 4b. Plain download (no conversion) ---
+        progress_bar = tqdm(total=total_size_in_bytes, unit="iB", unit_scale=True)
+        with open(filename, "wb") as f:
+            for data in response.iter_content(block_size):
+                progress_bar.update(len(data))
+                f.write(data)
+        progress_bar.close()
+
+        # --- 5. Verify download size ---
+        if total_size_in_bytes != 0 and progress_bar.n != total_size_in_bytes:
+            raise IOError("Downloaded size does not match Content-Length header")
+
+        # --- 6. Validate checksum on downloaded file ---
+        if validate_checksum:
+            try:
+                actual, _ = compute_sha256_and_length(filename)
+            except (OSError, IOError) as e:
+                print(f"WARNING: error computing checksum for {filename}: {e}")
+                actual = None
+
+            if expected_checksum is None:
+                print(f"WARNING: no expected checksum available for {filename}; skipping validation")
+            elif actual is None:
+                print(f"WARNING: could not compute checksum for {filename}; skipping validation")
+            else:
+                if actual.lower() != expected_checksum.lower():
+                    try:
+                        os.remove(filename)
+                    except OSError:
+                        pass
+                    raise IOError(
+                        f"Checksum mismatch for {filename}: expected {expected_checksum}, got {actual}"
+                    )
 
 
 def _download_files(
