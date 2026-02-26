@@ -1,7 +1,7 @@
 import hashlib
 import json
 import os
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Union
 import re
 from urllib.parse import urlparse
 
@@ -14,24 +14,10 @@ from databusclient.api.utils import (
     get_databus_id_parts_from_file_url,
     compute_sha256_and_length,
 )
-from databusclient.extensions.file_converter import (
-    FileConverter,
-    COMPRESSION_EXTENSIONS,
-    COMPRESSION_MODULES,
-)
+from databusclient.extensions.file_converter import FileConverter
 
 
-def _detect_compression_format(filename: str) -> Optional[str]:
-    """Detect compression format from file extension.
 
-    Delegates to :meth:`FileConverter.detect_format`.  Returns the format
-    string (``'bz2'``, ``'gz'``, ``'xz'``, ``'zstd'``) or ``'none'`` when
-    the file has no recognised compressed extension.
-
-    .. note:: Prior versions returned ``None`` for uncompressed files;
-       callers should now compare against ``'none'``.
-    """
-    return FileConverter.detect_format(filename)
 
 
 def _should_convert_file(
@@ -45,7 +31,7 @@ def _should_convert_file(
     if not convert_to:
         return False, None
 
-    source_format = _detect_compression_format(filename)
+    source_format = FileConverter.detect_format(filename)
 
     # Decompress: convert_to='none', any compressed source is eligible
     if convert_to == "none":
@@ -73,26 +59,11 @@ def _should_convert_file(
     return True, source_format
 
 
-def _get_converted_filename(
-    filename: str, source_format: str, target_format: str
-) -> str:
-    """Generate the new filename after compression format conversion."""
-    return FileConverter.get_converted_filename(filename, source_format, target_format)
-
-
-def _convert_compression_format(
-    source_file: str, target_file: str, source_format: str, target_format: str
-) -> None:
-    """Convert a compressed file from one format to another.
-
-    Delegates to :meth:`FileConverter.convert_file`.
-    """
-    FileConverter.convert_file(source_file, target_file, source_format, target_format)
 
 # compiled regex for SHA-256 hex strings
 _SHA256_RE = re.compile(r"^[0-9a-fA-F]{64}$")
 
-def _extract_checksum_from_node(node) -> str | None:
+def _extract_checksum_from_node(node) -> Optional[str]:
     """
     Try to extract a 64-char hex checksum from a JSON-LD file node.
     Handles these common shapes:
@@ -180,7 +151,7 @@ def _extract_checksums_from_jsonld(json_str: str) -> dict:
     return checksums
 
 
-def _resolve_checksums_for_urls(file_urls: List[str], databus_key: str | None) -> dict:
+def _resolve_checksums_for_urls(file_urls: List[str], databus_key: Optional[str]) -> dict:
     """
     Group file URLs by their Version URI, fetch each Version JSON-LD once,
     and return a combined url->checksum mapping for the provided URLs.
@@ -223,7 +194,7 @@ def _download_file(
     convert_to=None,
     convert_from=None,
     validate_checksum: bool = False,
-    expected_checksum: str | None = None,
+    expected_checksum: Optional[str] = None,
 ) -> None:
     """Download a file from the internet with a progress bar using tqdm.
 
@@ -368,58 +339,32 @@ def _download_file(
     streaming = should_convert and source_format is not None
 
     if streaming:
-        target_filename = _get_converted_filename(file, source_format, convert_to)
+        # --- 4a. True streaming: pipe response.raw through FileConverter ---
+        target_format = convert_to or source_format
+        target_filename = FileConverter.get_converted_filename(file, source_format, target_format)
         target_filepath = os.path.join(localDir, target_filename)
-    else:
-        target_filepath = filename
 
-    total_size_in_bytes = int(response.headers.get("content-length", 0))
-    block_size = 1024  # 1 KiB
-
-    if streaming:
-        # --- 4a. Streaming download + conversion in a single pass ---
-        print(f"Streaming conversion {source_format} → {convert_to}: {file}")
-        # Write raw bytes to a temp file first so we can validate checksum
-        # on the original compressed stream, then convert.
-        # (Streaming directly through decompression would lose ability to
-        #  checksum the *compressed* bytes the server sent.)
-        progress_bar = tqdm(total=total_size_in_bytes, unit="iB", unit_scale=True)
-        checksum_hasher = hashlib.sha256() if validate_checksum else None
-
-        with open(filename, "wb") as f:
-            for data in response.iter_content(block_size):
-                progress_bar.update(len(data))
-                f.write(data)
-                if checksum_hasher:
-                    checksum_hasher.update(data)
-        progress_bar.close()
-
-        # Verify download size
-        if total_size_in_bytes != 0 and progress_bar.n != total_size_in_bytes:
-            raise IOError("Downloaded size does not match Content-Length header")
-
-        # Validate checksum of the original compressed file
+        print(f"Streaming conversion {source_format} → {target_format}: {file}")
         if validate_checksum:
-            actual = checksum_hasher.hexdigest() if checksum_hasher else None
-            if expected_checksum is None:
-                print(f"WARNING: no expected checksum available for {filename}; skipping validation")
-            elif actual is None:
-                print(f"WARNING: could not compute checksum for {filename}; skipping validation")
-            else:
-                if actual.lower() != expected_checksum.lower():
-                    try:
-                        os.remove(filename)
-                    except OSError:
-                        pass
-                    raise IOError(
-                        f"Checksum mismatch for {filename}: expected {expected_checksum}, got {actual}"
-                    )
+            print(
+                f"WARNING: checksum validation is skipped during streaming "
+                f"conversion for {file} (compressed-stream checksum is not "
+                f"comparable to decompressed-stream checksum)"
+            )
 
-        # Now convert the downloaded file
-        _convert_compression_format(filename, target_filepath, source_format, convert_to)
+        with open(target_filepath, "wb") as out_stream:
+            FileConverter.convert_stream(
+                input_stream=response.raw,
+                output_stream=out_stream,
+                source_format=source_format,
+                target_format=target_format,
+                compute_checksum=False,
+            )
 
     else:
         # --- 4b. Plain download (no conversion) ---
+        total_size_in_bytes = int(response.headers.get("content-length", 0))
+        block_size = 1024  # 1 KiB
         progress_bar = tqdm(total=total_size_in_bytes, unit="iB", unit_scale=True)
         with open(filename, "wb") as f:
             for data in response.iter_content(block_size):
@@ -464,7 +409,7 @@ def _download_files(
     convert_to: str = None,
     convert_from: str = None,
     validate_checksum: bool = False,
-    checksums: dict | None = None,
+    checksums: Optional[dict] = None,
 ) -> None:
     """Download multiple files from the databus.
 
@@ -498,7 +443,7 @@ def _download_files(
         )
 
 
-def _get_sparql_query_of_collection(uri: str, databus_key: str | None = None) -> str:
+def _get_sparql_query_of_collection(uri: str, databus_key: Optional[str] = None) -> str:
     """Get SPARQL query of collection members from databus collection URI.
 
     Args:
@@ -785,7 +730,7 @@ def _download_artifact(
 
 def _get_databus_versions_of_artifact(
     json_str: str, all_versions: bool
-) -> str | List[str]:
+) -> Union[str, List[str]]:
     """Parse the JSON-LD of a databus artifact to extract URLs of its versions.
 
     Args:
@@ -1065,7 +1010,7 @@ def download(
             print("query in file not supported yet")
         # query as argument
         else:
-            print("QUERY {}", databusURI.replace("\n", " "))
+            print(f"QUERY {databusURI.replace(chr(10), ' ')}")
             if uri_endpoint is None:  # endpoint is required for queries (--databus)
                 raise ValueError("No endpoint given for query")
             res = _get_file_download_urls_from_sparql_query(

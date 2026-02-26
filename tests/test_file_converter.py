@@ -21,17 +21,8 @@ import tempfile
 import pytest
 from click.testing import CliRunner
 
-from databusclient.extensions.file_converter import (
-    FileConverter,
-    COMPRESSION_EXTENSIONS,
-    COMPRESSION_MODULES,
-)
-from databusclient.api.download import (
-    _detect_compression_format,
-    _should_convert_file,
-    _get_converted_filename,
-    _convert_compression_format,
-)
+from databusclient.extensions.file_converter import FileConverter
+from databusclient.api.download import _should_convert_file
 from databusclient.cli import download
 
 # Re-usable test payload
@@ -206,7 +197,7 @@ class TestStreamConversion:
 
         raw_buf = io.BytesIO()
         result_hash = FileConverter.convert_stream(
-            gz_buf, raw_buf, "gz", "none", validate_checksum=True
+            gz_buf, raw_buf, "gz", "none", compute_checksum=True
         )
         assert result_hash == expected_hash
 
@@ -277,7 +268,7 @@ class TestChecksumValidation:
 
     def test_invalid_checksum_raises(self):
         stream = io.BytesIO(b"some data")
-        with pytest.raises(IOError, match="Checksum mismatch"):
+        with pytest.raises(ValueError, match="Checksum mismatch"):
             FileConverter.validate_checksum_stream(stream, "0" * 64)
 
 
@@ -344,6 +335,118 @@ class TestDecompressCLI:
         )
         assert result.exit_code != 0
         assert "Cannot use --decompress together with --convert-to" in result.output
+
+    def test_decompress_and_convert_from_conflict(self):
+        runner = CliRunner()
+        result = runner.invoke(
+            download,
+            ["--decompress", "--convert-from", "bz2", "https://example.org/test"],
+        )
+        assert result.exit_code != 0
+        assert "Cannot use --decompress together with --convert-from" in result.output
+
+
+# ---------------------------------------------------------------------------
+# Streaming conversion: no intermediate files
+# ---------------------------------------------------------------------------
+
+class TestStreamingNoIntermediateFiles:
+    """Verify that streaming conversion doesn't leave temp files behind."""
+
+    def test_stream_decompress_no_temp(self):
+        """Stream gz → none in memory, no disk artefacts."""
+        gz_buf = io.BytesIO()
+        with gzip.open(gz_buf, "wb") as gz:
+            gz.write(_TEST_DATA)
+        gz_buf.seek(0)
+
+        raw_buf = io.BytesIO()
+        FileConverter.convert_stream(gz_buf, raw_buf, "gz", "none")
+        assert raw_buf.getvalue() == _TEST_DATA
+        # BytesIO objects don't touch the filesystem at all
+
+    def test_stream_compress_no_temp(self):
+        """Stream none → bz2 in memory, no disk artefacts."""
+        raw_buf = io.BytesIO(_TEST_DATA)
+        bz2_buf = io.BytesIO()
+        FileConverter.convert_stream(raw_buf, bz2_buf, "none", "bz2")
+        bz2_buf.seek(0)
+        assert bz2.decompress(bz2_buf.read()) == _TEST_DATA
+
+    def test_stream_recompress_no_temp(self):
+        """Stream bz2 → xz in memory, no disk artefacts."""
+        bz2_buf = io.BytesIO()
+        with bz2.open(bz2_buf, "wb") as bf:
+            bf.write(_TEST_DATA)
+        bz2_buf.seek(0)
+
+        xz_buf = io.BytesIO()
+        FileConverter.convert_stream(bz2_buf, xz_buf, "bz2", "xz")
+        xz_buf.seek(0)
+        with lzma.open(xz_buf, "rb") as xf:
+            assert xf.read() == _TEST_DATA
+
+    def test_file_convert_removes_source_only(self):
+        """convert_file removes source but target persists; no temp files."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            src = os.path.join(tmpdir, "data.txt.gz")
+            tgt = os.path.join(tmpdir, "data.txt")
+            with gzip.open(src, "wb") as f:
+                f.write(_TEST_DATA)
+
+            before = set(os.listdir(tmpdir))
+            FileConverter.convert_file(src, tgt, "gz", "none")
+            after = set(os.listdir(tmpdir))
+
+            # Only the target should remain; source gone, nothing extra
+            assert "data.txt.gz" not in after
+            assert "data.txt" in after
+            assert after - before == {"data.txt"}
+
+
+# ---------------------------------------------------------------------------
+# Checksum: mismatch raises ValueError, stream rewound
+# ---------------------------------------------------------------------------
+
+class TestChecksumBehaviour:
+
+    def test_mismatch_raises_valueerror(self):
+        stream = io.BytesIO(b"test data for checksum")
+        with pytest.raises(ValueError, match="Checksum mismatch"):
+            FileConverter.validate_checksum_stream(stream, "0" * 64)
+
+    def test_stream_rewound_after_valid_check(self):
+        data = b"rewind check"
+        expected = hashlib.sha256(data).hexdigest()
+        stream = io.BytesIO(data)
+        FileConverter.validate_checksum_stream(stream, expected)
+        # Stream should be at position 0 after validation
+        assert stream.tell() == 0
+        assert stream.read() == data
+
+    def test_stream_rewound_after_invalid_check(self):
+        stream = io.BytesIO(b"data")
+        try:
+            FileConverter.validate_checksum_stream(stream, "0" * 64)
+        except ValueError:
+            pass
+        # Stream should still be at position 0 after failed validation
+        assert stream.tell() == 0
+
+    def test_compute_checksum_matches_raw_hash(self):
+        """compute_checksum in convert_stream returns digest of decompressed bytes."""
+        expected = hashlib.sha256(_TEST_DATA).hexdigest()
+
+        bz2_buf = io.BytesIO()
+        with bz2.open(bz2_buf, "wb") as bf:
+            bf.write(_TEST_DATA)
+        bz2_buf.seek(0)
+
+        raw_buf = io.BytesIO()
+        got = FileConverter.convert_stream(
+            bz2_buf, raw_buf, "bz2", "none", compute_checksum=True
+        )
+        assert got == expected
 
 
 # ---------------------------------------------------------------------------

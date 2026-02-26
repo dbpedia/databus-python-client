@@ -6,21 +6,17 @@ import bz2
 import lzma
 import tempfile
 import pytest
-from databusclient.api.download import (
-    _detect_compression_format,
-    _should_convert_file,
-    _get_converted_filename,
-    _convert_compression_format,
-)
+from databusclient.api.download import _should_convert_file
+from databusclient.extensions.file_converter import FileConverter
 
 
 def test_detect_compression_format():
     """Test compression format detection from filenames"""
-    assert _detect_compression_format("file.txt.bz2") == "bz2"
-    assert _detect_compression_format("file.txt.gz") == "gz"
-    assert _detect_compression_format("file.txt.xz") == "xz"
-    assert _detect_compression_format("file.txt") == "none"
-    assert _detect_compression_format("FILE.TXT.GZ") == "gz"  # case insensitive
+    assert FileConverter.detect_format("file.txt.bz2") == "bz2"
+    assert FileConverter.detect_format("file.txt.gz") == "gz"
+    assert FileConverter.detect_format("file.txt.xz") == "xz"
+    assert FileConverter.detect_format("file.txt") == "none"
+    assert FileConverter.detect_format("FILE.TXT.GZ") == "gz"  # case insensitive
 
 
 def test_should_convert_file():
@@ -58,9 +54,9 @@ def test_should_convert_file():
 
 def test_get_converted_filename():
     """Test filename conversion"""
-    assert _get_converted_filename("data.txt.bz2", "bz2", "gz") == "data.txt.gz"
-    assert _get_converted_filename("data.txt.gz", "gz", "xz") == "data.txt.xz"
-    assert _get_converted_filename("data.txt.xz", "xz", "bz2") == "data.txt.bz2"
+    assert FileConverter.get_converted_filename("data.txt.bz2", "bz2", "gz") == "data.txt.gz"
+    assert FileConverter.get_converted_filename("data.txt.gz", "gz", "xz") == "data.txt.xz"
+    assert FileConverter.get_converted_filename("data.txt.xz", "xz", "bz2") == "data.txt.bz2"
 
 
 def test_convert_compression_format():
@@ -76,7 +72,7 @@ def test_convert_compression_format():
         
         # Convert bz2 to gz
         gz_file = os.path.join(tmpdir, "test.txt.gz")
-        _convert_compression_format(bz2_file, gz_file, "bz2", "gz")
+        FileConverter.convert_file(bz2_file, gz_file, "bz2", "gz")
         
         # Verify the original file was removed
         assert not os.path.exists(bz2_file)
@@ -101,7 +97,7 @@ def test_convert_gz_to_xz():
         
         # Convert gz to xz
         xz_file = os.path.join(tmpdir, "test.txt.xz")
-        _convert_compression_format(gz_file, xz_file, "gz", "xz")
+        FileConverter.convert_file(gz_file, xz_file, "gz", "xz")
         
         # Verify conversion
         assert not os.path.exists(gz_file)
@@ -124,7 +120,7 @@ def test_convert_xz_to_bz2():
         
         # Convert xz to bz2
         bz2_file = os.path.join(tmpdir, "test.txt.bz2")
-        _convert_compression_format(xz_file, bz2_file, "xz", "bz2")
+        FileConverter.convert_file(xz_file, bz2_file, "xz", "bz2")
         
         # Verify conversion
         assert not os.path.exists(xz_file)
@@ -137,12 +133,12 @@ def test_convert_xz_to_bz2():
 def test_case_insensitive_filename_conversion():
     """Test that uppercase extensions are handled correctly (addresses PR feedback)"""
     # Test uppercase extension matching
-    assert _get_converted_filename("FILE.BZ2", "bz2", "gz") == "FILE.gz"
-    assert _get_converted_filename("data.GZ", "gz", "xz") == "data.xz"
-    assert _get_converted_filename("archive.XZ", "xz", "bz2") == "archive.bz2"
+    assert FileConverter.get_converted_filename("FILE.BZ2", "bz2", "gz") == "FILE.gz"
+    assert FileConverter.get_converted_filename("data.GZ", "gz", "xz") == "data.xz"
+    assert FileConverter.get_converted_filename("archive.XZ", "xz", "bz2") == "archive.bz2"
     
     # Test mixed case
-    assert _get_converted_filename("File.Bz2", "bz2", "gz") == "File.gz"
+    assert FileConverter.get_converted_filename("File.Bz2", "bz2", "gz") == "File.gz"
 
 
 def test_invalid_source_format_validation():
@@ -157,7 +153,7 @@ def test_invalid_source_format_validation():
         
         # Should raise ValueError for unsupported format
         with pytest.raises(ValueError, match="Unsupported source compression format"):
-            _convert_compression_format(source_file, target_file, "zip", "gz")
+            FileConverter.convert_file(source_file, target_file, "zip", "gz")
 
 
 def test_invalid_target_format_validation():
@@ -173,7 +169,7 @@ def test_invalid_target_format_validation():
         
         # Should raise ValueError for unsupported format
         with pytest.raises(ValueError, match="Unsupported target compression format"):
-            _convert_compression_format(source_file, target_file, "gz", "rar")
+            FileConverter.convert_file(source_file, target_file, "gz", "rar")
 
 
 def test_corrupted_file_handling():
@@ -188,7 +184,7 @@ def test_corrupted_file_handling():
         
         # Should raise RuntimeError
         with pytest.raises(RuntimeError, match="Compression conversion failed"):
-            _convert_compression_format(source_file, target_file, "bz2", "gz")
+            FileConverter.convert_file(source_file, target_file, "bz2", "gz")
         
         # Verify target file was cleaned up
         assert not os.path.exists(target_file)

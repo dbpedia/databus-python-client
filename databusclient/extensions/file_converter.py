@@ -244,17 +244,20 @@ class FileConverter:
     ) -> bool:
         """Validate SHA-256 checksum of a stream.
 
-        The stream is rewound to position 0 both before and after reading.
+        The stream is **seeked to position 0** before reading and
+        **seeked back to 0** after reading, so the caller can continue
+        to use it.  If the checksum does not match, a ``ValueError``
+        is raised; otherwise ``True`` is returned.
 
         Args:
-            input_stream: Seekable input stream.
-            expected_checksum: Expected SHA-256 hex digest.
+            input_stream: Seekable binary input stream.
+            expected_checksum: Expected SHA-256 hex digest (case-insensitive).
 
         Returns:
-            ``True`` if checksum matches.
+            ``True`` when the computed checksum matches *expected_checksum*.
 
         Raises:
-            IOError: If the checksum does not match.
+            ValueError: If the computed checksum does not match.
         """
         hasher = hashlib.sha256()
         input_stream.seek(0)
@@ -268,7 +271,7 @@ class FileConverter:
         computed = hasher.hexdigest()
         input_stream.seek(0)
         if computed.lower() != expected_checksum.lower():
-            raise IOError(
+            raise ValueError(
                 f"Checksum mismatch: expected {expected_checksum}, got {computed}"
             )
         return True
@@ -312,13 +315,15 @@ class FileConverter:
                         if not chunk:
                             break
                         writer.write(chunk)
-
-            os.remove(source_path)
-            print(f"Conversion complete: {os.path.basename(target_path)}")
         except Exception as e:
             if os.path.exists(target_path):
                 os.remove(target_path)
             raise RuntimeError(f"Compression conversion failed: {e}")
+
+        # Source removal is intentionally outside the try block so that
+        # a failure to delete the source does not trigger target cleanup.
+        os.remove(source_path)
+        print(f"Conversion complete: {os.path.basename(target_path)}")
 
     # ------------------------------------------------------------------
     # High-level: streaming conversion on file-like objects
@@ -330,7 +335,7 @@ class FileConverter:
         output_stream: BinaryIO,
         source_format: str,
         target_format: str,
-        validate_checksum: bool = False,
+        compute_checksum: bool = False,
     ) -> Optional[str]:
         """Stream conversion between two file-like objects.
 
@@ -338,30 +343,32 @@ class FileConverter:
         ``source_format != 'none'``), recompressed (if
         ``target_format != 'none'``), and written to *output_stream*.
 
-        When *validate_checksum* is ``True`` the SHA-256 digest of the
-        **decompressed** (intermediate) bytes is returned.
+        When *compute_checksum* is ``True`` the SHA-256 digest of the
+        **decompressed** (intermediate) bytes is computed and returned
+        as a hex string.  The caller can compare this value against a
+        known-good digest to verify data integrity.
 
         Args:
             input_stream: Source file-like object (binary read).
             output_stream: Target file-like object (binary write).
             source_format: Compression format of *input_stream*.
             target_format: Compression format for *output_stream*.
-            validate_checksum: Compute SHA-256 of decompressed data.
+            compute_checksum: If ``True``, compute and return a SHA-256
+                hex digest of the decompressed intermediate bytes.
 
         Returns:
-            Hex SHA-256 digest when *validate_checksum* is ``True``,
+            Hex SHA-256 digest when *compute_checksum* is ``True``,
             otherwise ``None``.
         """
         _validate_format(source_format, "source")
         _validate_format(target_format, "target")
 
-        hasher = hashlib.sha256() if validate_checksum else None
+        hasher = hashlib.sha256() if compute_checksum else None
 
-        # Build a reader wrapper that yields decompressed chunks
-        reader = _wrap_reader(input_stream, source_format)
+        reader_ctx = _wrap_reader_ctx(input_stream, source_format)
         writer_ctx = _wrap_writer(output_stream, target_format)
 
-        with writer_ctx as writer:
+        with reader_ctx as reader, writer_ctx as writer:
             while True:
                 chunk = reader.read(FileConverter.CHUNK_SIZE)
                 if not chunk:
@@ -369,10 +376,6 @@ class FileConverter:
                 if hasher:
                     hasher.update(chunk)
                 writer.write(chunk)
-
-        # Close the reader wrapper if it supports it
-        if hasattr(reader, "close") and reader is not input_stream:
-            reader.close()
 
         return hasher.hexdigest() if hasher else None
 
@@ -458,7 +461,21 @@ def _wrap_reader(stream: BinaryIO, fmt: str):
         return stream
     if fmt == "zstd" and _HAS_ZSTD:
         dctx = _zstd.ZstdDecompressor()
-        return dctx.stream_reader(stream)
+        return dctx.stream_reader(stream, closefd=False)
+    return COMPRESSION_MODULES[fmt].open(stream, "rb")
+
+
+def _wrap_reader_ctx(stream: BinaryIO, fmt: str):
+    """Like :func:`_wrap_reader` but always returns a context manager.
+
+    For ``'none'`` format the original *stream* is returned inside a
+    :class:`_NullCtx` so the caller can use ``with`` uniformly.
+    """
+    if fmt == "none":
+        return _NullCtx(stream)
+    if fmt == "zstd" and _HAS_ZSTD:
+        dctx = _zstd.ZstdDecompressor()
+        return dctx.stream_reader(stream, closefd=False)
     return COMPRESSION_MODULES[fmt].open(stream, "rb")
 
 
@@ -468,5 +485,5 @@ def _wrap_writer(stream: BinaryIO, fmt: str):
         return _NullCtx(stream)
     if fmt == "zstd" and _HAS_ZSTD:
         cctx = _zstd.ZstdCompressor()
-        return cctx.stream_writer(stream)
+        return cctx.stream_writer(stream, closefd=False)
     return COMPRESSION_MODULES[fmt].open(stream, "wb")
