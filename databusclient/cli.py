@@ -169,18 +169,37 @@ def deploy(
 )
 @click.option(
     "--convert-to",
-    type=click.Choice(["bz2", "gz", "xz"], case_sensitive=False),
-    help="Target compression format for on-the-fly conversion during download (supported: bz2, gz, xz)",
+    type=click.Choice(["bz2", "gz", "xz", "none"], case_sensitive=False),
+    help=(
+        "Target compression format for on-the-fly streaming conversion. "
+        "Use 'none' to decompress files to raw format. "
+        "Examples: --convert-to gz (re-compress to gzip), "
+        "--convert-to none (decompress to raw)."
+    ),
 )
 @click.option(
     "--convert-from",
-    type=click.Choice(["bz2", "gz", "xz"], case_sensitive=False),
-    help="Source compression format to convert from (optional filter). Only files with this compression will be converted.",
+    type=click.Choice(["bz2", "gz", "xz", "none"], case_sensitive=False),
+    help=(
+        "Only convert files whose source format matches this value (optional filter). "
+        "Use 'none' to select uncompressed files for compression. "
+        "Examples: --convert-from bz2 --convert-to gz (only re-compress bz2 files), "
+        "--convert-from none --convert-to gz (compress raw files to gzip)."
+    ),
+)
+@click.option(
+    "--decompress",
+    is_flag=True,
+    help=(
+        "Decompress all downloaded files to raw format. "
+        "Shorthand for --convert-to none. "
+        "Cannot be combined with --convert-to."
+    ),
 )
 @click.option(
     "--validate-checksum",
     is_flag=True,
-    help="Validate checksums of downloaded files"
+    help="Validate SHA-256 checksums of downloaded files against Databus metadata."
 )
 def download(
     databusuris: List[str],
@@ -193,12 +212,43 @@ def download(
     clientid,
     convert_to,
     convert_from,
+    decompress,
     validate_checksum,
 ):
+    """Download datasets from databus.
+
+    Supports on-the-fly compression format conversion via --convert-to
+    and --convert-from.  Use --decompress (or --convert-to none) to
+    decompress files to raw format.
+
+    \b
+    Examples:
+      # Download and decompress all files
+      databusclient download --decompress <URI>
+
+      # Re-compress bz2 files to gzip
+      databusclient download --convert-from bz2 --convert-to gz <URI>
+
+      # Compress raw files to xz
+      databusclient download --convert-from none --convert-to xz <URI>
+
+      # Download with checksum validation
+      databusclient download --validate-checksum <URI>
     """
-    Download datasets from databus, optionally using vault access if vault options are provided.
-    Supports on-the-fly compression format conversion using --convert-to and --convert-from options.
-    """
+    # --decompress is shorthand for --convert-to none
+    if decompress:
+        if convert_to is not None:
+            raise click.UsageError(
+                "Cannot use --decompress together with --convert-to. "
+                "Use one or the other."
+            )
+        if convert_from is not None:
+            raise click.UsageError(
+                "Cannot use --decompress together with --convert-from. "
+                "--decompress decompresses all compressed files regardless of format."
+            )
+        convert_to = "none"
+
     try:
         api_download(
             localDir=localdir,
