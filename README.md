@@ -180,6 +180,12 @@ docker run --rm -v $(pwd):/data dbpedia/databus-python-client download $DOWNLOAD
   - Optional filter to specify which source compression format should be converted. Use with `--convert-to` to convert only files with a specific compression format. Example: `--convert-to gz --convert-from bz2` converts only `.bz2` files to `.gz`, leaving other formats unchanged.
 - `--validate-checksum`
   - Validates the checksums of downloaded files against the checksums provided by the Databus. If a checksum does not match, an error is raised and the file is deleted.
+- **Filters (Pipe syntax)**
+  - You can filter files within a version/artifact/group using a pipe-separated syntax: `$URI|filter1|filter2`.
+  - Content variants: `key=value` (e.g. `lang=en`) or just `value` (e.g. `en`) to match any variant.
+  - Format: `.extension` (e.g. `.ttl`).
+  - Compression: `..compression` (e.g. `..gz`).
+  - Example: `databusclient download "https://.../version|lang=en|.ttl|..gz"`
 
 **Help and further information on download command:**
 ```bash
@@ -337,6 +343,7 @@ Options:
                       https://cloud.example.com/remote.php/webdav)
   --remote TEXT       rclone remote name (e.g., 'nextcloud')
   --path TEXT         Remote path on Nextcloud (e.g., 'datasets/mydataset')
+  --dry-run           Generate and print JSON-LD without deploying (gen preview)
   --help              Show this message and exit.
 ```
 

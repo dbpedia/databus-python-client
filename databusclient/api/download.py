@@ -752,22 +752,24 @@ def _download_version(
     convert_to: str = None,
     convert_from: str = None,
     validate_checksum: bool = False,
+    filters: List[str] = None,
 ) -> None:
-    """Download all files in a databus artifact version.
+    """Download matching files in a databus artifact version.
 
     Args:
-        uri: The full databus artifact version URI.
-        localDir: Local directory to download files to. If None, the databus folder structure is created in the current working directory.
-        vault_token_file: Path to Vault refresh token file for protected downloads.
-        databus_key: Databus API key for protected downloads.
+        uri: The full databus artifact version URI (base URI without filters).
+        localDir: Local directory to download files to.
+        vault_token_file: Path to Vault refresh token file.
+        databus_key: Databus API key.
         auth_url: Keycloak token endpoint URL.
         client_id: Client ID for token exchange.
-        convert_to: Target compression format for on-the-fly conversion.
+        convert_to: Target compression format.
         convert_from: Optional source compression format filter.
-        validate_checksum: Whether to validate checksums after downloading.
+        validate_checksum: Whether to validate checksums.
+        filters: Optional list of filters (content variants, format, compression).
     """
     json_str = fetch_databus_jsonld(uri, databus_key=databus_key)
-    file_urls = _get_file_download_urls_from_artifact_jsonld(json_str)
+    file_urls = _get_file_download_urls_from_artifact_jsonld(json_str, filters=filters)
     # build url -> checksum mapping from JSON-LD when available
     checksums: dict = {}
     try:
@@ -800,20 +802,22 @@ def _download_artifact(
     convert_to: str = None,
     convert_from: str = None,
     validate_checksum: bool = False,
+    filters: List[str] = None,
 ) -> None:
     """Download files in a databus artifact.
 
     Args:
         uri: The full databus artifact URI.
-        localDir: Local directory to download files to. If None, the databus folder structure is created in the current working directory.
-        all_versions: If True, download all versions of the artifact; otherwise, only download the latest version.
-        vault_token_file: Path to Vault refresh token file for protected downloads.
-        databus_key: Databus API key for protected downloads.
+        localDir: Local directory to download files to.
+        all_versions: If True, download all versions; otherwise, only latest.
+        vault_token_file: Path to Vault refresh token file.
+        databus_key: Databus API key.
         auth_url: Keycloak token endpoint URL.
         client_id: Client ID for token exchange.
-        convert_to: Target compression format for on-the-fly conversion.
+        convert_to: Target compression format.
         convert_from: Optional source compression format filter.
-        validate_checksum: Whether to validate checksums after downloading.
+        validate_checksum: Whether to validate checksums.
+        filters: Optional list of filters to apply to each version's files.
     """
     json_str = fetch_databus_jsonld(uri, databus_key=databus_key)
     versions = _get_databus_versions_of_artifact(json_str, all_versions=all_versions)
@@ -822,7 +826,9 @@ def _download_artifact(
     for version_uri in versions:
         print(f"Downloading version: {version_uri}")
         json_str = fetch_databus_jsonld(version_uri, databus_key=databus_key)
-        file_urls = _get_file_download_urls_from_artifact_jsonld(json_str)
+        file_urls = _get_file_download_urls_from_artifact_jsonld(
+            json_str, filters=filters
+        )
         # extract checksums for this version
         checksums: dict = {}
         try:
@@ -882,14 +888,73 @@ def _get_databus_versions_of_artifact(
     return version_urls[0]
 
 
-def _get_file_download_urls_from_artifact_jsonld(json_str: str) -> List[str]:
+def _matches_filters(node: dict, filters: List[str]) -> bool:
+    """Check if a JSON-LD node matches the given filters.
+
+    Filters can be:
+    - .extension (e.g. .ttl)
+    - ..compression (e.g. ..gz)
+    - key=value (content variant)
+    - value (match any content variant value)
+    """
+    if not filters:
+        return True
+
+    for f in filters:
+        if f.startswith(".."):
+            # Compression filter
+            expected = f[2:].lower()
+            actual = str(node.get("compression", "")).lower()
+            if actual != expected:
+                return False
+        elif f.startswith("."):
+            # Format extension filter
+            expected = f[1:].lower()
+            actual = str(node.get("formatExtension", "")).lower()
+            if actual != expected:
+                return False
+        elif "=" in f:
+            # Specific content variant key=value
+            key, val = f.split("=", 1)
+            # Try various common prefixes
+            actual = None
+            for prefix in ["dcv:", "dataid-cv:", ""]:
+                potential_val = node.get(f"{prefix}{key}")
+                if potential_val is not None:
+                    if isinstance(potential_val, dict):
+                        actual = potential_val.get("@value")
+                    else:
+                        actual = potential_val
+                    break
+            if str(actual) != val:
+                return False
+        else:
+            # Match any content variant value
+            found = False
+            for k, v in node.items():
+                if k.startswith("dcv:") or k.startswith("dataid-cv:"):
+                    actual_val = v
+                    if isinstance(v, dict):
+                        actual_val = v.get("@value")
+                    if str(actual_val) == f:
+                        found = True
+                        break
+            if not found:
+                return False
+    return True
+
+
+def _get_file_download_urls_from_artifact_jsonld(
+    json_str: str, filters: List[str] = None
+) -> List[str]:
     """Parse the JSON-LD of a databus artifact version to extract download URLs.
 
     Args:
         json_str: JSON-LD string of the databus artifact version.
+        filters: Optional list of filters to apply to the files.
 
     Returns:
-        List of all file download URLs in the artifact version.
+        List of matching file download URLs in the artifact version.
     """
 
     databusIdUrl: List[str] = []
@@ -898,6 +963,9 @@ def _get_file_download_urls_from_artifact_jsonld(json_str: str) -> List[str]:
     graph = json_dict.get("@graph", [])
     for node in graph:
         if node.get("@type") == "Part":
+            if not _matches_filters(node, filters):
+                continue
+
             file_uri = node.get("file")
             if not isinstance(file_uri, str):
                 continue
@@ -916,20 +984,22 @@ def _download_group(
     convert_to: str = None,
     convert_from: str = None,
     validate_checksum: bool = False,
+    filters: List[str] = None,
 ) -> None:
     """Download files in a databus group.
 
     Args:
         uri: The full databus group URI.
-        localDir: Local directory to download files to. If None, the databus folder structure is created in the current working directory.
-        all_versions: If True, download all versions of each artifact in the group; otherwise, only download the latest version.
-        vault_token_file: Path to Vault refresh token file for protected downloads.
-        databus_key: Databus API key for protected downloads.
+        localDir: Local directory to download files to.
+        all_versions: If True, download all versions; otherwise, only latest.
+        vault_token_file: Path to Vault refresh token file.
+        databus_key: Databus API key.
         auth_url: Keycloak token endpoint URL.
         client_id: Client ID for token exchange.
-        convert_to: Target compression format for on-the-fly conversion.
+        convert_to: Target compression format.
         convert_from: Optional source compression format filter.
-        validate_checksum: Whether to validate checksums after downloading.
+        validate_checksum: Whether to validate checksums.
+        filters: Optional list of filters to apply to each file.
     """
     json_str = fetch_databus_jsonld(uri, databus_key=databus_key)
     artifacts = _get_databus_artifacts_of_group(json_str)
@@ -946,6 +1016,7 @@ def _download_group(
             convert_to=convert_to,
             convert_from=convert_from,
             validate_checksum=validate_checksum,
+            filters=filters,
         )
 
 
@@ -1013,8 +1084,18 @@ def download(
         validate_checksum: Whether to validate checksums after downloading.
     """
     for databusURI in databusURIs:
+        # Support pipe-separated filters for version/artifact/group URIs
+        # Syntax: https://.../version|key1=val1|.format|..compression
+        filters = []
+        base_uri = databusURI
+        if databusURI.startswith("http://") or databusURI.startswith("https://"):
+            if "|" in databusURI:
+                parts = databusURI.split("|")
+                base_uri = parts[0]
+                filters = parts[1:]
+
         host, account, group, artifact, version, file = (
-            get_databus_id_parts_from_file_url(databusURI)
+            get_databus_id_parts_from_file_url(base_uri)
         )
 
         # Determine endpoint per-URI if not explicitly provided
@@ -1064,9 +1145,9 @@ def download(
                     expected_checksum=expected,
                 )
             elif version is not None:
-                print(f"Downloading version: {databusURI}")
+                print(f"Downloading version: {base_uri}")
                 _download_version(
-                    databusURI,
+                    base_uri,
                     localDir,
                     vault_token_file=token,
                     databus_key=databus_key,
@@ -1075,13 +1156,14 @@ def download(
                     convert_to=convert_to,
                     convert_from=convert_from,
                     validate_checksum=validate_checksum,
+                    filters=filters,
                 )
             elif artifact is not None:
                 print(
-                    f"Downloading {'all' if all_versions else 'latest'} version(s) of artifact: {databusURI}"
+                    f"Downloading {'all' if all_versions else 'latest'} version(s) of artifact: {base_uri}"
                 )
                 _download_artifact(
-                    databusURI,
+                    base_uri,
                     localDir,
                     all_versions=all_versions,
                     vault_token_file=token,
@@ -1091,13 +1173,14 @@ def download(
                     convert_to=convert_to,
                     convert_from=convert_from,
                     validate_checksum=validate_checksum,
+                    filters=filters,
                 )
             elif group is not None and group != "collections":
                 print(
-                    f"Downloading group and all its artifacts and versions: {databusURI}"
+                    f"Downloading group and all its artifacts and versions: {base_uri}"
                 )
                 _download_group(
-                    databusURI,
+                    base_uri,
                     localDir,
                     all_versions=all_versions,
                     vault_token_file=token,
@@ -1107,6 +1190,7 @@ def download(
                     convert_to=convert_to,
                     convert_from=convert_from,
                     validate_checksum=validate_checksum,
+                    filters=filters,
                 )
             elif account is not None:
                 print("accountId not supported yet")  # TODO
