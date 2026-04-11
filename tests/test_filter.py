@@ -1,5 +1,4 @@
 import json
-import pytest
 from databusclient.api.download import _matches_filters, _get_file_download_urls_from_artifact_jsonld
 
 def test_matches_filters_none():
