@@ -16,6 +16,7 @@ from databusclient.api.utils import (
     get_databus_id_parts_from_file_url,
     compute_sha256_and_length,
 )
+from databusclient.api.convert import convert_file, get_converted_filename
 
 # Compression format mappings
 COMPRESSION_EXTENSIONS = {
@@ -313,6 +314,7 @@ def _download_file(
     client_id=None,
     convert_to=None,
     convert_from=None,
+    convert_format=None,
     validate_checksum: bool = False,
     expected_checksum: str | None = None,
 ) -> None:
@@ -327,6 +329,7 @@ def _download_file(
         client_id: Client ID for token exchange.
         convert_to: Target compression format for on-the-fly conversion.
         convert_from: Optional source compression format filter.
+        convert_format: Target RDF/tabular format for on-the-fly conversion.
         validate_checksum: Whether to validate checksums after downloading.
         expected_checksum: The expected checksum of the file.
     """
@@ -507,12 +510,63 @@ def _download_file(
 
     # --- 7. Convert compression format if requested (AFTER validation) ---
     should_convert, source_format = _should_convert_file(file, convert_to, convert_from)
+    final_downloaded_file = filename
     if should_convert and source_format:
         target_filename = _get_converted_filename(file, source_format, convert_to)
         target_filepath = os.path.join(localDir, target_filename)
         _convert_compression_format(
             filename, target_filepath, source_format, convert_to
         )
+        final_downloaded_file = target_filepath
+
+    # --- 8. Convert file format if requested (AFTER compression conversion) ---
+    if convert_format:
+        final_basename = os.path.basename(final_downloaded_file)
+        compression_fmt = _detect_compression_format(final_basename)
+
+        if compression_fmt:
+            # File is still compressed — decompress to a temp file first,
+            # then convert format, then clean up the temp file.
+            # This follows the pipeline: Download -> Decompress -> Convert -> Save
+            import tempfile
+
+            source_module = COMPRESSION_MODULES[compression_fmt]
+            # temp decompressed file sits next to the original
+            compression_ext = COMPRESSION_EXTENSIONS[compression_fmt]
+            if final_downloaded_file.lower().endswith(compression_ext):
+                temp_decompressed = final_downloaded_file[:-len(compression_ext)]
+            else:
+                temp_decompressed = final_downloaded_file + ".decompressed"
+
+            try:
+                print(
+                    f"Decompressing {final_basename} before format conversion..."
+                )
+                with source_module.open(final_downloaded_file, "rb") as sf:
+                    with open(temp_decompressed, "wb") as tf:
+                        while True:
+                            chunk = sf.read(8192)
+                            if not chunk:
+                                break
+                            tf.write(chunk)
+
+                # now convert the decompressed temp file
+                converted_filename = get_converted_filename(
+                    final_basename, convert_format
+                )
+                converted_filepath = os.path.join(localDir, converted_filename)
+                convert_file(temp_decompressed, converted_filepath, convert_format)
+
+            finally:
+                # always clean up temp file even if conversion fails
+                if os.path.exists(temp_decompressed):
+                    os.remove(temp_decompressed)
+
+        else:
+            # file is already uncompressed — convert directly
+            converted_filename = get_converted_filename(final_basename, convert_format)
+            converted_filepath = os.path.join(localDir, converted_filename)
+            convert_file(final_downloaded_file, converted_filepath, convert_format)
 
 
 def _download_files(
@@ -524,6 +578,7 @@ def _download_files(
     client_id: str = None,
     convert_to: str = None,
     convert_from: str = None,
+    convert_format: str = None,
     validate_checksum: bool = False,
     checksums: dict | None = None,
 ) -> None:
@@ -538,6 +593,7 @@ def _download_files(
         client_id: Client ID for token exchange.
         convert_to: Target compression format for on-the-fly conversion.
         convert_from: Optional source compression format filter.
+        convert_format: Target RDF/tabular format for on-the-fly conversion.
         validate_checksum: Whether to validate checksums after downloading.
         checksums: Dictionary mapping URLs to their expected checksums.
     """
@@ -554,6 +610,7 @@ def _download_files(
             client_id=client_id,
             convert_to=convert_to,
             convert_from=convert_from,
+            convert_format=convert_format,
             validate_checksum=validate_checksum,
             expected_checksum=expected,
         )
@@ -702,6 +759,7 @@ def _download_collection(
     client_id: str = None,
     convert_to: str = None,
     convert_from: str = None,
+    convert_format: str = None,
     validate_checksum: bool = False,
 ) -> None:
     """Download all files in a databus collection.
@@ -716,6 +774,7 @@ def _download_collection(
         client_id: Client ID for token exchange.
         convert_to: Target compression format for on-the-fly conversion.
         convert_from: Optional source compression format filter.
+        convert_format: Target RDF/tabular format for on-the-fly conversion.
         validate_checksum: Whether to validate checksums after downloading.
     """
     query = _get_sparql_query_of_collection(uri, databus_key=databus_key)
@@ -737,6 +796,7 @@ def _download_collection(
         client_id=client_id,
         convert_to=convert_to,
         convert_from=convert_from,
+        convert_format=convert_format,
         validate_checksum=validate_checksum,
         checksums=checksums if checksums else None,
     )
@@ -751,6 +811,7 @@ def _download_version(
     client_id: str = None,
     convert_to: str = None,
     convert_from: str = None,
+    convert_format: str = None,
     validate_checksum: bool = False,
 ) -> None:
     """Download all files in a databus artifact version.
@@ -764,6 +825,7 @@ def _download_version(
         client_id: Client ID for token exchange.
         convert_to: Target compression format for on-the-fly conversion.
         convert_from: Optional source compression format filter.
+        convert_format: Target RDF/tabular format for on-the-fly conversion.
         validate_checksum: Whether to validate checksums after downloading.
     """
     json_str = fetch_databus_jsonld(uri, databus_key=databus_key)
@@ -784,6 +846,7 @@ def _download_version(
         client_id=client_id,
         convert_to=convert_to,
         convert_from=convert_from,
+        convert_format=convert_format,
         validate_checksum=validate_checksum,
         checksums=checksums,
     )
@@ -799,6 +862,7 @@ def _download_artifact(
     client_id: str = None,
     convert_to: str = None,
     convert_from: str = None,
+    convert_format: str = None,
     validate_checksum: bool = False,
 ) -> None:
     """Download files in a databus artifact.
@@ -813,6 +877,7 @@ def _download_artifact(
         client_id: Client ID for token exchange.
         convert_to: Target compression format for on-the-fly conversion.
         convert_from: Optional source compression format filter.
+        convert_format: Target RDF/tabular format for on-the-fly conversion.
         validate_checksum: Whether to validate checksums after downloading.
     """
     json_str = fetch_databus_jsonld(uri, databus_key=databus_key)
@@ -839,6 +904,7 @@ def _download_artifact(
             client_id=client_id,
             convert_to=convert_to,
             convert_from=convert_from,
+            convert_format=convert_format,
             validate_checksum=validate_checksum,
             checksums=checksums,
         )
@@ -915,6 +981,7 @@ def _download_group(
     client_id: str = None,
     convert_to: str = None,
     convert_from: str = None,
+    convert_format: str = None,
     validate_checksum: bool = False,
 ) -> None:
     """Download files in a databus group.
@@ -929,6 +996,7 @@ def _download_group(
         client_id: Client ID for token exchange.
         convert_to: Target compression format for on-the-fly conversion.
         convert_from: Optional source compression format filter.
+        convert_format: Target RDF/tabular format for on-the-fly conversion.
         validate_checksum: Whether to validate checksums after downloading.
     """
     json_str = fetch_databus_jsonld(uri, databus_key=databus_key)
@@ -945,6 +1013,7 @@ def _download_group(
             client_id=client_id,
             convert_to=convert_to,
             convert_from=convert_from,
+            convert_format=convert_format,
             validate_checksum=validate_checksum,
         )
 
@@ -994,6 +1063,7 @@ def download(
     client_id="vault-token-exchange",
     convert_to=None,
     convert_from=None,
+    convert_format=None,
     validate_checksum: bool = False,
 ) -> None:
     """Download datasets from databus.
@@ -1010,6 +1080,7 @@ def download(
         client_id: Client ID for token exchange. Default is "vault-token-exchange".
         convert_to: Target compression format for on-the-fly conversion (supported: bz2, gz, xz).
         convert_from: Optional source compression format filter.
+        convert_format: Target RDF/tabular format for on-the-fly conversion.
         validate_checksum: Whether to validate checksums after downloading.
     """
     for databusURI in databusURIs:
@@ -1039,6 +1110,7 @@ def download(
                     client_id,
                     convert_to,
                     convert_from,
+                    convert_format,
                     validate_checksum=validate_checksum,
                 )
             elif file is not None:
@@ -1060,6 +1132,7 @@ def download(
                     client_id=client_id,
                     convert_to=convert_to,
                     convert_from=convert_from,
+                    convert_format=convert_format,
                     validate_checksum=validate_checksum,
                     expected_checksum=expected,
                 )
@@ -1074,6 +1147,7 @@ def download(
                     client_id=client_id,
                     convert_to=convert_to,
                     convert_from=convert_from,
+                    convert_format=convert_format,
                     validate_checksum=validate_checksum,
                 )
             elif artifact is not None:
@@ -1090,6 +1164,7 @@ def download(
                     client_id=client_id,
                     convert_to=convert_to,
                     convert_from=convert_from,
+                    convert_format=convert_format,
                     validate_checksum=validate_checksum,
                 )
             elif group is not None and group != "collections":
@@ -1106,6 +1181,7 @@ def download(
                     client_id=client_id,
                     convert_to=convert_to,
                     convert_from=convert_from,
+                    convert_format=convert_format,
                     validate_checksum=validate_checksum,
                 )
             elif account is not None:
@@ -1144,6 +1220,7 @@ def download(
                 client_id=client_id,
                 convert_to=convert_to,
                 convert_from=convert_from,
+                convert_format=convert_format,
                 validate_checksum=validate_checksum,
                 checksums=checksums if checksums else None,
             )

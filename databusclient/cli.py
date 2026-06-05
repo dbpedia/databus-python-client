@@ -190,6 +190,15 @@ def deploy(
     help="Source compression format to convert from (optional filter). Only files with this compression will be converted.",
 )
 @click.option(
+    "--convert-format",
+    "convert_format",
+    type=click.Choice(
+        ["ntriples","turtle","rdf-xml","nquads","trig","trix","json-ld","csv","tsv"],
+        case_sensitive=False,
+    ),
+    help="Target format for on-the-fly format conversion during download (Layer 2 and Layer 3).",
+)
+@click.option(
     "--validate-checksum", is_flag=True, help="Validate checksums of downloaded files"
 )
 def download(
@@ -203,6 +212,7 @@ def download(
     clientid,
     convert_to,
     convert_from,
+    convert_format,
     validate_checksum,
 ):
     """
@@ -221,6 +231,7 @@ def download(
             client_id=clientid,
             convert_to=convert_to,
             convert_from=convert_from,
+            convert_format=convert_format,
             validate_checksum=validate_checksum,
         )
     except DownloadAuthError as e:
