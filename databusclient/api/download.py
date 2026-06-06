@@ -520,18 +520,16 @@ def _download_file(
         final_downloaded_file = target_filepath
 
     # --- 8. Convert file format if requested (AFTER compression conversion) ---
+    # Pipeline follows :decompress -> convert format -> recompress
+    # If the source was compressed, the converted output is recompressed:
+    #   - to the format specified by --convert-to if provided
+    #   - to the original compression format otherwise
     if convert_format:
         final_basename = os.path.basename(final_downloaded_file)
         compression_fmt = _detect_compression_format(final_basename)
 
         if compression_fmt:
-            # File is still compressed — decompress to a temp file first,
-            # then convert format, then clean up the temp file.
-            # This follows the pipeline: Download -> Decompress -> Convert -> Save
-            import tempfile
-
-            source_module = COMPRESSION_MODULES[compression_fmt]
-            # temp decompressed file sits next to the original
+            # File is still compressed — decompress to temp, convert, recompress
             compression_ext = COMPRESSION_EXTENSIONS[compression_fmt]
             if final_downloaded_file.lower().endswith(compression_ext):
                 temp_decompressed = final_downloaded_file[:-len(compression_ext)]
@@ -542,6 +540,7 @@ def _download_file(
                 print(
                     f"Decompressing {final_basename} before format conversion..."
                 )
+                source_module = COMPRESSION_MODULES[compression_fmt]
                 with source_module.open(final_downloaded_file, "rb") as sf:
                     with open(temp_decompressed, "wb") as tf:
                         while True:
@@ -550,20 +549,43 @@ def _download_file(
                                 break
                             tf.write(chunk)
 
-                # now convert the decompressed temp file
-                converted_filename = get_converted_filename(
+                # Convert format on the decompressed temp file
+                converted_basename = get_converted_filename(
                     final_basename, convert_format
                 )
-                converted_filepath = os.path.join(localDir, converted_filename)
+                converted_filepath = os.path.join(localDir, converted_basename)
                 convert_file(temp_decompressed, converted_filepath, convert_format)
 
+                # Recompress the converted output.
+                # Use --convert-to format if specified, otherwise use original compression.
+                recompress_fmt = convert_to if convert_to else compression_fmt
+                recompress_ext = COMPRESSION_EXTENSIONS[recompress_fmt]
+                recompressed_filepath = converted_filepath + recompress_ext
+                recompress_module = COMPRESSION_MODULES[recompress_fmt]
+
+                print(
+                    f"Recompressing converted file to {recompress_fmt}: "
+                    f"{os.path.basename(recompressed_filepath)}"
+                )
+                with open(converted_filepath, "rb") as sf:
+                    with recompress_module.open(recompressed_filepath, "wb") as tf:
+                        while True:
+                            chunk = sf.read(8192)
+                            if not chunk:
+                                break
+                            tf.write(chunk)
+
+                # Remove the uncompressed converted file — keep only recompressed
+                if os.path.exists(converted_filepath):
+                    os.remove(converted_filepath)
+
             finally:
-                # always clean up temp file even if conversion fails
+                # Always clean up temp decompressed file
                 if os.path.exists(temp_decompressed):
                     os.remove(temp_decompressed)
 
         else:
-            # file is already uncompressed — convert directly
+            # File is already uncompressed — convert directly, no recompression needed
             converted_filename = get_converted_filename(final_basename, convert_format)
             converted_filepath = os.path.join(localDir, converted_filename)
             convert_file(final_downloaded_file, converted_filepath, convert_format)

@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<TriX xmlns="http://www.w3.org/2004/03/trix/trix-1/">
+
+  <graph>
+    <uri>https://example.org/graph/people</uri>
+
+    <triple>
+      <uri>https://example.org/data/alice</uri>
+      <uri>http://xmlns.com/foaf/0.1/name</uri>
+      <plainLiteral>Alice</plainLiteral>
+    </triple>
+
+    <triple>
+      <uri>https://example.org/data/alice</uri>
+      <uri>https://example.org/vocab/age</uri>
+      <typedLiteral datatype="http://www.w3.org/2001/XMLSchema#integer">29</typedLiteral>
+    </triple>
+
+    <triple>
+      <uri>https://example.org/data/alice</uri>
+      <uri>https://example.org/vocab/livesAt</uri>
+      <id>address1</id>
+    </triple>
+
+    <triple>
+      <id>address1</id>
+      <uri>https://example.org/vocab/city</uri>
+      <plainLiteral>Leipzig</plainLiteral>
+    </triple>
+
+    <triple>
+      <id>address1</id>
+      <uri>https://example.org/vocab/country</uri>
+      <plainLiteral>Germany</plainLiteral>
+    </triple>
+
+    <triple>
+      <uri>https://example.org/data/bob</uri>
+      <uri>http://xmlns.com/foaf/0.1/name</uri>
+      <plainLiteral>Bob</plainLiteral>
+    </triple>
+
+    <triple>
+      <uri>https://example.org/data/bob</uri>
+      <uri>https://example.org/vocab/age</uri>
+      <typedLiteral datatype="http://www.w3.org/2001/XMLSchema#integer">34</typedLiteral>
+    </triple>
+
+    <triple>
+      <uri>https://example.org/data/bob</uri>
+      <uri>https://example.org/vocab/knows</uri>
+      <uri>https://example.org/data/alice</uri>
+    </triple>
+  </graph>
+
+  <graph>
+    <uri>https://example.org/graph/projects</uri>
+
+    <triple>
+      <uri>https://example.org/data/project1</uri>
+      <uri>https://example.org/vocab/title</uri>
+      <plainLiteral>Databus Example Project</plainLiteral>
+    </triple>
+
+    <triple>
+      <uri>https://example.org/data/project1</uri>
+      <uri>https://example.org/vocab/member</uri>
+      <uri>https://example.org/data/alice</uri>
+    </triple>
+  </graph>
+
+</TriX>
