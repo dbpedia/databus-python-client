@@ -5,6 +5,10 @@ Outputs go to test_outputs/ folder.
 Test file for testing with real datasets from databus.
 """
 
+# TODO: This script is a temporary manual integration test artifact.
+# It must be removed or rewritten as proper pytest integration tests
+# before the final PR. Do not commit this file to the upstream repo.
+
 import os
 from databusclient.api.convert import (
     convert_rdf_triple_format,

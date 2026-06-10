@@ -5,6 +5,8 @@ import gzip
 import lzma
 from typing import List, Optional, Tuple
 import re
+import shutil
+import tempfile
 from urllib.parse import urlparse
 
 import requests
@@ -16,7 +18,7 @@ from databusclient.api.utils import (
     get_databus_id_parts_from_file_url,
     compute_sha256_and_length,
 )
-from databusclient.api.convert import convert_file, get_converted_filename
+from databusclient.filehandling.format import convert_file, get_converted_filename
 
 # Compression format mappings
 COMPRESSION_EXTENSIONS = {
@@ -508,87 +510,102 @@ def _download_file(
                     f"Checksum mismatch for {filename}: expected {expected_checksum}, got {actual}"
                 )
 
-    # --- 7. Convert compression format if requested (AFTER validation) ---
-    should_convert, source_format = _should_convert_file(file, convert_to, convert_from)
-    final_downloaded_file = filename
-    if should_convert and source_format:
-        target_filename = _get_converted_filename(file, source_format, convert_to)
-        target_filepath = os.path.join(localDir, target_filename)
-        _convert_compression_format(
-            filename, target_filepath, source_format, convert_to
-        )
-        final_downloaded_file = target_filepath
+    # --- 7. Unified compression/format conversion pass ---
+    source_compression = _detect_compression_format(file)
+    should_convert_compression, source_format_for_convert_to = _should_convert_file(
+        file, convert_to, convert_from
+    )
+    needs_format_conversion = convert_format is not None
 
-    # --- 8. Convert file format if requested (AFTER compression conversion) ---
-    # Pipeline follows :decompress -> convert format -> recompress
-    # If the source was compressed, the converted output is recompressed:
-    #   - to the format specified by --convert-to if provided
-    #   - to the original compression format otherwise
-    if convert_format:
-        final_basename = os.path.basename(final_downloaded_file)
-        compression_fmt = _detect_compression_format(final_basename)
+    if not should_convert_compression and not needs_format_conversion:
+        return
 
-        if compression_fmt:
-            # File is still compressed — decompress to temp, convert, recompress
-            compression_ext = COMPRESSION_EXTENSIONS[compression_fmt]
-            if final_downloaded_file.lower().endswith(compression_ext):
-                temp_decompressed = final_downloaded_file[:-len(compression_ext)]
+    temp_paths: list[str] = []
+    try:
+        # Compression-only path keeps existing conversion message behavior.
+        # Use a temp copy so the original downloaded file remains unchanged.
+        if should_convert_compression and not needs_format_conversion:
+            target_filename = _get_converted_filename(
+                file, source_format_for_convert_to, convert_to
+            )
+            target_filepath = os.path.join(localDir, target_filename)
+
+            with tempfile.NamedTemporaryFile(
+                delete=False,
+                suffix=COMPRESSION_EXTENSIONS[source_format_for_convert_to],
+                dir=localDir,
+            ) as temp_source_copy:
+                source_copy_path = temp_source_copy.name
+            temp_paths.append(source_copy_path)
+
+            shutil.copyfile(filename, source_copy_path)
+            _convert_compression_format(
+                source_copy_path,
+                target_filepath,
+                source_format_for_convert_to,
+                convert_to,
+            )
+            return
+
+        # Determine input for format conversion.
+        # If source is compressed, decompress once to a safe temporary file.
+        conversion_input_path = filename
+        if source_compression is not None:
+            source_ext = COMPRESSION_EXTENSIONS[source_compression]
+            stripped_name = file
+            if stripped_name.lower().endswith(source_ext):
+                stripped_name = stripped_name[: -len(source_ext)]
+            _, format_ext = os.path.splitext(stripped_name)
+
+            with tempfile.NamedTemporaryFile(
+                delete=False,
+                suffix=format_ext,
+                dir=localDir,
+            ) as temp_decompressed:
+                temp_decompressed_path = temp_decompressed.name
+            temp_paths.append(temp_decompressed_path)
+
+            print(f"Decompressing {file}...")
+            with COMPRESSION_MODULES[source_compression].open(filename, "rb") as sf:
+                with open(temp_decompressed_path, "wb") as tf:
+                    shutil.copyfileobj(sf, tf)
+
+            conversion_input_path = temp_decompressed_path
+
+        # Convert format on uncompressed input.
+        converted_basename = get_converted_filename(file, convert_format)
+        converted_uncompressed_path = os.path.join(localDir, converted_basename)
+        convert_file(conversion_input_path, converted_uncompressed_path, convert_format)
+
+        # Recompress converted output when needed.
+        if source_compression is not None:
+            if should_convert_compression and convert_to:
+                final_compression = convert_to
             else:
-                temp_decompressed = final_downloaded_file + ".decompressed"
-
-            try:
-                print(
-                    f"Decompressing {final_basename} before format conversion..."
-                )
-                source_module = COMPRESSION_MODULES[compression_fmt]
-                with source_module.open(final_downloaded_file, "rb") as sf:
-                    with open(temp_decompressed, "wb") as tf:
-                        while True:
-                            chunk = sf.read(8192)
-                            if not chunk:
-                                break
-                            tf.write(chunk)
-
-                # Convert format on the decompressed temp file
-                converted_basename = get_converted_filename(
-                    final_basename, convert_format
-                )
-                converted_filepath = os.path.join(localDir, converted_basename)
-                convert_file(temp_decompressed, converted_filepath, convert_format)
-
-                # Recompress the converted output.
-                # Use --convert-to format if specified, otherwise use original compression.
-                recompress_fmt = convert_to if convert_to else compression_fmt
-                recompress_ext = COMPRESSION_EXTENSIONS[recompress_fmt]
-                recompressed_filepath = converted_filepath + recompress_ext
-                recompress_module = COMPRESSION_MODULES[recompress_fmt]
-
-                print(
-                    f"Recompressing converted file to {recompress_fmt}: "
-                    f"{os.path.basename(recompressed_filepath)}"
-                )
-                with open(converted_filepath, "rb") as sf:
-                    with recompress_module.open(recompressed_filepath, "wb") as tf:
-                        while True:
-                            chunk = sf.read(8192)
-                            if not chunk:
-                                break
-                            tf.write(chunk)
-
-                # Remove the uncompressed converted file — keep only recompressed
-                if os.path.exists(converted_filepath):
-                    os.remove(converted_filepath)
-
-            finally:
-                # Always clean up temp decompressed file
-                if os.path.exists(temp_decompressed):
-                    os.remove(temp_decompressed)
-
+                final_compression = source_compression
+        elif should_convert_compression and convert_to:
+            final_compression = convert_to
         else:
-            # File is already uncompressed — convert directly, no recompression needed
-            converted_filename = get_converted_filename(final_basename, convert_format)
-            converted_filepath = os.path.join(localDir, converted_filename)
-            convert_file(final_downloaded_file, converted_filepath, convert_format)
+            final_compression = None
+
+        if final_compression is not None:
+            recompressed_path = (
+                converted_uncompressed_path + COMPRESSION_EXTENSIONS[final_compression]
+            )
+            print(
+                f"Recompressing {os.path.basename(converted_uncompressed_path)} -> {os.path.basename(recompressed_path)}..."
+            )
+            with open(converted_uncompressed_path, "rb") as sf:
+                with COMPRESSION_MODULES[final_compression].open(
+                    recompressed_path, "wb"
+                ) as tf:
+                    shutil.copyfileobj(sf, tf)
+
+            os.remove(converted_uncompressed_path)
+    finally:
+        for temp_path in temp_paths:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
 
 
 def _download_files(
