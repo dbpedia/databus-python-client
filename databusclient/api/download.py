@@ -577,6 +577,13 @@ def _download_file(
         converted_uncompressed_path = os.path.join(localDir, converted_basename)
         convert_file(conversion_input_path, converted_uncompressed_path, convert_format)
 
+        # Delete the original downloaded file after successful format conversion,
+        # unless the converted output is the same file (same format, same path).
+        if os.path.abspath(filename) != os.path.abspath(converted_uncompressed_path):
+            if os.path.exists(filename):
+                os.remove(filename)
+                print(f"Removed original file: {os.path.basename(filename)}")
+
         # Recompress converted output when needed.
         if source_compression is not None:
             if should_convert_compression and convert_to:

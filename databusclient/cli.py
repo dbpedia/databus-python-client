@@ -190,13 +190,25 @@ def deploy(
     help="Source compression format to convert from (optional filter). Only files with this compression will be converted.",
 )
 @click.option(
-    "--convert-format",
+    "--format",
     "convert_format",
     type=click.Choice(
-        ["ntriples","turtle","rdf-xml","nquads","trig","trix","json-ld","csv","tsv"],
+        [
+            "ntriples", "nt",
+            "turtle", "ttl",
+            "rdf-xml", "rdf", "xml",
+            "nquads", "nq",
+            "trig",
+            "trix",
+            "json-ld", "jsonld",
+            "csv",
+            "tsv",
+        ],
         case_sensitive=False,
     ),
-    help="Target format for on-the-fly format conversion during download (Layer 2 and Layer 3).",
+    help="Target format for on-the-fly format conversion during download (Layer 2 and Layer 3). "
+         "Accepts full names (ntriples, turtle, rdf-xml, nquads, trig, trix, json-ld, csv, tsv) "
+         "or short aliases (nt, ttl, rdf, xml, nq, jsonld).",
 )
 @click.option(
     "--validate-checksum", is_flag=True, help="Validate checksums of downloaded files"

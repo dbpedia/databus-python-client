@@ -57,6 +57,42 @@ ALL_FORMATS = (
     + list(TABULAR_FORMATS)
 )
 
+# Maps short CLI aliases -> canonical format name
+FORMAT_ALIASES = {
+    "nt": "ntriples",
+    "ttl": "turtle",
+    "rdf": "rdf-xml",
+    "xml": "rdf-xml",
+    "nq": "nquads",
+    "jsonld": "json-ld",
+}
+
+def normalize_format(fmt: str) -> str:
+    """Normalize a format name or alias to its canonical form.
+
+    Accepts both full names (e.g. 'ntriples') and short aliases (e.g. 'nt').
+    Canonical names pass through unchanged. Unknown values raise ValueError.
+
+    Args:
+        fmt: Format name or alias string (case-insensitive).
+
+    Returns:
+        Canonical format name string.
+
+    Raises:
+        ValueError: If fmt is not a recognised format name or alias.
+    """
+    fmt_lower = fmt.lower()
+    # Resolve alias first
+    canonical = FORMAT_ALIASES.get(fmt_lower, fmt_lower)
+    if canonical not in ALL_FORMATS:
+        raise ValueError(
+            f"Unknown format: '{fmt}'. "
+            f"Supported formats: {ALL_FORMATS}. "
+            f"Supported aliases: {list(FORMAT_ALIASES.keys())}"
+        )
+    return canonical
+
 # Maps file extension -> CLI format name
 EXTENSION_TO_FORMAT = {
     ".ttl": "turtle",
@@ -143,15 +179,18 @@ def get_converted_filename(original_filename: str, convert_format: str) -> str:
     """Generate output filename after format conversion.
 
     Strips compression extension if present, then replaces the format
-    extension with the target format extension.
+    extension with the target format extension. Accepts format aliases.
 
     Args:
         original_filename: Original file name (basename only, not full path).
-        convert_format: Target format name.
+        convert_format: Target format name or alias.
 
     Returns:
         New filename with updated extension.
     """
+    # Normalize alias to canonical name
+    convert_format = normalize_format(convert_format)
+
     name = original_filename
 
     # strip compression extension
@@ -447,15 +486,21 @@ def convert_file(
     this is a Layer 2 (within-class) or Layer 3 (cross-class) conversion,
     and delegates to the appropriate handler.
 
+    Accepts both canonical format names and short aliases (e.g. 'nt' for
+    'ntriples', 'ttl' for 'turtle'). See normalize_format() for full list.
+
     Args:
         input_file: Path to the input file (must be decompressed).
         output_file: Path to write the converted output file.
-        convert_format: Target format name (CLI format string).
+        convert_format: Target format name or alias (CLI format string).
 
     Raises:
         ValueError: If input format cannot be detected or conversion
                     is not supported.
     """
+    # Normalize alias to canonical name before any processing
+    convert_format = normalize_format(convert_format)
+
     input_format = detect_format_from_filename(input_file)
 
     if input_format is None:
