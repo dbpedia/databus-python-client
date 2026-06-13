@@ -50,20 +50,23 @@ def _detect_compression_format(filename: str) -> Optional[str]:
     return None
 
 
-def _should_convert_file(
-    filename: str, convert_to: Optional[str], convert_from: Optional[str]
+def _should_convert_compression(
+    filename: str, compression: Optional[str]
 ) -> Tuple[bool, Optional[str]]:
-    """Determine if a file should be converted and what the source format is.
+    """Determine if a file should have its compression format converted.
+
+    Source compression is detected automatically from the file extension.
+    All compressed files will be converted to the target format regardless
+    of their source compression format.
 
     Args:
         filename: Name of the file.
-        convert_to: Target compression format ('bz2', 'gz', 'xz').
-        convert_from: Optional source compression format filter.
+        compression: Target compression format ('bz2', 'gz', 'xz') or None.
 
     Returns:
         Tuple of (should_convert: bool, source_format: Optional[str]).
     """
-    if not convert_to:
+    if not compression:
         return False, None
 
     source_format = _detect_compression_format(filename)
@@ -73,11 +76,7 @@ def _should_convert_file(
         return False, None
 
     # If source and target are the same, skip conversion
-    if source_format == convert_to:
-        return False, None
-
-    # If convert_from is specified, only convert matching formats
-    if convert_from and source_format != convert_from:
+    if source_format == compression:
         return False, None
 
     return True, source_format
@@ -314,8 +313,7 @@ def _download_file(
     databus_key=None,
     auth_url=None,
     client_id=None,
-    convert_to=None,
-    convert_from=None,
+    compression=None,
     convert_format=None,
     validate_checksum: bool = False,
     expected_checksum: str | None = None,
@@ -329,8 +327,8 @@ def _download_file(
         databus_key: Databus API key for protected downloads.
         auth_url: Keycloak token endpoint URL.
         client_id: Client ID for token exchange.
-        convert_to: Target compression format for on-the-fly conversion.
-        convert_from: Optional source compression format filter.
+        compression: Target compression format for on-the-fly conversion.
+                     Source compression is auto-detected from the file extension.
         convert_format: Target RDF/tabular format for on-the-fly conversion.
         validate_checksum: Whether to validate checksums after downloading.
         expected_checksum: The expected checksum of the file.
@@ -354,6 +352,7 @@ def _download_file(
     dirpath = os.path.dirname(filename)
     if dirpath:
         os.makedirs(dirpath, exist_ok=True)  # Create the necessary directories
+
     # --- 1. Get redirect URL by requesting HEAD ---
     headers = {}
 
@@ -512,8 +511,8 @@ def _download_file(
 
     # --- 7. Unified compression/format conversion pass ---
     source_compression = _detect_compression_format(file)
-    should_convert_compression, source_format_for_convert_to = _should_convert_file(
-        file, convert_to, convert_from
+    should_convert_compression, source_fmt = _should_convert_compression(
+        file, compression
     )
     needs_format_conversion = convert_format is not None
 
@@ -525,14 +524,12 @@ def _download_file(
         # Compression-only path keeps existing conversion message behavior.
         # Use a temp copy so the original downloaded file remains unchanged.
         if should_convert_compression and not needs_format_conversion:
-            target_filename = _get_converted_filename(
-                file, source_format_for_convert_to, convert_to
-            )
+            target_filename = _get_converted_filename(file, source_fmt, compression)
             target_filepath = os.path.join(localDir, target_filename)
 
             with tempfile.NamedTemporaryFile(
                 delete=False,
-                suffix=COMPRESSION_EXTENSIONS[source_format_for_convert_to],
+                suffix=COMPRESSION_EXTENSIONS[source_fmt],
                 dir=localDir,
             ) as temp_source_copy:
                 source_copy_path = temp_source_copy.name
@@ -542,8 +539,8 @@ def _download_file(
             _convert_compression_format(
                 source_copy_path,
                 target_filepath,
-                source_format_for_convert_to,
-                convert_to,
+                source_fmt,
+                compression,
             )
             return
 
@@ -586,12 +583,12 @@ def _download_file(
 
         # Recompress converted output when needed.
         if source_compression is not None:
-            if should_convert_compression and convert_to:
-                final_compression = convert_to
+            if should_convert_compression and compression:
+                final_compression = compression
             else:
                 final_compression = source_compression
-        elif should_convert_compression and convert_to:
-            final_compression = convert_to
+        elif should_convert_compression and compression:
+            final_compression = compression
         else:
             final_compression = None
 
@@ -622,8 +619,7 @@ def _download_files(
     databus_key: str = None,
     auth_url: str = None,
     client_id: str = None,
-    convert_to: str = None,
-    convert_from: str = None,
+    compression: str = None,
     convert_format: str = None,
     validate_checksum: bool = False,
     checksums: dict | None = None,
@@ -637,8 +633,7 @@ def _download_files(
         databus_key: Databus API key for protected downloads.
         auth_url: Keycloak token endpoint URL.
         client_id: Client ID for token exchange.
-        convert_to: Target compression format for on-the-fly conversion.
-        convert_from: Optional source compression format filter.
+        compression: Target compression format for on-the-fly conversion.
         convert_format: Target RDF/tabular format for on-the-fly conversion.
         validate_checksum: Whether to validate checksums after downloading.
         checksums: Dictionary mapping URLs to their expected checksums.
@@ -654,8 +649,7 @@ def _download_files(
             databus_key=databus_key,
             auth_url=auth_url,
             client_id=client_id,
-            convert_to=convert_to,
-            convert_from=convert_from,
+            compression=compression,
             convert_format=convert_format,
             validate_checksum=validate_checksum,
             expected_checksum=expected,
@@ -803,8 +797,7 @@ def _download_collection(
     databus_key: str = None,
     auth_url: str = None,
     client_id: str = None,
-    convert_to: str = None,
-    convert_from: str = None,
+    compression: str = None,
     convert_format: str = None,
     validate_checksum: bool = False,
 ) -> None:
@@ -818,8 +811,7 @@ def _download_collection(
         databus_key: Databus API key for protected downloads.
         auth_url: Keycloak token endpoint URL.
         client_id: Client ID for token exchange.
-        convert_to: Target compression format for on-the-fly conversion.
-        convert_from: Optional source compression format filter.
+        compression: Target compression format for on-the-fly conversion.
         convert_format: Target RDF/tabular format for on-the-fly conversion.
         validate_checksum: Whether to validate checksums after downloading.
     """
@@ -840,8 +832,7 @@ def _download_collection(
         databus_key=databus_key,
         auth_url=auth_url,
         client_id=client_id,
-        convert_to=convert_to,
-        convert_from=convert_from,
+        compression=compression,
         convert_format=convert_format,
         validate_checksum=validate_checksum,
         checksums=checksums if checksums else None,
@@ -855,8 +846,7 @@ def _download_version(
     databus_key: str = None,
     auth_url: str = None,
     client_id: str = None,
-    convert_to: str = None,
-    convert_from: str = None,
+    compression: str = None,
     convert_format: str = None,
     validate_checksum: bool = False,
 ) -> None:
@@ -869,8 +859,7 @@ def _download_version(
         databus_key: Databus API key for protected downloads.
         auth_url: Keycloak token endpoint URL.
         client_id: Client ID for token exchange.
-        convert_to: Target compression format for on-the-fly conversion.
-        convert_from: Optional source compression format filter.
+        compression: Target compression format for on-the-fly conversion.
         convert_format: Target RDF/tabular format for on-the-fly conversion.
         validate_checksum: Whether to validate checksums after downloading.
     """
@@ -890,8 +879,7 @@ def _download_version(
         databus_key=databus_key,
         auth_url=auth_url,
         client_id=client_id,
-        convert_to=convert_to,
-        convert_from=convert_from,
+        compression=compression,
         convert_format=convert_format,
         validate_checksum=validate_checksum,
         checksums=checksums,
@@ -906,8 +894,7 @@ def _download_artifact(
     databus_key: str = None,
     auth_url: str = None,
     client_id: str = None,
-    convert_to: str = None,
-    convert_from: str = None,
+    compression: str = None,
     convert_format: str = None,
     validate_checksum: bool = False,
 ) -> None:
@@ -921,8 +908,7 @@ def _download_artifact(
         databus_key: Databus API key for protected downloads.
         auth_url: Keycloak token endpoint URL.
         client_id: Client ID for token exchange.
-        convert_to: Target compression format for on-the-fly conversion.
-        convert_from: Optional source compression format filter.
+        compression: Target compression format for on-the-fly conversion.
         convert_format: Target RDF/tabular format for on-the-fly conversion.
         validate_checksum: Whether to validate checksums after downloading.
     """
@@ -948,8 +934,7 @@ def _download_artifact(
             databus_key=databus_key,
             auth_url=auth_url,
             client_id=client_id,
-            convert_to=convert_to,
-            convert_from=convert_from,
+            compression=compression,
             convert_format=convert_format,
             validate_checksum=validate_checksum,
             checksums=checksums,
@@ -1025,8 +1010,7 @@ def _download_group(
     databus_key: str = None,
     auth_url: str = None,
     client_id: str = None,
-    convert_to: str = None,
-    convert_from: str = None,
+    compression: str = None,
     convert_format: str = None,
     validate_checksum: bool = False,
 ) -> None:
@@ -1040,8 +1024,7 @@ def _download_group(
         databus_key: Databus API key for protected downloads.
         auth_url: Keycloak token endpoint URL.
         client_id: Client ID for token exchange.
-        convert_to: Target compression format for on-the-fly conversion.
-        convert_from: Optional source compression format filter.
+        compression: Target compression format for on-the-fly conversion.
         convert_format: Target RDF/tabular format for on-the-fly conversion.
         validate_checksum: Whether to validate checksums after downloading.
     """
@@ -1057,8 +1040,7 @@ def _download_group(
             databus_key=databus_key,
             auth_url=auth_url,
             client_id=client_id,
-            convert_to=convert_to,
-            convert_from=convert_from,
+            compression=compression,
             convert_format=convert_format,
             validate_checksum=validate_checksum,
         )
@@ -1107,8 +1089,7 @@ def download(
     all_versions=None,
     auth_url="https://auth.dbpedia.org/realms/dbpedia/protocol/openid-connect/token",
     client_id="vault-token-exchange",
-    convert_to=None,
-    convert_from=None,
+    compression=None,
     convert_format=None,
     validate_checksum: bool = False,
 ) -> None:
@@ -1124,8 +1105,8 @@ def download(
         databus_key: Databus API key for protected downloads.
         auth_url: Keycloak token endpoint URL. Default is "https://auth.dbpedia.org/realms/dbpedia/protocol/openid-connect/token".
         client_id: Client ID for token exchange. Default is "vault-token-exchange".
-        convert_to: Target compression format for on-the-fly conversion (supported: bz2, gz, xz).
-        convert_from: Optional source compression format filter.
+        compression: Target compression format for on-the-fly conversion (supported: bz2, gz, xz).
+                     Source compression is auto-detected from the file extension.
         convert_format: Target RDF/tabular format for on-the-fly conversion.
         validate_checksum: Whether to validate checksums after downloading.
     """
@@ -1154,8 +1135,7 @@ def download(
                     databus_key,
                     auth_url,
                     client_id,
-                    convert_to,
-                    convert_from,
+                    compression,
                     convert_format,
                     validate_checksum=validate_checksum,
                 )
@@ -1176,8 +1156,7 @@ def download(
                     databus_key=databus_key,
                     auth_url=auth_url,
                     client_id=client_id,
-                    convert_to=convert_to,
-                    convert_from=convert_from,
+                    compression=compression,
                     convert_format=convert_format,
                     validate_checksum=validate_checksum,
                     expected_checksum=expected,
@@ -1191,8 +1170,7 @@ def download(
                     databus_key=databus_key,
                     auth_url=auth_url,
                     client_id=client_id,
-                    convert_to=convert_to,
-                    convert_from=convert_from,
+                    compression=compression,
                     convert_format=convert_format,
                     validate_checksum=validate_checksum,
                 )
@@ -1208,8 +1186,7 @@ def download(
                     databus_key=databus_key,
                     auth_url=auth_url,
                     client_id=client_id,
-                    convert_to=convert_to,
-                    convert_from=convert_from,
+                    compression=compression,
                     convert_format=convert_format,
                     validate_checksum=validate_checksum,
                 )
@@ -1225,8 +1202,7 @@ def download(
                     databus_key=databus_key,
                     auth_url=auth_url,
                     client_id=client_id,
-                    convert_to=convert_to,
-                    convert_from=convert_from,
+                    compression=compression,
                     convert_format=convert_format,
                     validate_checksum=validate_checksum,
                 )
@@ -1264,8 +1240,7 @@ def download(
                 databus_key=databus_key,
                 auth_url=auth_url,
                 client_id=client_id,
-                convert_to=convert_to,
-                convert_from=convert_from,
+                compression=compression,
                 convert_format=convert_format,
                 validate_checksum=validate_checksum,
                 checksums=checksums if checksums else None,
