@@ -521,23 +521,14 @@ def _download_file(
 
     temp_paths: list[str] = []
     try:
-        # Compression-only path keeps existing conversion message behavior.
-        # Use a temp copy so the original downloaded file remains unchanged.
+        # Compression-only path: convert directly from the downloaded file.
+        # _convert_compression_format deletes the source after success,
+        # so the original downloaded file is removed automatically.
         if should_convert_compression and not needs_format_conversion:
             target_filename = _get_converted_filename(file, source_fmt, compression)
             target_filepath = os.path.join(localDir, target_filename)
-
-            with tempfile.NamedTemporaryFile(
-                delete=False,
-                suffix=COMPRESSION_EXTENSIONS[source_fmt],
-                dir=localDir,
-            ) as temp_source_copy:
-                source_copy_path = temp_source_copy.name
-            temp_paths.append(source_copy_path)
-
-            shutil.copyfile(filename, source_copy_path)
             _convert_compression_format(
-                source_copy_path,
+                filename,
                 target_filepath,
                 source_fmt,
                 compression,
