@@ -479,6 +479,8 @@ def convert_file(
     input_file: str,
     output_file: str,
     convert_format: str,
+    graph_name: str = None,
+    base_uri: str = None,
 ) -> None:
     """Main conversion dispatcher called from the download pipeline.
 
@@ -489,10 +491,19 @@ def convert_file(
     Accepts both canonical format names and short aliases (e.g. 'nt' for
     'ntriples', 'ttl' for 'turtle'). See normalize_format() for full list.
 
+    For Layer 3 cross-class conversions:
+        - Triple -> Quad requires graph_name (--graph-name <uri>).
+        - CSV -> Triple requires base_uri (--base-uri <uri>).
+        - Quad -> Triple produces multiple files in a subdirectory; output_file
+          is used as the subdirectory path.
+
     Args:
         input_file: Path to the input file (must be decompressed).
         output_file: Path to write the converted output file.
+                     For Quad -> Triple, this is the output subdirectory path.
         convert_format: Target format name or alias (CLI format string).
+        graph_name: Named graph URI for Triple -> Quad conversion.
+        base_uri: Base URI for CSV -> Triple conversion.
 
     Raises:
         ValueError: If input format cannot be detected or conversion
@@ -513,8 +524,6 @@ def convert_file(
     if input_format == convert_format:
         # Input and target format are identical.
         # Copy input to output path so the caller always receives an output file.
-        # This is important for the download pipeline which expects an output
-        # file to exist after convert_file() returns — e.g. for recompression.
         if input_file != output_file:
             shutil.copy2(input_file, output_file)
             print(
@@ -542,15 +551,45 @@ def convert_file(
             )
         return
 
-    # --- Layer 3: cross-class (prototype only) ---
-    if input_class == "triples" and output_class == "tabular":
-        from databusclient.filehandling.mapping import convert_rdf_to_csv
+    # --- Layer 3: cross-class ---
+    from databusclient.filehandling import mapping as _mapping
 
-        convert_rdf_to_csv(input_file, output_file, input_format)
+    # Triple -> Quad
+    if input_class == "triples" and output_class == "quads":
+        _mapping.convert_triples_to_quads(
+            input_file, output_file, input_format, convert_format, graph_name
+        )
+        return
+
+    # Quad -> Triple (output_file used as output subdirectory)
+    if input_class == "quads" and output_class == "triples":
+        _mapping.convert_quads_to_triples(
+            input_file, output_file, input_format, convert_format
+        )
+        return
+
+    # Triple -> TSD
+    if input_class == "triples" and output_class == "tabular":
+        _mapping.convert_rdf_to_csv(
+            input_file, output_file, input_format, convert_format
+        )
+        return
+
+    # TSD -> Triple
+    if input_class == "tabular" and output_class == "triples":
+        _mapping.convert_csv_to_rdf(
+            input_file, output_file, input_format, convert_format, base_uri
+        )
+        return
+
+    # Quad -> TSD
+    if input_class == "quads" and output_class == "tabular":
+        _mapping.convert_quads_to_csv(
+            input_file, output_file, input_format, convert_format
+        )
         return
 
     raise ValueError(
         f"Conversion from '{input_format}' ({input_class}) to "
-        f"'{convert_format}' ({output_class}) is not yet implemented. "
-        f"Supported Layer 3 conversions: RDF Triples -> CSV/TSV."
+        f"'{convert_format}' ({output_class}) is not supported."
     )

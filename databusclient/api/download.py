@@ -18,7 +18,14 @@ from databusclient.api.utils import (
     get_databus_id_parts_from_file_url,
     compute_sha256_and_length,
 )
-from databusclient.filehandling.format import convert_file, get_converted_filename
+from databusclient.filehandling.format import (
+    convert_file,
+    get_converted_filename,
+    normalize_format,
+    get_format_class,
+    detect_format_from_filename,
+    FORMAT_TO_EXTENSION,
+)
 
 # Compression format mappings
 COMPRESSION_EXTENSIONS = {
@@ -315,6 +322,8 @@ def _download_file(
     client_id=None,
     compression=None,
     convert_format=None,
+    graph_name=None,
+    base_uri=None,
     validate_checksum: bool = False,
     expected_checksum: str | None = None,
 ) -> None:
@@ -330,6 +339,8 @@ def _download_file(
         compression: Target compression format for on-the-fly conversion.
                      Source compression is auto-detected from the file extension.
         convert_format: Target RDF/tabular format for on-the-fly conversion.
+        graph_name: Named graph URI for Triple -> Quad conversion (Layer 3).
+        base_uri: Base URI for CSV -> Triple conversion (Layer 3).
         validate_checksum: Whether to validate checksums after downloading.
         expected_checksum: The expected checksum of the file.
     """
@@ -560,10 +571,57 @@ def _download_file(
 
             conversion_input_path = temp_decompressed_path
 
-        # Convert format on uncompressed input.
+        # Determine whether this is a Quad -> Triple (Layer 3) conversion.
+        # This direction produces multiple output files (one per named
+        # graph) written into a subdirectory, rather than a single file —
+        # so it is handled separately from the standard single-file path
+        # below (no recompression, no single-file delete-and-replace).
+        normalized_convert_format = normalize_format(convert_format)
+        target_class = get_format_class(normalized_convert_format)
+        source_format_for_mapping = detect_format_from_filename(conversion_input_path)
+        source_class_for_mapping = (
+            get_format_class(source_format_for_mapping)
+            if source_format_for_mapping else None
+        )
+        is_quad_to_triple = (
+            source_class_for_mapping == "quads" and target_class == "triples"
+        )
+
+        if is_quad_to_triple:
+            # Output directory name = original filename with compression and
+            # format extensions stripped (e.g. "data.nq.gz" -> "data").
+            output_stem = get_converted_filename(file, convert_format)
+            target_ext = FORMAT_TO_EXTENSION.get(normalized_convert_format, "")
+            if target_ext and output_stem.lower().endswith(target_ext):
+                output_stem = output_stem[: -len(target_ext)]
+            output_dir = os.path.join(localDir, output_stem)
+
+            convert_file(
+                conversion_input_path,
+                output_dir,
+                convert_format,
+                graph_name=graph_name,
+                base_uri=base_uri,
+            )
+
+            # Delete the original downloaded (possibly compressed) file —
+            # the split output directory replaces it.
+            if os.path.exists(filename):
+                os.remove(filename)
+                print(f"Removed original file: {os.path.basename(filename)}")
+            return
+
+        # Standard single-output-file path (Layer 2, and the remaining
+        # Layer 3 directions: Triple<->Quad, Triple<->TSD, Quad->TSD).
         converted_basename = get_converted_filename(file, convert_format)
         converted_uncompressed_path = os.path.join(localDir, converted_basename)
-        convert_file(conversion_input_path, converted_uncompressed_path, convert_format)
+        convert_file(
+            conversion_input_path,
+            converted_uncompressed_path,
+            convert_format,
+            graph_name=graph_name,
+            base_uri=base_uri,
+        )
 
         # Delete the original downloaded file after successful format conversion,
         # unless the converted output is the same file (same format, same path).
@@ -612,6 +670,8 @@ def _download_files(
     client_id: str = None,
     compression: str = None,
     convert_format: str = None,
+    graph_name: str = None,
+    base_uri: str = None,
     validate_checksum: bool = False,
     checksums: dict | None = None,
 ) -> None:
@@ -626,6 +686,8 @@ def _download_files(
         client_id: Client ID for token exchange.
         compression: Target compression format for on-the-fly conversion.
         convert_format: Target RDF/tabular format for on-the-fly conversion.
+        graph_name: Named graph URI for Triple -> Quad conversion (Layer 3).
+        base_uri: Base URI for CSV -> Triple conversion (Layer 3).
         validate_checksum: Whether to validate checksums after downloading.
         checksums: Dictionary mapping URLs to their expected checksums.
     """
@@ -642,10 +704,11 @@ def _download_files(
             client_id=client_id,
             compression=compression,
             convert_format=convert_format,
+            graph_name=graph_name,
+            base_uri=base_uri,
             validate_checksum=validate_checksum,
             expected_checksum=expected,
         )
-
 
 def _get_sparql_query_of_collection(uri: str, databus_key: str | None = None) -> str:
     """Get SPARQL query of collection members from databus collection URI.
@@ -790,6 +853,8 @@ def _download_collection(
     client_id: str = None,
     compression: str = None,
     convert_format: str = None,
+    graph_name: str = None,
+    base_uri: str = None,
     validate_checksum: bool = False,
 ) -> None:
     """Download all files in a databus collection.
@@ -804,6 +869,8 @@ def _download_collection(
         client_id: Client ID for token exchange.
         compression: Target compression format for on-the-fly conversion.
         convert_format: Target RDF/tabular format for on-the-fly conversion.
+        graph_name: Named graph URI for Triple -> Quad conversion (Layer 3).
+        base_uri: Base URI for CSV -> Triple conversion (Layer 3).
         validate_checksum: Whether to validate checksums after downloading.
     """
     query = _get_sparql_query_of_collection(uri, databus_key=databus_key)
@@ -825,6 +892,8 @@ def _download_collection(
         client_id=client_id,
         compression=compression,
         convert_format=convert_format,
+        graph_name=graph_name,
+        base_uri=base_uri,
         validate_checksum=validate_checksum,
         checksums=checksums if checksums else None,
     )
@@ -839,6 +908,8 @@ def _download_version(
     client_id: str = None,
     compression: str = None,
     convert_format: str = None,
+    graph_name: str = None,
+    base_uri: str = None,
     validate_checksum: bool = False,
 ) -> None:
     """Download all files in a databus artifact version.
@@ -852,6 +923,8 @@ def _download_version(
         client_id: Client ID for token exchange.
         compression: Target compression format for on-the-fly conversion.
         convert_format: Target RDF/tabular format for on-the-fly conversion.
+        graph_name: Named graph URI for Triple -> Quad conversion (Layer 3).
+        base_uri: Base URI for CSV -> Triple conversion (Layer 3).
         validate_checksum: Whether to validate checksums after downloading.
     """
     json_str = fetch_databus_jsonld(uri, databus_key=databus_key)
@@ -872,6 +945,8 @@ def _download_version(
         client_id=client_id,
         compression=compression,
         convert_format=convert_format,
+        graph_name=graph_name,
+        base_uri=base_uri,
         validate_checksum=validate_checksum,
         checksums=checksums,
     )
@@ -887,6 +962,8 @@ def _download_artifact(
     client_id: str = None,
     compression: str = None,
     convert_format: str = None,
+    graph_name: str = None,
+    base_uri: str = None,
     validate_checksum: bool = False,
 ) -> None:
     """Download files in a databus artifact.
@@ -901,6 +978,8 @@ def _download_artifact(
         client_id: Client ID for token exchange.
         compression: Target compression format for on-the-fly conversion.
         convert_format: Target RDF/tabular format for on-the-fly conversion.
+        graph_name: Named graph URI for Triple -> Quad conversion (Layer 3).
+        base_uri: Base URI for CSV -> Triple conversion (Layer 3).
         validate_checksum: Whether to validate checksums after downloading.
     """
     json_str = fetch_databus_jsonld(uri, databus_key=databus_key)
@@ -927,6 +1006,8 @@ def _download_artifact(
             client_id=client_id,
             compression=compression,
             convert_format=convert_format,
+            graph_name=graph_name,
+            base_uri=base_uri,
             validate_checksum=validate_checksum,
             checksums=checksums,
         )
@@ -1003,6 +1084,8 @@ def _download_group(
     client_id: str = None,
     compression: str = None,
     convert_format: str = None,
+    graph_name: str = None,
+    base_uri: str = None,
     validate_checksum: bool = False,
 ) -> None:
     """Download files in a databus group.
@@ -1017,6 +1100,8 @@ def _download_group(
         client_id: Client ID for token exchange.
         compression: Target compression format for on-the-fly conversion.
         convert_format: Target RDF/tabular format for on-the-fly conversion.
+        graph_name: Named graph URI for Triple -> Quad conversion (Layer 3).
+        base_uri: Base URI for CSV -> Triple conversion (Layer 3).
         validate_checksum: Whether to validate checksums after downloading.
     """
     json_str = fetch_databus_jsonld(uri, databus_key=databus_key)
@@ -1033,6 +1118,8 @@ def _download_group(
             client_id=client_id,
             compression=compression,
             convert_format=convert_format,
+            graph_name=graph_name,
+            base_uri=base_uri,
             validate_checksum=validate_checksum,
         )
 
@@ -1082,6 +1169,8 @@ def download(
     client_id="vault-token-exchange",
     compression=None,
     convert_format=None,
+    graph_name=None,
+    base_uri=None,
     validate_checksum: bool = False,
 ) -> None:
     """Download datasets from databus.
@@ -1097,8 +1186,10 @@ def download(
         auth_url: Keycloak token endpoint URL. Default is "https://auth.dbpedia.org/realms/dbpedia/protocol/openid-connect/token".
         client_id: Client ID for token exchange. Default is "vault-token-exchange".
         compression: Target compression format for on-the-fly conversion (supported: bz2, gz, xz).
-                     Source compression is auto-detected from the file extension.
+                    Source compression is auto-detected from the file extension.
         convert_format: Target RDF/tabular format for on-the-fly conversion.
+        graph_name: Named graph URI for Triple -> Quad conversion (Layer 3).
+        base_uri: Base URI for CSV -> Triple conversion (Layer 3).
         validate_checksum: Whether to validate checksums after downloading.
     """
     for databusURI in databusURIs:
@@ -1128,6 +1219,8 @@ def download(
                     client_id,
                     compression,
                     convert_format,
+                    graph_name=graph_name,
+                    base_uri=base_uri,
                     validate_checksum=validate_checksum,
                 )
             elif file is not None:
@@ -1149,6 +1242,8 @@ def download(
                     client_id=client_id,
                     compression=compression,
                     convert_format=convert_format,
+                    graph_name=graph_name,
+                    base_uri=base_uri,
                     validate_checksum=validate_checksum,
                     expected_checksum=expected,
                 )
@@ -1163,6 +1258,8 @@ def download(
                     client_id=client_id,
                     compression=compression,
                     convert_format=convert_format,
+                    graph_name=graph_name,
+                    base_uri=base_uri,
                     validate_checksum=validate_checksum,
                 )
             elif artifact is not None:
@@ -1179,6 +1276,8 @@ def download(
                     client_id=client_id,
                     compression=compression,
                     convert_format=convert_format,
+                    graph_name=graph_name,
+                    base_uri=base_uri,
                     validate_checksum=validate_checksum,
                 )
             elif group is not None and group != "collections":
@@ -1195,6 +1294,8 @@ def download(
                     client_id=client_id,
                     compression=compression,
                     convert_format=convert_format,
+                    graph_name=graph_name,
+                    base_uri=base_uri,
                     validate_checksum=validate_checksum,
                 )
             elif account is not None:
@@ -1233,6 +1334,8 @@ def download(
                 client_id=client_id,
                 compression=compression,
                 convert_format=convert_format,
+                graph_name=graph_name,
+                base_uri=base_uri,
                 validate_checksum=validate_checksum,
                 checksums=checksums if checksums else None,
             )
