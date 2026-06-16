@@ -174,10 +174,10 @@ docker run --rm -v $(pwd):/data dbpedia/databus-python-client download $DOWNLOAD
   Note: Vault tokens are only required for certain protected Databus hosts (for example: `data.dbpedia.io`, `data.dev.dbpedia.link`). The client now detects those hosts and will fail early with a clear message if a token is required but not provided. Do not pass `--vault-token` for public downloads.
 - `--databus-key`
   - If the databus is protected and needs API key authentication, you can provide the API key with `--databus-key YOUR_API_KEY`.
-- `--convert-to`
-  - Enables on-the-fly compression format conversion during download. Supported formats: `bz2`, `gz`, `xz`. Downloaded files will be automatically decompressed and recompressed to the target format. Example: `--convert-to gz` converts all downloaded compressed files to gzip format.
-- `--convert-from`
-  - Optional filter to specify which source compression format should be converted. Use with `--convert-to` to convert only files with a specific compression format. Example: `--convert-to gz --convert-from bz2` converts only `.bz2` files to `.gz`, leaving other formats unchanged.
+- `--compression`
+  - Enables on-the-fly compression format conversion during download. Supported formats: `bz2`, `gz`, `xz`. The source compression is auto-detected from the file extension. Example: `--compression gz` converts all downloaded compressed files to gzip format.
+- `--format`
+  - Enables on-the-fly RDF and tabular format conversion during download (Layer 2). Supported formats: `ntriples` (`nt`), `turtle` (`ttl`), `rdf-xml` (`rdf`, `xml`), `nquads` (`nq`), `trig`, `trix`, `json-ld` (`jsonld`), `csv`, `tsv`. Short aliases shown in brackets. Only the converted output file is kept — the original is deleted after successful conversion. Example: `--format turtle` converts all downloaded RDF triple files to Turtle format.
 - `--validate-checksum`
   - Validates the checksums of downloaded files against the checksums provided by the Databus. If a checksum does not match, an error is raised and the file is deleted.
 
@@ -272,16 +272,28 @@ databusclient download 'PREFIX dcat: <http://www.w3.org/ns/dcat#> SELECT ?x WHER
 docker run --rm -v $(pwd):/data dbpedia/databus-python-client download 'PREFIX dcat: <http://www.w3.org/ns/dcat#> SELECT ?x WHERE { ?sub dcat:downloadURL ?x . } LIMIT 10' --databus https://databus.dbpedia.org/sparql
 ```
 
-**Download with Compression Conversion**: download files and convert them to a different compression format on-the-fly
+**Download with Compression Conversion**: download files and convert compression format on-the-fly. Source compression is auto-detected from the file extension.
 ```bash
 # Convert all compressed files to gzip format
-databusclient download https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals/2022.12.01 --convert-to gz
-
-# Convert only bz2 files to xz format, leaving other compressions unchanged
-databusclient download https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals --convert-to xz --convert-from bz2
+databusclient download https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals/2022.12.01 --compression gz
 
 # Download a collection and unify all files to bz2 format
-databusclient download https://databus.dbpedia.org/dbpedia/collections/dbpedia-snapshot-2022-12 --convert-to bz2
+databusclient download https://databus.dbpedia.org/dbpedia/collections/dbpedia-snapshot-2022-12 --compression bz2
+```
+
+**Download with Format Conversion**: download files and convert RDF or tabular format on-the-fly. Only the converted output file is kept.
+```bash
+# Convert RDF/XML to Turtle
+databusclient download https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals/2022.12.01/mappingbased-literals_lang=az.ttl.bz2 --format turtle
+
+# Convert N-Quads to TriG (within quad equivalence class)
+databusclient download https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals/2022.12.01 --format trig
+
+# Convert RDF to CSV (cross-class, produces companion .meta.json)
+databusclient download https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals/2022.12.01/mappingbased-literals_lang=az.ttl.bz2 --format csv
+
+# Combine format conversion and compression
+databusclient download https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals/2022.12.01/mappingbased-literals_lang=az.ttl.bz2 --format ntriples --compression gz
 ```
 
 <a id="cli-deploy"></a>
