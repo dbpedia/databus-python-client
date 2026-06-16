@@ -262,6 +262,9 @@ def download(
         )
     except DownloadAuthError as e:
         raise click.ClickException(str(e))
+    except ValueError as e:
+        raise click.ClickException(str(e))
+
 
 
 @app.command()

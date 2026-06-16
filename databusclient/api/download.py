@@ -631,12 +631,18 @@ def _download_file(
                 print(f"Removed original file: {os.path.basename(filename)}")
 
         # Recompress converted output when needed.
+        # Three cases:
+        # 1. Source was compressed + --compression given -> use target compression
+        # 2. Source was compressed, no --compression given -> recompress with original
+        # 3. Source was NOT compressed + --compression given -> compress the output
+        # 4. Source was NOT compressed, no --compression given -> no compression
         if source_compression is not None:
             if should_convert_compression and compression:
                 final_compression = compression
             else:
                 final_compression = source_compression
-        elif should_convert_compression and compression:
+        elif compression:
+            # Source was uncompressed but user explicitly requested --compression
             final_compression = compression
         else:
             final_compression = None
