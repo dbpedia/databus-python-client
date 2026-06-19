@@ -53,11 +53,11 @@ def _detect_compression_format(filename: str) -> Optional[str]:
 def _should_convert_compression(
     filename: str, compression: Optional[str]
 ) -> Tuple[bool, Optional[str]]:
-    """Determine if a file should have its compression format converted.
+    """Determine if a file should have its compression format converted or compressed.
 
     Source compression is detected automatically from the file extension.
-    All compressed files will be converted to the target format regardless
-    of their source compression format.
+    If the file is uncompressed and a target compression is specified,
+    it will be compressed to the target format (source_format returned as None).
 
     Args:
         filename: Name of the file.
@@ -65,6 +65,7 @@ def _should_convert_compression(
 
     Returns:
         Tuple of (should_convert: bool, source_format: Optional[str]).
+        source_format is None when the input file is uncompressed.
     """
     if not compression:
         return False, None
@@ -73,7 +74,7 @@ def _should_convert_compression(
 
     # If file is not compressed, don't convert
     if source_format is None:
-        return False, None
+        return True, None
 
     # If source and target are the same, skip conversion
     if source_format == compression:
@@ -525,15 +526,53 @@ def _download_file(
         # _convert_compression_format deletes the source after success,
         # so the original downloaded file is removed automatically.
         if should_convert_compression and not needs_format_conversion:
-            target_filename = _get_converted_filename(file, source_fmt, compression)
-            target_filepath = os.path.join(localDir, target_filename)
-            _convert_compression_format(
-                filename,
-                target_filepath,
-                source_fmt,
-                compression,
-            )
+            if source_fmt is None:
+                # Source file is uncompressed — compress it directly to
+                # the target compression format.
+                target_filepath = filename + COMPRESSION_EXTENSIONS[compression]
+                print(
+                    f"Compressing {file} -> {os.path.basename(target_filepath)}..."
+                )
+                with open(filename, "rb") as sf:
+                    with COMPRESSION_MODULES[compression].open(
+                        target_filepath, "wb"
+                    ) as tf:
+                        shutil.copyfileobj(sf, tf)
+                os.remove(filename)
+                print(f"Compression complete: {os.path.basename(target_filepath)}")
+            else:
+                target_filename = _get_converted_filename(file, source_fmt, compression)
+                target_filepath = os.path.join(localDir, target_filename)
+                _convert_compression_format(
+                    filename,
+                    target_filepath,
+                    source_fmt,
+                    compression,
+                )
             return
+
+        # Early exit: if format conversion is requested but input format
+        # already matches target format, skip decompression and conversion
+        # entirely — no work needed for the format part.
+        if needs_format_conversion and source_compression is not None:
+            from databusclient.filehandling.format import (
+                detect_format_from_filename,
+                normalize_format,
+            )
+            detected_input_format = detect_format_from_filename(file)
+            normalized_target = normalize_format(convert_format)
+            if detected_input_format == normalized_target:
+                # Format is already correct. Only handle compression if needed.
+                if should_convert_compression and compression:
+                    target_filename = _get_converted_filename(
+                        file, source_fmt, compression
+                    )
+                    target_filepath = os.path.join(localDir, target_filename)
+                    _convert_compression_format(
+                        filename, target_filepath, source_fmt, compression
+                    )
+                # No format conversion needed, no further work.
+                return
 
         # Determine input for format conversion.
         # If source is compressed, decompress once to a safe temporary file.

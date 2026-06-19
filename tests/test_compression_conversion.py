@@ -35,10 +35,10 @@ def test_should_convert_compression():
     assert should_convert is False
     assert source is None
 
-    # Uncompressed file — never converted
+    # Uncompressed file with compression target — should now compress it
     should_convert, source = _should_convert_compression("file.txt", "gz")
-    assert should_convert is False
-    assert source is None
+    assert should_convert is True
+    assert source is None  # source is None when input is uncompressed
 
     # Same source and target — skip (no-op)
     should_convert, source = _should_convert_compression("file.txt.gz", "gz")
