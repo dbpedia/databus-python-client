@@ -26,8 +26,7 @@ databusclient = "databusclient.cli:app"
 target-version = "py311"
 src = ["databusclient", "tests"]
 
-[tool.ruff.lint.per-file-ignores]
-"tests/test_format_round_trips.py" = ["F841"]
+
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]

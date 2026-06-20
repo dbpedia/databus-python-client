@@ -142,11 +142,8 @@ def _datasets_equal(d1, d2) -> bool:
     # to correctly handle blank nodes that may be renamed during
     # serialization/deserialization
     for g1 in d1.graphs():
-        graph_id = str(g1.identifier)
         g2 = d2.get_context(g1.identifier)
         if g2 is None:
-            return False
-        if not g1.isomorphic(g2):
             return False
 
     return True
