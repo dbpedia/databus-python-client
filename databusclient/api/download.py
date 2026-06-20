@@ -566,10 +566,6 @@ def _download_file(
         # already matches target format, skip decompression and conversion
         # entirely — no work needed for the format part.
         if needs_format_conversion and source_compression is not None:
-            from databusclient.filehandling.format import (
-                detect_format_from_filename,
-                normalize_format,
-            )
             detected_input_format = detect_format_from_filename(file)
             normalized_target = normalize_format(convert_format)
             if detected_input_format == normalized_target:
