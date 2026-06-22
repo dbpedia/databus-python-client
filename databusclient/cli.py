@@ -180,14 +180,33 @@ def deploy(
     help="Client ID for token exchange",
 )
 @click.option(
-    "--convert-to",
+    "--compression",
+    "compression",
     type=click.Choice(["bz2", "gz", "xz"], case_sensitive=False),
-    help="Target compression format for on-the-fly conversion during download (supported: bz2, gz, xz)",
+    help="Target compression format for on-the-fly conversion during download. "
+         "Source compression is detected automatically from the file extension. "
+         "All compressed files will be converted to the target format (bz2, gz, xz).",
 )
 @click.option(
-    "--convert-from",
-    type=click.Choice(["bz2", "gz", "xz"], case_sensitive=False),
-    help="Source compression format to convert from (optional filter). Only files with this compression will be converted.",
+    "--format",
+    "convert_format",
+    type=click.Choice(
+        [
+            "ntriples", "nt",
+            "turtle", "ttl",
+            "rdf-xml", "rdf", "xml",
+            "nquads", "nq",
+            "trig",
+            "trix",
+            "json-ld", "jsonld",
+            "csv",
+            "tsv",
+        ],
+        case_sensitive=False,
+    ),
+    help="Target format for on-the-fly format conversion during download (Layer 2 and Layer 3). "
+         "Accepts full names (ntriples, turtle, rdf-xml, nquads, trig, trix, json-ld, csv, tsv) "
+         "or short aliases (nt, ttl, rdf, xml, nq, jsonld).",
 )
 @click.option(
     "--validate-checksum", is_flag=True, help="Validate checksums of downloaded files"
@@ -201,8 +220,8 @@ def download(
     all_versions,
     authurl,
     clientid,
-    convert_to,
-    convert_from,
+    compression,
+    convert_format,
     validate_checksum,
 ):
     """
@@ -219,8 +238,8 @@ def download(
             all_versions=all_versions,
             auth_url=authurl,
             client_id=clientid,
-            convert_to=convert_to,
-            convert_from=convert_from,
+            compression=compression,
+            convert_format=convert_format,
             validate_checksum=validate_checksum,
         )
     except DownloadAuthError as e:

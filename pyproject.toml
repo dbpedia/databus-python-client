@@ -26,6 +26,14 @@ databusclient = "databusclient.cli:app"
 target-version = "py311"
 src = ["databusclient", "tests"]
 
+
+
 [build-system]
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+filterwarnings = [
+    "ignore::DeprecationWarning:rdflib",
+    "ignore::UserWarning:rdflib",
+]

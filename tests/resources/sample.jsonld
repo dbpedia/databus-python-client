@@ -1,0 +1,62 @@
+{
+  "@context": {
+    "@base": "https://example.org/data/",
+    "ex": "https://example.org/vocab/",
+    "foaf": "http://xmlns.com/foaf/0.1/",
+    "xsd": "http://www.w3.org/2001/XMLSchema#",
+    "name": "foaf:name",
+    "age": {
+      "@id": "ex:age",
+      "@type": "xsd:integer"
+    },
+    "livesAt": {
+      "@id": "ex:livesAt",
+      "@type": "@id"
+    },
+    "city": "ex:city",
+    "country": "ex:country",
+    "knows": {
+      "@id": "ex:knows",
+      "@type": "@id"
+    },
+    "title": "ex:title",
+    "member": {
+      "@id": "ex:member",
+      "@type": "@id"
+    }
+  },
+  "@graph": [
+    {
+      "@id": "https://example.org/graph/people",
+      "@graph": [
+        {
+          "@id": "alice",
+          "name": "Alice",
+          "age": 29,
+          "livesAt": "_:address1"
+        },
+        {
+          "@id": "_:address1",
+          "city": "Leipzig",
+          "country": "Germany"
+        },
+        {
+          "@id": "bob",
+          "name": "Bob",
+          "age": 34,
+          "knows": "alice"
+        }
+      ]
+    },
+    {
+      "@id": "https://example.org/graph/projects",
+      "@graph": [
+        {
+          "@id": "project1",
+          "title": "Databus Example Project",
+          "member": "alice"
+        }
+      ]
+    }
+  ]
+}

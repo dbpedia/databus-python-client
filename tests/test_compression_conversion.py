@@ -8,7 +8,7 @@ import tempfile
 import pytest
 from databusclient.api.download import (
     _detect_compression_format,
-    _should_convert_file,
+    _should_convert_compression,
     _get_converted_filename,
     _convert_compression_format,
 )
@@ -23,37 +23,42 @@ def test_detect_compression_format():
     assert _detect_compression_format("FILE.TXT.GZ") == "gz"  # case insensitive
 
 
-def test_should_convert_file():
-    """Test file conversion decision logic"""
+def test_should_convert_compression():
+    """Test file compression conversion decision logic.
+
+    With --compression, source format is auto-detected from the file extension.
+    All compressed files are converted to the target format regardless of their
+    source compression format (no convert_from filter).
+    """
     # No conversion target specified
-    should_convert, source = _should_convert_file("file.txt.bz2", None, None)
+    should_convert, source = _should_convert_compression("file.txt.bz2", None)
     assert should_convert is False
     assert source is None
 
-    # Uncompressed file
-    should_convert, source = _should_convert_file("file.txt", "gz", None)
+    # Uncompressed file with compression target — should now compress it
+    should_convert, source = _should_convert_compression("file.txt", "gz")
+    assert should_convert is True
+    assert source is None  # source is None when input is uncompressed
+
+    # Same source and target — skip (no-op)
+    should_convert, source = _should_convert_compression("file.txt.gz", "gz")
     assert should_convert is False
     assert source is None
 
-    # Same source and target
-    should_convert, source = _should_convert_file("file.txt.gz", "gz", None)
-    assert should_convert is False
-    assert source is None
-
-    # Valid conversion
-    should_convert, source = _should_convert_file("file.txt.bz2", "gz", None)
+    # bz2 -> gz: should convert, source auto-detected
+    should_convert, source = _should_convert_compression("file.txt.bz2", "gz")
     assert should_convert is True
     assert source == "bz2"
 
-    # With convert_from filter matching
-    should_convert, source = _should_convert_file("file.txt.bz2", "gz", "bz2")
+    # xz -> gz: should convert regardless of source format (no filter)
+    should_convert, source = _should_convert_compression("file.txt.xz", "gz")
     assert should_convert is True
-    assert source == "bz2"
+    assert source == "xz"
 
-    # With convert_from filter not matching
-    should_convert, source = _should_convert_file("file.txt.bz2", "gz", "xz")
-    assert should_convert is False
-    assert source is None
+    # gz -> bz2: should convert
+    should_convert, source = _should_convert_compression("file.txt.gz", "bz2")
+    assert should_convert is True
+    assert source == "gz"
 
 
 def test_get_converted_filename():
