@@ -8,6 +8,8 @@ import click
 import databusclient.api.deploy as api_deploy
 from databusclient.api.delete import delete as api_delete
 from databusclient.api.download import download as api_download, DownloadAuthError
+from databusclient.manifest.context import ManifestContext
+from databusclient.manifest.writer import ManifestWriter
 from databusclient.extensions import webdav
 
 
@@ -59,6 +61,12 @@ def app():
     "webdav_url",
     help="WebDAV URL (e.g., https://cloud.example.com/remote.php/webdav)",
 )
+@click.option(
+    "--manifest",
+    "manifest_path",
+    default=None,
+    help="Write a JSON-LD manifest of this operation to PATH.",
+)
 @click.option("--remote", help="rclone remote name (e.g., 'nextcloud')")
 @click.option("--path", help="Remote path on Nextcloud (e.g., 'datasets/mydataset')")
 @click.argument("distributions", nargs=-1)
@@ -74,6 +82,7 @@ def deploy(
     remote,
     path,
     distributions: List[str],
+    manifest_path,
 ):
     """
     Flexible deploy to Databus command supporting three modes:\n
@@ -91,6 +100,30 @@ def deploy(
         raise click.UsageError(
             "Invalid combination: when using WebDAV/Nextcloud mode, please provide --webdav-url, --remote, and --path together."
         )
+    
+    manifest_context = None
+    if manifest_path:
+        manifest_context = ManifestContext(command="deploy")
+        manifest_context.record_params({
+            "version_id": version_id,
+            "title": title,
+            "abstract": abstract,
+            "description": description,
+            "license_url": license_url,
+            "distributions": list(distributions) if distributions else [],
+            "metadata_file": metadata_file,
+        })
+
+    def _write_manifest():
+        if manifest_path and manifest_context is not None:
+            try:
+                ManifestWriter.write(manifest_context, manifest_path)
+                click.echo(f"Manifest written to {manifest_path}")
+            except (OSError, IOError) as e:
+                click.echo(
+                    f"WARNING: Manifest could not be written to {manifest_path}: {e}",
+                    err=True,
+                )
 
     # === Mode 1: Classic Deploy ===
     if distributions and not (metadata_file or webdav_url or remote or path):
@@ -106,6 +139,11 @@ def deploy(
             distributions=distributions,
         )
         api_deploy.deploy(dataid=dataid, api_key=apikey)
+        if manifest_context:
+            for dist in distributions:
+                url = str(dist).split("|")[0]
+                manifest_context.record_file(url=url, status="success")
+        _write_manifest()
         return
 
     # === Mode 2: Metadata File ===
@@ -116,6 +154,15 @@ def deploy(
         api_deploy.deploy_from_metadata(
             metadata, version_id, title, abstract, description, license_url, apikey
         )
+        if manifest_context:
+            for entry in metadata:
+                manifest_context.record_file(
+                    url=entry.get("url", ""),
+                    status="success",
+                    sha256=entry.get("checksum"),
+                    size_bytes=entry.get("size"),
+                )
+        _write_manifest()
         return
 
     # === Mode 3: Upload & Deploy (Nextcloud) ===
@@ -125,7 +172,6 @@ def deploy(
                 "Please provide files to upload when using WebDAV/Nextcloud mode."
             )
 
-        # Check that all given paths exist and are files or directories.
         invalid = [f for f in distributions if not os.path.exists(f)]
         if invalid:
             raise click.UsageError(
@@ -138,6 +184,15 @@ def deploy(
         api_deploy.deploy_from_metadata(
             metadata, version_id, title, abstract, description, license_url, apikey
         )
+        if manifest_context:
+            for entry in metadata:
+                manifest_context.record_file(
+                    url=entry.get("url", ""),
+                    status="success",
+                    sha256=entry.get("checksum"),
+                    size_bytes=entry.get("size"),
+                )
+        _write_manifest()
         return
 
     raise click.UsageError(
@@ -146,7 +201,6 @@ def deploy(
         "  - Metadata deploy: use --metadata <file>\n"
         "  - Upload & deploy: use --webdav-url, --remote, --path, and file arguments"
     )
-
 
 @app.command()
 @click.argument("databusuris", nargs=-1, required=True)
@@ -223,6 +277,12 @@ def deploy(
          "Required when converting CSV/TSV to RDF triple formats.",
 )
 @click.option(
+    "--manifest",
+    "manifest_path",
+    default=None,
+    help="Write a JSON-LD manifest of this operation to PATH (e.g. --manifest manifest.jsonld).",
+)
+@click.option(
     "--validate-checksum", is_flag=True, help="Validate checksums of downloaded files"
 )
 def download(
@@ -239,11 +299,38 @@ def download(
     graph_name,
     base_uri,
     validate_checksum,
+    manifest_path,
 ):
     """
     Download datasets from databus, optionally using vault access if vault options are provided.
     Supports on-the-fly compression format conversion using --convert-to and --convert-from options.
     """
+    # Determine auth method for manifest (never store the token itself)
+    auth_method = None
+    if vault_token:
+        auth_method = "vault_token"
+    elif databus_key:
+        auth_method = "databus_key"
+
+    manifest_context = None
+    if manifest_path:
+        manifest_context = ManifestContext(
+            command="download",
+            endpoint=databus,
+            auth_method=auth_method,
+        )
+        # Record safe replay params — sensitive fields excluded
+        manifest_context.record_params({
+            "databusURIs": list(databusuris),
+            "compression": compression,
+            "convert_format": convert_format,
+            "graph_name": graph_name,
+            "base_uri": base_uri,
+            "all_versions": all_versions,
+            "validate_checksum": validate_checksum,
+            "authurl": authurl,
+            "clientid": clientid,
+        })
     try:
         api_download(
             localDir=localdir,
@@ -259,11 +346,22 @@ def download(
             graph_name=graph_name,
             base_uri=base_uri,
             validate_checksum=validate_checksum,
+            manifest_context=manifest_context,
         )
     except DownloadAuthError as e:
         raise click.ClickException(str(e))
     except ValueError as e:
         raise click.ClickException(str(e))
+    finally:
+        if manifest_path and manifest_context is not None:
+            try:
+                ManifestWriter.write(manifest_context, manifest_path)
+                click.echo(f"Manifest written to {manifest_path}")
+            except (OSError, IOError) as e:
+                click.echo(
+                    f"WARNING: Manifest could not be written to {manifest_path}: {e}",
+                    err=True,
+                )
 
 
 
@@ -278,7 +376,13 @@ def download(
 @click.option(
     "--force", is_flag=True, help="Force deletion without confirmation prompt"
 )
-def delete(databusuris: List[str], databus_key: str, dry_run: bool, force: bool):
+@click.option(
+    "--manifest",
+    "manifest_path",
+    default=None,
+    help="Write a JSON-LD manifest of this operation to PATH.",
+)
+def delete(databusuris: List[str], databus_key: str, dry_run: bool, force: bool, manifest_path):
     """
     Delete a dataset from the databus.
 
@@ -286,12 +390,31 @@ def delete(databusuris: List[str], databus_key: str, dry_run: bool, force: bool)
     Will recursively delete all data associated with the dataset.
     """
 
+    manifest_context = None
+    if manifest_path:
+        manifest_context = ManifestContext(command="delete")
+        manifest_context.record_params({
+            "databusURIs": list(databusuris),
+            "dry_run": dry_run,
+        })
+
     api_delete(
         databusURIs=databusuris,
         databus_key=databus_key,
         dry_run=dry_run,
         force=force,
+        manifest_context=manifest_context,
     )
+
+    if manifest_path and manifest_context is not None:
+        try:
+            ManifestWriter.write(manifest_context, manifest_path)
+            click.echo(f"Manifest written to {manifest_path}")
+        except (OSError, IOError) as e:
+            click.echo(
+                f"WARNING: Manifest could not be written to {manifest_path}: {e}",
+                err=True,
+            )
 
 
 if __name__ == "__main__":

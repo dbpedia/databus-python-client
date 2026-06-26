@@ -116,6 +116,7 @@ def _delete_resource(
     dry_run: bool = False,
     force: bool = False,
     queue: DeleteQueue = None,
+    manifest_context=None,
 ):
     """Delete a single Databus resource (version, artifact, group).
 
@@ -144,6 +145,8 @@ def _delete_resource(
 
     if dry_run:
         print(f"[DRY RUN] Would delete: {databusURI}")
+        if manifest_context is not None:
+            manifest_context.record_file(url=databusURI, status="dry_run")
         return
 
     if queue is not None:
@@ -156,6 +159,8 @@ def _delete_resource(
 
     if response.status_code in (200, 204):
         print(f"Successfully deleted: {databusURI}")
+        if manifest_context is not None:
+            manifest_context.record_file(url=databusURI, status="success")
     else:
         raise Exception(
             f"Failed to delete {databusURI}: {response.status_code} - {response.text}"
@@ -168,6 +173,7 @@ def _delete_list(
     dry_run: bool = False,
     force: bool = False,
     queue: DeleteQueue = None,
+    manifest_context=None,
 ):
     """Delete a list of Databus resources.
 
@@ -180,7 +186,7 @@ def _delete_list(
     """
     for databusURI in databusURIs:
         _delete_resource(
-            databusURI, databus_key, dry_run=dry_run, force=force, queue=queue
+            databusURI, databus_key, dry_run=dry_run, force=force, queue=queue, manifest_context=manifest_context
         )
 
 
@@ -190,6 +196,7 @@ def _delete_artifact(
     dry_run: bool = False,
     force: bool = False,
     queue: DeleteQueue = None,
+    manifest_context=None,
 ):
     """Delete an artifact and all its versions.
 
@@ -223,11 +230,11 @@ def _delete_artifact(
         else:
             # Delete all versions
             _delete_list(
-                version_uris, databus_key, dry_run=dry_run, force=force, queue=queue
+                version_uris, databus_key, dry_run=dry_run, force=force, queue=queue, manifest_context=manifest_context
             )
 
     # Finally, delete the artifact itself
-    _delete_resource(databusURI, databus_key, dry_run=dry_run, force=force, queue=queue)
+    _delete_resource(databusURI, databus_key, dry_run=dry_run, force=force, queue=queue,manifest_context=manifest_context)
 
 
 def _delete_group(
@@ -236,6 +243,7 @@ def _delete_group(
     dry_run: bool = False,
     force: bool = False,
     queue: DeleteQueue = None,
+    manifest_context=None,
 ):
     """Delete a group and all its artifacts and versions.
 
@@ -266,14 +274,14 @@ def _delete_group(
     # Delete all artifacts (which deletes their versions)
     for artifact_uri in artifact_uris:
         _delete_artifact(
-            artifact_uri, databus_key, dry_run=dry_run, force=force, queue=queue
+            artifact_uri, databus_key, dry_run=dry_run, force=force, queue=queue, manifest_context=manifest_context
         )
 
     # Finally, delete the group itself
-    _delete_resource(databusURI, databus_key, dry_run=dry_run, force=force, queue=queue)
+    _delete_resource(databusURI, databus_key, dry_run=dry_run, force=force, queue=queue,manifest_context=manifest_context)
 
 
-def delete(databusURIs: List[str], databus_key: str, dry_run: bool, force: bool):
+def delete(databusURIs: List[str], databus_key: str, dry_run: bool, force: bool, manifest_context=None):
     """Delete a dataset from the databus.
 
     Delete a group, artifact, or version identified by the given databus URI.
@@ -296,24 +304,24 @@ def delete(databusURIs: List[str], databus_key: str, dry_run: bool, force: bool)
         if group == "collections" and artifact is not None:
             print(f"Deleting collection: {databusURI}")
             _delete_resource(
-                databusURI, databus_key, dry_run=dry_run, force=force, queue=queue
+                databusURI, databus_key, dry_run=dry_run, force=force, queue=queue, manifest_context=manifest_context
             )
         elif file is not None:
             print(f"Deleting file is not supported via API: {databusURI}")
         elif version is not None:
             print(f"Deleting version: {databusURI}")
             _delete_resource(
-                databusURI, databus_key, dry_run=dry_run, force=force, queue=queue
+                databusURI, databus_key, dry_run=dry_run, force=force, queue=queue, manifest_context=manifest_context
             )
         elif artifact is not None:
             print(f"Deleting artifact and all its versions: {databusURI}")
             _delete_artifact(
-                databusURI, databus_key, dry_run=dry_run, force=force, queue=queue
+                databusURI, databus_key, dry_run=dry_run, force=force, queue=queue, manifest_context=manifest_context
             )
         elif group is not None and group != "collections":
             print(f"Deleting group and all its artifacts and versions: {databusURI}")
             _delete_group(
-                databusURI, databus_key, dry_run=dry_run, force=force, queue=queue
+                databusURI, databus_key, dry_run=dry_run, force=force, queue=queue, manifest_context=manifest_context
             )
         else:
             print(f"Deleting {databusURI} is not supported.")
