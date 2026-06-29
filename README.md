@@ -177,7 +177,11 @@ docker run --rm -v $(pwd):/data dbpedia/databus-python-client download $DOWNLOAD
 - `--compression`
   - Enables on-the-fly compression format conversion during download. Supported formats: `bz2`, `gz`, `xz`. The source compression is auto-detected from the file extension. Example: `--compression gz` converts all downloaded compressed files to gzip format.
 - `--format`
-  - Enables on-the-fly RDF and tabular format conversion during download (Layer 2). Supported formats: `ntriples` (`nt`), `turtle` (`ttl`), `rdf-xml` (`rdf`, `xml`), `nquads` (`nq`), `trig`, `trix`, `json-ld` (`jsonld`), `csv`, `tsv`. Short aliases shown in brackets. Only the converted output file is kept — the original is deleted after successful conversion. Example: `--format turtle` converts all downloaded RDF triple files to Turtle format.
+  - Enables on-the-fly RDF and tabular format conversion during download (Layer 2 and Layer 3). Supported formats: `ntriples` (`nt`), `turtle` (`ttl`), `rdf-xml` (`rdf`, `xml`), `nquads` (`nq`), `trig`, `trix`, `json-ld` (`jsonld`), `csv`, `tsv`. Short aliases shown in brackets. Only the converted output file is kept — the original is deleted after successful conversion. Within the same equivalence class (e.g. turtle to ntriples) conversion is lossless. Across classes (e.g. RDF to CSV) some flags below may be required.
+- `--graph-name`
+  - Required when converting RDF triples to a quad format (e.g. turtle to nquads). Assigns all triples to the specified named graph URI. Example: `--format nquads --graph-name https://example.org/mygraph`.
+- `--base-uri`
+  - Required when converting CSV/TSV to RDF triples. Used as the base for constructing subject URIs from CSV row identifiers. Example: `--format ntriples --base-uri https://example.org/data/`.
 - `--validate-checksum`
   - Validates the checksums of downloaded files against the checksums provided by the Databus. If a checksum does not match, an error is raised and the file is deleted.
 
@@ -294,6 +298,24 @@ databusclient download https://databus.dbpedia.org/dbpedia/mappings/mappingbased
 
 # Combine format conversion and compression
 databusclient download https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals/2022.12.01/mappingbased-literals_lang=az.ttl.bz2 --format ntriples --compression gz
+```
+
+**Download with Mapping Conversion (Layer 3)**: convert across format classes — between RDF triples, RDF quads, and tabular data.
+```bash
+# RDF Triples -> RDF Quads (requires --graph-name)
+databusclient download https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals/2022.12.01/mappingbased-literals_lang=az.ttl.bz2 --format nquads --graph-name https://example.org/mygraph
+
+# RDF Quads -> RDF Triples (splits into one file per named graph, in a subdirectory)
+databusclient download https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals/2022.12.01/mappingbased-literals_lang=az.nq --format turtle
+
+# RDF Triples -> CSV (produces a companion .meta.json preserving datatypes/language tags)
+databusclient download https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals/2022.12.01/mappingbased-literals_lang=az.ttl.bz2 --format csv
+
+# CSV -> RDF Triples (requires --base-uri; lossless if companion .meta.json is present)
+databusclient download https://databus.dbpedia.org/dbpedia/some-tabular-dataset/2022.12.01/data.csv --format ntriples --base-uri https://example.org/data/
+
+# RDF Quads -> CSV (adds a 'graph' column)
+databusclient download https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals/2022.12.01/mappingbased-literals_lang=az.nq --format csv
 ```
 
 <a id="cli-deploy"></a>

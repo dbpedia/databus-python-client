@@ -209,6 +209,20 @@ def deploy(
          "or short aliases (nt, ttl, rdf, xml, nq, jsonld).",
 )
 @click.option(
+    "--graph-name",
+    "graph_name",
+    default=None,
+    help="Named graph URI for Triple -> Quad conversion (Layer 3). "
+         "Required when converting RDF triple formats to quad formats.",
+)
+@click.option(
+    "--base-uri",
+    "base_uri",
+    default=None,
+    help="Base URI for CSV -> RDF Triple conversion (Layer 3). "
+         "Required when converting CSV/TSV to RDF triple formats.",
+)
+@click.option(
     "--validate-checksum", is_flag=True, help="Validate checksums of downloaded files"
 )
 def download(
@@ -222,6 +236,8 @@ def download(
     clientid,
     compression,
     convert_format,
+    graph_name,
+    base_uri,
     validate_checksum,
 ):
     """
@@ -240,10 +256,15 @@ def download(
             client_id=clientid,
             compression=compression,
             convert_format=convert_format,
+            graph_name=graph_name,
+            base_uri=base_uri,
             validate_checksum=validate_checksum,
         )
     except DownloadAuthError as e:
         raise click.ClickException(str(e))
+    except ValueError as e:
+        raise click.ClickException(str(e))
+
 
 
 @app.command()
