@@ -546,12 +546,23 @@ class TestRoundTrips:
             )
 
     def test_quad_to_triple_to_quad_round_trip(self):
-        """Quad -> Triple (split) -> Quad (re-promote each graph): datasets must match.
+        """Quad -> Triple (split) -> Quad (re-promote + merge) -> compare with original.
 
-        Since Quad -> Triple produces one file per named graph, each graph is
-        separately re-promoted back to a quad Dataset and the named graphs are
-        compared individually using isomorphic().
+        Follows the paper's round trip pattern (Fig. 3, steps 1-6):
+        (1) Read sample.nq into IR_quad (d_original)
+        (2) Map IR_quad -> IR_triple per named graph (via convert_quads_to_triples)
+        (3) Write each IR_triple to a .nt file
+        (4) Read each .nt back into IR_triple
+        (5) Map each IR_triple -> IR_quad (via convert_triples_to_quads, same graph URI)
+        (6) Write each back to .nq, read into IR_quad, merge all into d_merged
+        Compare d_merged named graphs against d_original named graphs using isomorphic().
+
+        Since Quad -> Triple produces one file per named graph, each file is
+        separately re-promoted back to a Quad with its original graph URI,
+        then all are merged into a single Dataset for comparison.
         """
+        from rdflib import Dataset, URIRef
+
         source = resource("sample.nq")
         d_original = quad_handler.read(source, "nquads")
 
@@ -559,39 +570,81 @@ class TestRoundTrips:
         original_graphs = {
             str(g.identifier): g
             for g in d_original.graphs()
-            if len(g) > 0 and str(g.identifier) not in ("urn:x-rdflib:default", "")
+            if len(g) > 0
+            and str(g.identifier) not in ("urn:x-rdflib:default", "")
         }
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            # Step 1: Quad -> Triple (split into subdirectory)
-            output_dir = os.path.join(tmpdir, "split")
-            files = convert_quads_to_triples(source, output_dir, "nquads", "ntriples")
+        assert len(original_graphs) >= 1, (
+            "sample.nq must contain at least one named graph for this test"
+        )
 
-            assert len(files) == len(original_graphs), (
-                f"Expected {len(original_graphs)} output files, got {len(files)}"
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Steps 2+3: Quad -> Triple (split into one .nt file per named graph)
+            output_dir = os.path.join(tmpdir, "split")
+            files = convert_quads_to_triples(
+                source, output_dir, "nquads", "ntriples"
             )
 
-            # Step 2: Re-promote each triple file back to quads and compare
+            assert len(files) == len(original_graphs), (
+                f"Expected {len(original_graphs)} output file(s) "
+                f"(one per named graph), got {len(files)}"
+            )
+
+            # Steps 4+5+6: Read each .nt back, re-promote to Quad, merge
+            d_merged = Dataset()
+
             for out_file in files:
+                # Derive stem from filename to match back to original graph URI
                 stem = os.path.basename(out_file)[:-3]  # strip .nt
 
-                # Find the matching original graph by last URI segment
                 matching_uri = next(
                     (uri for uri in original_graphs
                      if uri.rstrip("/").split("/")[-1] == stem),
-                    None
+                    None,
                 )
-                if matching_uri is None:
-                    continue
-
-                g_split = triple_handler.read(out_file, "ntriples")
-                g_original_named = original_graphs[matching_uri]
-
-                assert g_split.isomorphic(g_original_named), (
-                    f"Quad -> Triple -> Quad round trip failed for graph "
-                    f"'{matching_uri}': reconstructed graph is not isomorphic"
+                assert matching_uri is not None, (
+                    f"Could not match output file '{os.path.basename(out_file)}' "
+                    f"to any original named graph. "
+                    f"Available graph URIs: {list(original_graphs.keys())}"
                 )
 
+                # Step 5: Re-promote .nt back to Quad using original graph URI
+                repromoted_path = os.path.join(tmpdir, f"{stem}_repromoted.nq")
+                convert_triples_to_quads(
+                    out_file,
+                    repromoted_path,
+                    "ntriples",
+                    "nquads",
+                    matching_uri,
+                )
+
+                # Step 6: Read repromoted Quad into IR and merge into d_merged
+                d_repromoted = quad_handler.read(repromoted_path, "nquads")
+                for named_graph in d_repromoted.graphs():
+                    graph_id = str(named_graph.identifier)
+                    if (
+                        graph_id in ("urn:x-rdflib:default", "")
+                        or len(named_graph) == 0
+                    ):
+                        continue
+                    merged_graph = d_merged.graph(URIRef(graph_id))
+                    for triple in named_graph:
+                        merged_graph.add(triple)
+
+            # Compare: each named graph in d_merged must be isomorphic
+            # to the corresponding named graph in d_original
+            for uri, g_original_named in original_graphs.items():
+                g_merged_named = d_merged.get_context(URIRef(uri))
+                assert g_merged_named is not None, (
+                    f"Named graph '{uri}' is missing from merged Dataset "
+                    f"after round trip"
+                )
+                assert g_original_named.isomorphic(g_merged_named), (
+                    f"Quad -> Triple -> Quad round trip failed for graph '{uri}': "
+                    f"reconstructed graph is not isomorphic to original. "
+                    f"Original had {len(g_original_named)} triple(s), "
+                    f"reconstructed has {len(g_merged_named)} triple(s)."
+                )
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
