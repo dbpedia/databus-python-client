@@ -543,18 +543,13 @@ class TestRoundTrips:
     def test_quad_to_triple_to_quad_round_trip(self):
         """Quad -> Triple (split) -> Quad (re-promote + merge) -> compare with original.
 
-        Follows the paper's round trip pattern (Fig. 3, steps 1-6):
-        (1) Read sample.nq into IR_quad (d_original)
-        (2) Map IR_quad -> IR_triple per named graph (via convert_quads_to_triples)
-        (3) Write each IR_triple to a .nt file
-        (4) Read each .nt back into IR_triple
-        (5) Map each IR_triple -> IR_quad (via convert_triples_to_quads, same graph URI)
-        (6) Write each back to .nq, read into IR_quad, merge all into d_merged
-        Compare d_merged named graphs against d_original named graphs using isomorphic().
+        Follows the paper's round trip pattern (Fig. 3, steps 1-6).
+        Each split .nt file is matched to its original named graph by content
+        (isomorphic comparison), not by filename, making the test independent
+        of filename conventions and sanitization.
 
-        Since Quad -> Triple produces one file per named graph, each file is
-        separately re-promoted back to a Quad with its original graph URI,
-        then all are merged into a single Dataset for comparison.
+        After re-promotion and merging, the merged Dataset is verified to
+        contain exactly the original named graph URIs — no more, no less.
         """
         from rdflib import Dataset, URIRef
 
@@ -585,25 +580,32 @@ class TestRoundTrips:
                 f"(one per named graph), got {len(files)}"
             )
 
-            # Steps 4+5+6: Read each .nt back, re-promote to Quad, merge
+            # Steps 4+5+6: Match each .nt to original graph by content,
+            # re-promote to Quad using original graph URI, merge all
             d_merged = Dataset()
+            used_graph_uris = set()
 
             for out_file in files:
-                # Derive stem from filename to match back to original graph URI
-                stem = os.path.basename(out_file)[:-3]  # strip .nt
+                # Step 4: Read split .nt into IR
+                g_split = triple_handler.read(out_file, "ntriples")
 
+                # Step 5: Match to original named graph by content (not filename)
                 matching_uri = next(
-                    (uri for uri in original_graphs
-                     if uri.rstrip("/").split("/")[-1] == stem),
+                    (
+                        uri for uri, g_original in original_graphs.items()
+                        if uri not in used_graph_uris
+                        and g_split.isomorphic(g_original)
+                    ),
                     None,
                 )
                 assert matching_uri is not None, (
                     f"Could not match output file '{os.path.basename(out_file)}' "
-                    f"to any original named graph. "
-                    f"Available graph URIs: {list(original_graphs.keys())}"
+                    "to any original named graph by graph content"
                 )
+                used_graph_uris.add(matching_uri)
 
-                # Step 5: Re-promote .nt back to Quad using original graph URI
+                # Step 5+6: Re-promote .nt back to Quad using matched graph URI
+                stem = os.path.basename(out_file)[:-3]
                 repromoted_path = os.path.join(tmpdir, f"{stem}_repromoted.nq")
                 convert_triples_to_quads(
                     out_file,
@@ -613,7 +615,7 @@ class TestRoundTrips:
                     matching_uri,
                 )
 
-                # Step 6: Read repromoted Quad into IR and merge into d_merged
+                # Read repromoted Quad into IR and merge into d_merged
                 d_repromoted = quad_handler.read(repromoted_path, "nquads")
                 for named_graph in d_repromoted.graphs():
                     graph_id = str(named_graph.identifier)
@@ -626,14 +628,22 @@ class TestRoundTrips:
                     for triple in named_graph:
                         merged_graph.add(triple)
 
-            # Compare: each named graph in d_merged must be isomorphic
-            # to the corresponding named graph in d_original
+            # Verify merged Dataset contains exactly the original named graph URIs
+            merged_graph_uris = {
+                str(g.identifier)
+                for g in d_merged.graphs()
+                if len(g) > 0
+                and str(g.identifier) not in ("urn:x-rdflib:default", "")
+            }
+            assert merged_graph_uris == set(original_graphs.keys()), (
+                f"Merged Dataset graph URIs do not match original. "
+                f"Expected: {set(original_graphs.keys())}, "
+                f"got: {merged_graph_uris}"
+            )
+
+            # Compare each named graph in d_merged against d_original
             for uri, g_original_named in original_graphs.items():
                 g_merged_named = d_merged.get_context(URIRef(uri))
-                assert g_merged_named is not None, (
-                    f"Named graph '{uri}' is missing from merged Dataset "
-                    f"after round trip"
-                )
                 assert g_original_named.isomorphic(g_merged_named), (
                     f"Quad -> Triple -> Quad round trip failed for graph '{uri}': "
                     f"reconstructed graph is not isomorphic to original. "
