@@ -19,7 +19,6 @@ Edge cases covered:
 import json
 import os
 import tempfile
-
 import pytest
 
 from databusclient.filehandling.format import TripleHandler, QuadHandler, TSDHandler
@@ -30,6 +29,10 @@ from databusclient.filehandling.mapping import (
     convert_csv_to_rdf,
     convert_quads_to_csv,
 )
+
+triple_handler = TripleHandler()
+quad_handler = QuadHandler()
+tsd_handler = TSDHandler()
 
 # ---------------------------------------------------------------------------
 # Shared test data and helpers
@@ -42,48 +45,6 @@ def resource(filename: str) -> str:
     return os.path.join(RESOURCES, filename)
 
 
-triple_handler = TripleHandler()
-quad_handler = QuadHandler()
-tsd_handler = TSDHandler()
-
-# Sample Turtle with typed literals, blank nodes, multi-valued predicates
-SAMPLE_TTL_CONTENT = """\
-@base <https://example.org/data/> .
-@prefix ex: <https://example.org/vocab/> .
-@prefix foaf: <http://xmlns.com/foaf/0.1/> .
-@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
-
-<alice> foaf:name "Alice" ;
-    ex:age 29 ;
-    ex:livesAt _:address1 .
-
-_:address1 ex:city "Leipzig" ;
-    ex:country "Germany" .
-
-<bob> foaf:name "Bob" ;
-    ex:age 34 ;
-    ex:knows <alice> .
-
-<project1> ex:title "Databus Example Project" ;
-    ex:member <alice> .
-"""
-
-SAMPLE_NQ_CONTENT = """\
-<https://example.org/data/alice> <http://xmlns.com/foaf/0.1/name> "Alice" <https://example.org/graph/people> .
-<https://example.org/data/alice> <https://example.org/vocab/age> "29"^^<http://www.w3.org/2001/XMLSchema#integer> <https://example.org/graph/people> .
-<https://example.org/data/bob> <http://xmlns.com/foaf/0.1/name> "Bob" <https://example.org/graph/people> .
-<https://example.org/data/project1> <https://example.org/vocab/title> "Databus Example Project" <https://example.org/graph/projects> .
-<https://example.org/data/project1> <https://example.org/vocab/member> <https://example.org/data/alice> <https://example.org/graph/projects> .
-"""
-
-
-def write_temp_file(tmpdir, filename, content):
-    path = os.path.join(tmpdir, filename)
-    with open(path, "w", encoding="utf-8") as f:
-        f.write(content)
-    return path
-
-
 # ---------------------------------------------------------------------------
 # Direction 1: Triple -> Quad
 # ---------------------------------------------------------------------------
@@ -93,7 +54,7 @@ class TestTriplesToQuads:
     def test_basic_conversion(self):
         """All triples are assigned to the specified named graph."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            src = write_temp_file(tmpdir, "input.ttl", SAMPLE_TTL_CONTENT)
+            src = resource("sample.ttl")
             out = os.path.join(tmpdir, "output.nq")
             convert_triples_to_quads(src, out, "turtle", "nquads",
                                      "https://example.org/graph/test")
@@ -110,7 +71,7 @@ class TestTriplesToQuads:
     def test_triple_count_preserved(self):
         """All triples from input appear in the named graph."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            src = write_temp_file(tmpdir, "input.ttl", SAMPLE_TTL_CONTENT)
+            src = resource("sample.ttl")
             out = os.path.join(tmpdir, "output.nq")
             convert_triples_to_quads(src, out, "turtle", "nquads",
                                      "https://example.org/graph/test")
@@ -125,7 +86,7 @@ class TestTriplesToQuads:
     def test_requires_graph_name(self):
         """Raises ValueError if graph_name is None or empty."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            src = write_temp_file(tmpdir, "input.ttl", SAMPLE_TTL_CONTENT)
+            src = resource("sample.ttl")
             out = os.path.join(tmpdir, "output.nq")
 
             with pytest.raises(ValueError, match="graph_name is required"):
@@ -137,7 +98,7 @@ class TestTriplesToQuads:
     def test_trig_output_format(self):
         """Triple -> Quad works with trig output format."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            src = write_temp_file(tmpdir, "input.ttl", SAMPLE_TTL_CONTENT)
+            src = resource("sample.ttl")
             out = os.path.join(tmpdir, "output.trig")
             convert_triples_to_quads(src, out, "turtle", "trig",
                                      "https://example.org/graph/trig_test")
@@ -167,7 +128,7 @@ class TestQuadsToTriples:
     def test_creates_subdirectory(self):
         """Output subdirectory is created automatically."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            src = write_temp_file(tmpdir, "input.nq", SAMPLE_NQ_CONTENT)
+            src = resource("sample.nq")
             out_dir = os.path.join(tmpdir, "split_output")
             convert_quads_to_triples(src, out_dir, "nquads", "ntriples")
             assert os.path.isdir(out_dir)
@@ -175,7 +136,7 @@ class TestQuadsToTriples:
     def test_one_file_per_graph(self):
         """One .nt file is created per named graph."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            src = write_temp_file(tmpdir, "input.nq", SAMPLE_NQ_CONTENT)
+            src = resource("sample.nq")
             out_dir = os.path.join(tmpdir, "split")
             files = convert_quads_to_triples(src, out_dir, "nquads", "ntriples")
 
@@ -188,7 +149,7 @@ class TestQuadsToTriples:
     def test_all_triples_present(self):
         """Total triple count across all output files matches input quad count."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            src = write_temp_file(tmpdir, "input.nq", SAMPLE_NQ_CONTENT)
+            src = resource("sample.nq")
             out_dir = os.path.join(tmpdir, "split")
             files = convert_quads_to_triples(src, out_dir, "nquads", "ntriples")
 
@@ -205,7 +166,7 @@ class TestQuadsToTriples:
     def test_filename_from_graph_uri(self):
         """Output filenames are derived from graph URI last segment."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            src = write_temp_file(tmpdir, "input.nq", SAMPLE_NQ_CONTENT)
+            src = resource("sample.nq")
             out_dir = os.path.join(tmpdir, "split")
             files = convert_quads_to_triples(src, out_dir, "nquads", "ntriples")
 
@@ -216,9 +177,8 @@ class TestQuadsToTriples:
 
     def test_empty_input_raises(self):
         """Raises ValueError if input has no named graphs with triples."""
-        empty_nq = ""
         with tempfile.TemporaryDirectory() as tmpdir:
-            src = write_temp_file(tmpdir, "empty.nq", empty_nq)
+            src = resource("empty.nq")
             out_dir = os.path.join(tmpdir, "split")
             with pytest.raises(ValueError, match="No named graphs"):
                 convert_quads_to_triples(src, out_dir, "nquads", "ntriples")
@@ -243,7 +203,7 @@ class TestTriplesToCSV:
     def test_creates_csv_and_companion(self):
         """Both CSV and companion .meta.json are created."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            src = write_temp_file(tmpdir, "input.ttl", SAMPLE_TTL_CONTENT)
+            src = resource("sample.ttl")
             out = os.path.join(tmpdir, "output.csv")
             convert_rdf_to_csv(src, out, "turtle", "csv")
 
@@ -253,7 +213,7 @@ class TestTriplesToCSV:
     def test_header_row_contains_predicates(self):
         """CSV header contains 'resource' and all predicate URIs."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            src = write_temp_file(tmpdir, "input.ttl", SAMPLE_TTL_CONTENT)
+            src = resource("sample.ttl")
             out = os.path.join(tmpdir, "output.csv")
             convert_rdf_to_csv(src, out, "turtle", "csv")
 
@@ -266,7 +226,7 @@ class TestTriplesToCSV:
     def test_datatype_preserved_in_companion(self):
         """Companion file records xsd:integer datatype for age predicate."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            src = write_temp_file(tmpdir, "input.ttl", SAMPLE_TTL_CONTENT)
+            src = resource("sample.ttl")
             out = os.path.join(tmpdir, "output.csv")
             convert_rdf_to_csv(src, out, "turtle", "csv")
 
@@ -279,7 +239,7 @@ class TestTriplesToCSV:
     def test_one_row_per_subject(self):
         """CSV has one data row per unique subject."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            src = write_temp_file(tmpdir, "input.ttl", SAMPLE_TTL_CONTENT)
+            src = resource("sample.ttl")
             out = os.path.join(tmpdir, "output.csv")
             convert_rdf_to_csv(src, out, "turtle", "csv")
 
@@ -292,7 +252,7 @@ class TestTriplesToCSV:
     def test_tsv_output(self):
         """Triple -> TSV also works correctly."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            src = write_temp_file(tmpdir, "input.ttl", SAMPLE_TTL_CONTENT)
+            src = resource("sample.ttl")
             out = os.path.join(tmpdir, "output.tsv")
             convert_rdf_to_csv(src, out, "turtle", "tsv")
             assert os.path.exists(out)
@@ -318,7 +278,7 @@ class TestCSVToTriples:
     def test_basic_reconstruction_with_companion(self):
         """CSV -> RDF round trip with companion file restores typed literals."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            src = write_temp_file(tmpdir, "input.ttl", SAMPLE_TTL_CONTENT)
+            src = resource("sample.ttl")
             csv_path = os.path.join(tmpdir, "output.csv")
             convert_rdf_to_csv(src, csv_path, "turtle", "csv")
 
@@ -335,7 +295,9 @@ class TestCSVToTriples:
         """Raises ValueError if base_uri is None or empty."""
         with tempfile.TemporaryDirectory() as tmpdir:
             csv_content = "resource,https://example.org/vocab/name\nhttps://example.org/data/alice,Alice\n"
-            csv_path = write_temp_file(tmpdir, "input.csv", csv_content)
+            csv_path = os.path.join(tmpdir,"input.csv")
+            with open(csv_path, "w", encoding="utf-8") as f:
+                f.write(csv_content)
             out = os.path.join(tmpdir, "output.nt")
 
             with pytest.raises(ValueError, match="base_uri is required"):
@@ -347,10 +309,8 @@ class TestCSVToTriples:
     def test_missing_resource_column_raises(self):
         """Raises ValueError if CSV has no 'resource' column."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            csv_content = "subject,predicate\nhttps://example.org/alice,Bob\n"
-            csv_path = write_temp_file(tmpdir, "input.csv", csv_content)
+            csv_path = resource("missing_resource_col.csv")
             out = os.path.join(tmpdir, "output.nt")
-
             with pytest.raises(ValueError, match="missing 'resource' column"):
                 convert_csv_to_rdf(csv_path, out, "csv", "ntriples",
                                    "https://example.org/data/")
@@ -358,7 +318,7 @@ class TestCSVToTriples:
     def test_blank_nodes_reconstructed(self):
         """Blank node subjects (starting with '_:') are reconstructed as BNodes."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            src = write_temp_file(tmpdir, "input.ttl", SAMPLE_TTL_CONTENT)
+            src = resource("sample.ttl")
             csv_path = os.path.join(tmpdir, "output.csv")
             convert_rdf_to_csv(src, csv_path, "turtle", "csv")
 
@@ -377,7 +337,7 @@ class TestCSVToTriples:
     def test_uri_objects_reconstructed(self):
         """Object values starting with http:// are reconstructed as URIRef."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            src = write_temp_file(tmpdir, "input.ttl", SAMPLE_TTL_CONTENT)
+            src = resource("sample.ttl")
             csv_path = os.path.join(tmpdir, "output.csv")
             convert_rdf_to_csv(src, csv_path, "turtle", "csv")
 
@@ -394,7 +354,7 @@ class TestCSVToTriples:
     def test_graceful_without_companion(self):
         """Without companion file, conversion succeeds with plain string literals."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            src = write_temp_file(tmpdir, "input.ttl", SAMPLE_TTL_CONTENT)
+            src = resource("sample.ttl")
             csv_path = os.path.join(tmpdir, "output.csv")
             convert_rdf_to_csv(src, csv_path, "turtle", "csv")
 
@@ -415,9 +375,8 @@ class TestCSVToTriples:
     def test_empty_csv_raises(self):
         """Raises ValueError if CSV file is empty."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            csv_path = write_temp_file(tmpdir, "empty.csv", "")
+            csv_path = resource("empty.csv")
             out = os.path.join(tmpdir, "output.nt")
-
             with pytest.raises(ValueError, match="empty"):
                 convert_csv_to_rdf(csv_path, out, "csv", "ntriples",
                                    "https://example.org/data/")
@@ -432,7 +391,7 @@ class TestQuadsToCSV:
     def test_creates_csv_with_graph_column(self):
         """Output CSV contains 'resource', 'graph', and predicate columns."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            src = write_temp_file(tmpdir, "input.nq", SAMPLE_NQ_CONTENT)
+            src = resource("sample.nq")
             out = os.path.join(tmpdir, "output.csv")
             convert_quads_to_csv(src, out, "nquads", "csv")
 
@@ -445,7 +404,7 @@ class TestQuadsToCSV:
     def test_companion_file_created(self):
         """Companion .meta.json is created alongside CSV."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            src = write_temp_file(tmpdir, "input.nq", SAMPLE_NQ_CONTENT)
+            src = resource("sample.nq")
             out = os.path.join(tmpdir, "output.csv")
             convert_quads_to_csv(src, out, "nquads", "csv")
             assert os.path.exists(out + ".meta.json")
@@ -453,7 +412,7 @@ class TestQuadsToCSV:
     def test_graph_uris_in_csv(self):
         """All named graph URIs from input appear in the graph column."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            src = write_temp_file(tmpdir, "input.nq", SAMPLE_NQ_CONTENT)
+            src = resource("sample.nq")
             out = os.path.join(tmpdir, "output.csv")
             convert_quads_to_csv(src, out, "nquads", "csv")
 
@@ -468,7 +427,7 @@ class TestQuadsToCSV:
     def test_all_triples_represented(self):
         """Data row count matches total triple count across all named graphs."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            src = write_temp_file(tmpdir, "input.nq", SAMPLE_NQ_CONTENT)
+            src = resource("sample.nq")
             out = os.path.join(tmpdir, "output.csv")
             convert_quads_to_csv(src, out, "nquads", "csv")
 
@@ -493,6 +452,204 @@ class TestQuadsToCSV:
             rows = tsd_handler.read(out, "csv")
             assert len(rows) > 1
 
+# ---------------------------------------------------------------------------
+# Round trip tests — compare original IR with reconstructed IR
+# ---------------------------------------------------------------------------
+
+class TestRoundTrips:
+    """Round trip tests for Layer 3 mapping directions.
+
+    For each direction, the original file is read into IR BEFORE conversion.
+    After the full round trip (A -> B -> A), the reconstructed IR is compared
+    against the original. This genuinely detects information loss because the
+    original IR is captured before any conversion happens.
+    """
+
+    def test_triple_to_quad_to_triple_round_trip(self):
+        """Triple -> Quad -> Triple: reconstructed graph must be isomorphic to original."""
+        source = resource("sample.ttl")
+        g_original = triple_handler.read(source, "turtle")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Step 1: Triple -> Quad
+            quads_path = os.path.join(tmpdir, "output.nq")
+            convert_triples_to_quads(
+                source, quads_path, "turtle", "nquads",
+                "https://example.org/graph/test"
+            )
+
+            # Step 2: Quad -> Triple (produces subdirectory)
+            output_dir = os.path.join(tmpdir, "split")
+            files = convert_quads_to_triples(quads_path, output_dir, "nquads", "ntriples")
+
+            assert len(files) == 1, "Expected exactly one output file (one named graph)"
+
+            # Compare IR: original graph vs reconstructed graph
+            g_roundtrip = triple_handler.read(files[0], "ntriples")
+            assert g_original.isomorphic(g_roundtrip), (
+                "Triple -> Quad -> Triple round trip failed: "
+                "reconstructed graph is not isomorphic to original"
+            )
+
+    def test_triple_to_csv_to_triple_round_trip_with_companion(self):
+        """Triple -> CSV -> Triple: with companion file, reconstruction must be isomorphic."""
+        source = resource("sample.ttl")
+        g_original = triple_handler.read(source, "turtle")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Step 1: Triple -> CSV (produces companion .meta.json)
+            csv_path = os.path.join(tmpdir, "output.csv")
+            convert_rdf_to_csv(source, csv_path, "turtle", "csv")
+
+            assert os.path.exists(csv_path + ".meta.json"), (
+                "Companion .meta.json was not produced"
+            )
+
+            # Step 2: CSV -> Triple (reads companion file automatically)
+            nt_path = os.path.join(tmpdir, "roundtrip.nt")
+            convert_csv_to_rdf(
+                csv_path, nt_path, "csv", "ntriples",
+                base_uri="https://example.org/data/"
+            )
+
+            # Compare IR: original graph vs reconstructed graph
+            g_roundtrip = triple_handler.read(nt_path, "ntriples")
+            assert g_original.isomorphic(g_roundtrip), (
+                "Triple -> CSV -> Triple round trip failed (with companion file): "
+                "reconstructed graph is not isomorphic to original"
+            )
+
+    def test_triple_to_tsv_to_triple_round_trip_with_companion(self):
+        """Triple -> TSV -> Triple: with companion file, reconstruction must be isomorphic."""
+        source = resource("sample.ttl")
+        g_original = triple_handler.read(source, "turtle")
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tsv_path = os.path.join(tmpdir, "output.tsv")
+            convert_rdf_to_csv(source, tsv_path, "turtle", "tsv")
+
+            nt_path = os.path.join(tmpdir, "roundtrip.nt")
+            convert_csv_to_rdf(
+                tsv_path, nt_path, "tsv", "ntriples",
+                base_uri="https://example.org/data/"
+            )
+
+            g_roundtrip = triple_handler.read(nt_path, "ntriples")
+            assert g_original.isomorphic(g_roundtrip), (
+                "Triple -> TSV -> Triple round trip failed (with companion file): "
+                "reconstructed graph is not isomorphic to original"
+            )
+
+    def test_quad_to_triple_to_quad_round_trip(self):
+        """Quad -> Triple (split) -> Quad (re-promote + merge) -> compare with original.
+
+        Follows the paper's round trip pattern (Fig. 3, steps 1-6).
+        Each split .nt file is matched to its original named graph by content
+        (isomorphic comparison), not by filename, making the test independent
+        of filename conventions and sanitization.
+
+        After re-promotion and merging, the merged Dataset is verified to
+        contain exactly the original named graph URIs — no more, no less.
+        """
+        from rdflib import Dataset, URIRef
+
+        source = resource("sample.nq")
+        d_original = quad_handler.read(source, "nquads")
+
+        # Collect original named graphs (excluding empty default graph)
+        original_graphs = {
+            str(g.identifier): g
+            for g in d_original.graphs()
+            if len(g) > 0
+            and str(g.identifier) not in ("urn:x-rdflib:default", "")
+        }
+
+        assert len(original_graphs) >= 1, (
+            "sample.nq must contain at least one named graph for this test"
+        )
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            # Steps 2+3: Quad -> Triple (split into one .nt file per named graph)
+            output_dir = os.path.join(tmpdir, "split")
+            files = convert_quads_to_triples(
+                source, output_dir, "nquads", "ntriples"
+            )
+
+            assert len(files) == len(original_graphs), (
+                f"Expected {len(original_graphs)} output file(s) "
+                f"(one per named graph), got {len(files)}"
+            )
+
+            # Steps 4+5+6: Match each .nt to original graph by content,
+            # re-promote to Quad using original graph URI, merge all
+            d_merged = Dataset()
+            used_graph_uris = set()
+
+            for out_file in files:
+                # Step 4: Read split .nt into IR
+                g_split = triple_handler.read(out_file, "ntriples")
+
+                # Step 5: Match to original named graph by content (not filename)
+                matching_uri = next(
+                    (
+                        uri for uri, g_original in original_graphs.items()
+                        if uri not in used_graph_uris
+                        and g_split.isomorphic(g_original)
+                    ),
+                    None,
+                )
+                assert matching_uri is not None, (
+                    f"Could not match output file '{os.path.basename(out_file)}' "
+                    "to any original named graph by graph content"
+                )
+                used_graph_uris.add(matching_uri)
+
+                # Step 5+6: Re-promote .nt back to Quad using matched graph URI
+                stem = os.path.basename(out_file)[:-3]
+                repromoted_path = os.path.join(tmpdir, f"{stem}_repromoted.nq")
+                convert_triples_to_quads(
+                    out_file,
+                    repromoted_path,
+                    "ntriples",
+                    "nquads",
+                    matching_uri,
+                )
+
+                # Read repromoted Quad into IR and merge into d_merged
+                d_repromoted = quad_handler.read(repromoted_path, "nquads")
+                for named_graph in d_repromoted.graphs():
+                    graph_id = str(named_graph.identifier)
+                    if (
+                        graph_id in ("urn:x-rdflib:default", "")
+                        or len(named_graph) == 0
+                    ):
+                        continue
+                    merged_graph = d_merged.graph(URIRef(graph_id))
+                    for triple in named_graph:
+                        merged_graph.add(triple)
+
+            # Verify merged Dataset contains exactly the original named graph URIs
+            merged_graph_uris = {
+                str(g.identifier)
+                for g in d_merged.graphs()
+                if len(g) > 0
+                and str(g.identifier) not in ("urn:x-rdflib:default", "")
+            }
+            assert merged_graph_uris == set(original_graphs.keys()), (
+                f"Merged Dataset graph URIs do not match original. "
+                f"Expected: {set(original_graphs.keys())}, "
+                f"got: {merged_graph_uris}"
+            )
+
+            # Compare each named graph in d_merged against d_original
+            for uri, g_original_named in original_graphs.items():
+                g_merged_named = d_merged.get_context(URIRef(uri))
+                assert g_original_named.isomorphic(g_merged_named), (
+                    f"Quad -> Triple -> Quad round trip failed for graph '{uri}': "
+                    f"reconstructed graph is not isomorphic to original. "
+                    f"Original had {len(g_original_named)} triple(s), "
+                    f"reconstructed has {len(g_merged_named)} triple(s)."
+                )
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
