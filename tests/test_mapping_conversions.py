@@ -45,11 +45,6 @@ def resource(filename: str) -> str:
     return os.path.join(RESOURCES, filename)
 
 
-triple_handler = TripleHandler()
-quad_handler = QuadHandler()
-tsd_handler = TSDHandler()
-
-
 # ---------------------------------------------------------------------------
 # Direction 1: Triple -> Quad
 # ---------------------------------------------------------------------------
