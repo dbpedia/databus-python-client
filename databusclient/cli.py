@@ -129,40 +129,43 @@ def deploy(
     if distributions and not (metadata_file or webdav_url or remote or path):
         click.echo("[MODE] Classic deploy with distributions")
         click.echo(f"Deploying dataset version: {version_id}")
-
-        dataid = api_deploy.create_dataset(
-            version_id=version_id,
-            artifact_version_title=title,
-            artifact_version_abstract=abstract,
-            artifact_version_description=description,
-            license_url=license_url,
-            distributions=distributions,
-        )
-        api_deploy.deploy(dataid=dataid, api_key=apikey)
-        if manifest_context:
-            for dist in distributions:
-                url = str(dist).split("|")[0]
-                manifest_context.record_file(url=url, status="success")
-        _write_manifest()
+        try:
+            dataid = api_deploy.create_dataset(
+                version_id=version_id,
+                artifact_version_title=title,
+                artifact_version_abstract=abstract,
+                artifact_version_description=description,
+                license_url=license_url,
+                distributions=distributions,
+            )
+            api_deploy.deploy(dataid=dataid, api_key=apikey)
+            if manifest_context:
+                for dist in distributions:
+                    url = str(dist).split("|")[0]
+                    manifest_context.record_file(url=url, status="success")
+        finally:
+            _write_manifest()
         return
 
     # === Mode 2: Metadata File ===
     if metadata_file:
         click.echo(f"[MODE] Deploy from metadata file: {metadata_file}")
-        with open(metadata_file, "r") as f:
-            metadata = json.load(f)
-        api_deploy.deploy_from_metadata(
-            metadata, version_id, title, abstract, description, license_url, apikey
-        )
-        if manifest_context:
-            for entry in metadata:
-                manifest_context.record_file(
-                    url=entry.get("url", ""),
-                    status="success",
-                    sha256=entry.get("checksum"),
-                    size_bytes=entry.get("size"),
-                )
-        _write_manifest()
+        try:
+            with open(metadata_file, "r") as f:
+                metadata = json.load(f)
+            api_deploy.deploy_from_metadata(
+                metadata, version_id, title, abstract, description, license_url, apikey
+            )
+            if manifest_context:
+                for entry in metadata:
+                    manifest_context.record_file(
+                        url=entry.get("url", ""),
+                        status="success",
+                        sha256=entry.get("checksum"),
+                        size_bytes=entry.get("size"),
+                    )
+        finally:
+            _write_manifest()
         return
 
     # === Mode 3: Upload & Deploy (Nextcloud) ===
@@ -171,28 +174,28 @@ def deploy(
             raise click.UsageError(
                 "Please provide files to upload when using WebDAV/Nextcloud mode."
             )
-
         invalid = [f for f in distributions if not os.path.exists(f)]
         if invalid:
             raise click.UsageError(
                 f"The following input files or folders do not exist: {', '.join(invalid)}"
             )
-
         click.echo("[MODE] Upload & Deploy to DBpedia Databus via Nextcloud")
         click.echo(f"→ Uploading to: {remote}:{path}")
-        metadata = webdav.upload_to_webdav(distributions, remote, path, webdav_url)
-        api_deploy.deploy_from_metadata(
-            metadata, version_id, title, abstract, description, license_url, apikey
-        )
-        if manifest_context:
-            for entry in metadata:
-                manifest_context.record_file(
-                    url=entry.get("url", ""),
-                    status="success",
-                    sha256=entry.get("checksum"),
-                    size_bytes=entry.get("size"),
-                )
-        _write_manifest()
+        try:
+            metadata = webdav.upload_to_webdav(distributions, remote, path, webdav_url)
+            api_deploy.deploy_from_metadata(
+                metadata, version_id, title, abstract, description, license_url, apikey
+            )
+            if manifest_context:
+                for entry in metadata:
+                    manifest_context.record_file(
+                        url=entry.get("url", ""),
+                        status="success",
+                        sha256=entry.get("checksum"),
+                        size_bytes=entry.get("size"),
+                    )
+        finally:
+            _write_manifest()
         return
 
     raise click.UsageError(
@@ -398,23 +401,24 @@ def delete(databusuris: List[str], databus_key: str, dry_run: bool, force: bool,
             "dry_run": dry_run,
         })
 
-    api_delete(
-        databusURIs=databusuris,
-        databus_key=databus_key,
-        dry_run=dry_run,
-        force=force,
-        manifest_context=manifest_context,
-    )
-
-    if manifest_path and manifest_context is not None:
-        try:
-            ManifestWriter.write(manifest_context, manifest_path)
-            click.echo(f"Manifest written to {manifest_path}")
-        except (OSError, IOError) as e:
-            click.echo(
-                f"WARNING: Manifest could not be written to {manifest_path}: {e}",
-                err=True,
-            )
+    try:
+        api_delete(
+            databusURIs=databusuris,
+            databus_key=databus_key,
+            dry_run=dry_run,
+            force=force,
+            manifest_context=manifest_context,
+        )
+    finally:
+        if manifest_path and manifest_context is not None:
+            try:
+                ManifestWriter.write(manifest_context, manifest_path)
+                click.echo(f"Manifest written to {manifest_path}")
+            except (OSError, IOError) as e:
+                click.echo(
+                    f"WARNING: Manifest could not be written to {manifest_path}: {e}",
+                    err=True,
+                )
 
 
 if __name__ == "__main__":

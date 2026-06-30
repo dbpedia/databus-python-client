@@ -12,6 +12,7 @@ from urllib.parse import urlparse
 import requests
 from SPARQLWrapper import JSON, SPARQLWrapper
 from tqdm import tqdm
+from datetime import datetime, timezone
 
 from databusclient.api.utils import (
     fetch_databus_jsonld,
@@ -525,7 +526,6 @@ def _download_file(
     # Record file to manifest after all verification passes.
     # Use actual computed checksum if available, otherwise fall back to expected.
     if manifest_context is not None:
-        from datetime import datetime, timezone
         manifest_context.record_file(
             url=url,
             status="success",
