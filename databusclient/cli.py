@@ -117,8 +117,8 @@ def deploy(
     def _write_manifest():
         if manifest_path and manifest_context is not None:
             try:
-                ManifestWriter.write(manifest_context, manifest_path)
-                click.echo(f"Manifest written to {manifest_path}")
+                actual_path = ManifestWriter.write(manifest_context, manifest_path)
+                click.echo(f"Manifest written to {actual_path}")
             except (OSError, IOError) as e:
                 click.echo(
                     f"WARNING: Manifest could not be written to {manifest_path}: {e}",
@@ -358,8 +358,8 @@ def download(
     finally:
         if manifest_path and manifest_context is not None:
             try:
-                ManifestWriter.write(manifest_context, manifest_path)
-                click.echo(f"Manifest written to {manifest_path}")
+                actual_path = ManifestWriter.write(manifest_context, manifest_path)
+                click.echo(f"Manifest written to {actual_path}")
             except (OSError, IOError) as e:
                 click.echo(
                     f"WARNING: Manifest could not be written to {manifest_path}: {e}",
@@ -412,8 +412,8 @@ def delete(databusuris: List[str], databus_key: str, dry_run: bool, force: bool,
     finally:
         if manifest_path and manifest_context is not None:
             try:
-                ManifestWriter.write(manifest_context, manifest_path)
-                click.echo(f"Manifest written to {manifest_path}")
+                actual_path = ManifestWriter.write(manifest_context, manifest_path)
+                click.echo(f"Manifest written to {actual_path}")
             except (OSError, IOError) as e:
                 click.echo(
                     f"WARNING: Manifest could not be written to {manifest_path}: {e}",

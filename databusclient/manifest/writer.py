@@ -30,10 +30,12 @@ class ManifestWriter:
     """Serializes a ManifestContext to a JSON-LD manifest file."""
 
     @staticmethod
-    def write(context: ManifestContext, path: str) -> None:
+    def write(context: ManifestContext, path: str) -> str:
         """Write the manifest to a JSON-LD file at the given path.
 
         Creates parent directories if they do not exist.
+        If a file already exists at `path`, auto-suffixes with _1, _2, etc.
+        and prints a warning rather than silently overwriting.
         On failure, raises OSError — callers should catch and warn.
 
         Args:
@@ -41,8 +43,15 @@ class ManifestWriter:
             path: File path to write the manifest to.
 
         Raises:
-            OSError: If the file cannot be written.
+            OSError: If the file cannot be written, or if path is a directory.
         """
+        if path.endswith(("/", "\\")) or os.path.isdir(path):
+            stripped = path.rstrip("/\\")
+            raise OSError(
+                f"--manifest path '{path}' is a directory, not a file. "
+                f"Please provide a full file path, e.g. '{stripped}/manifest.jsonld'."
+            )
+
         summary = context.summary()
 
         # Build file entries using DataID vocabulary
@@ -108,5 +117,37 @@ class ManifestWriter:
         if parent:
             os.makedirs(parent, exist_ok=True)
 
-        with open(path, "w", encoding="utf-8") as f:
+        final_path = ManifestWriter._resolve_available_path(path)
+        if final_path != path:
+            print(
+                f"WARNING: manifest already exists at '{path}', "
+                f"creating '{final_path}' instead"
+            )
+
+        with open(final_path, "w", encoding="utf-8") as f:
             json.dump(manifest, f, indent=2, ensure_ascii=False)
+        return final_path
+
+    @staticmethod
+    def _resolve_available_path(path: str) -> str:
+        """Return a non-colliding path, auto-suffixing with _1, _2, ... if needed.
+
+        If `path` does not exist, it is returned unchanged. If it exists,
+        appends _1, _2, etc. before the extension until a free path is found.
+
+        Args:
+            path: Desired manifest file path.
+
+        Returns:
+            A path that does not currently exist on disk.
+        """
+        if not os.path.exists(path):
+            return path
+
+        base, ext = os.path.splitext(path)
+        counter = 1
+        while True:
+            candidate = f"{base}_{counter}{ext}"
+            if not os.path.exists(candidate):
+                return candidate
+            counter += 1

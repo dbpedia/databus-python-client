@@ -113,9 +113,10 @@ def test_writer_produces_valid_jsonld():
 
     with tempfile.NamedTemporaryFile(suffix=".jsonld", delete=False) as f:
         path = f.name
+    os.remove(path)  # NamedTemporaryFile creates an empty file; remove it so write() doesn't auto-suffix
     try:
-        ManifestWriter.write(ctx, path)
-        with open(path, "r", encoding="utf-8") as f:
+        actual_path = ManifestWriter.write(ctx, path)
+        with open(actual_path, "r", encoding="utf-8") as f:
             manifest = json.load(f)
 
         assert manifest["@type"] == "dbus:OperationManifest"
@@ -137,8 +138,8 @@ def test_writer_produces_valid_jsonld():
         assert result["dbus:succeeded"] == 1
         assert result["dbus:failed"] == 0
     finally:
-        if os.path.exists(path):
-            os.remove(path)
+        if os.path.exists(actual_path):
+            os.remove(actual_path)
 
 
 def test_writer_creates_parent_directories():
@@ -162,16 +163,17 @@ def test_writer_records_failed_file():
 
     with tempfile.NamedTemporaryFile(suffix=".jsonld", delete=False) as f:
         path = f.name
+    os.remove(path)
     try:
-        ManifestWriter.write(ctx, path)
-        with open(path, "r", encoding="utf-8") as f:
+        actual_path = ManifestWriter.write(ctx, path)
+        with open(actual_path, "r", encoding="utf-8") as f:
             manifest = json.load(f)
         files = manifest["dataid:distribution"]["dataid:file"]
         assert files[0]["dbus:status"] == "failed"
         assert files[0]["dbus:errorMessage"] == "Timeout"
     finally:
-        if os.path.exists(path):
-            os.remove(path)
+        if os.path.exists(actual_path):
+            os.remove(actual_path)
 
 
 def test_writer_failure_raises_oserror():
@@ -196,3 +198,63 @@ def test_writer_failure_raises_oserror():
     finally:
         if os.path.exists(file_as_parent):
             os.remove(file_as_parent)
+
+def test_writer_auto_suffix_on_collision():
+    """If the manifest path already exists, auto-suffix with _1 and warn."""
+    ctx1 = ManifestContext(command="download")
+    ctx1.record_file(url="https://example.org/f1", status="success")
+
+    ctx2 = ManifestContext(command="download")
+    ctx2.record_file(url="https://example.org/f2", status="success")
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = os.path.join(tmpdir, "run.jsonld")
+
+        first_path = ManifestWriter.write(ctx1, path)
+        assert first_path == path
+
+        second_path = ManifestWriter.write(ctx2, path)
+        assert second_path == os.path.join(tmpdir, "run_1.jsonld")
+
+        # Original file must be untouched (still has ctx1's data)
+        with open(first_path, "r", encoding="utf-8") as f:
+            original = json.load(f)
+        assert original["dataid:distribution"]["dataid:file"][0]["dcat:downloadURL"] == "https://example.org/f1"
+
+        with open(second_path, "r", encoding="utf-8") as f:
+            suffixed = json.load(f)
+        assert suffixed["dataid:distribution"]["dataid:file"][0]["dcat:downloadURL"] == "https://example.org/f2"
+
+
+def test_writer_auto_suffix_increments():
+    """Repeated collisions increment the suffix: _1, then _2."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        path = os.path.join(tmpdir, "run.jsonld")
+
+        ctx_a = ManifestContext(command="download")
+        ctx_b = ManifestContext(command="download")
+        ctx_c = ManifestContext(command="download")
+
+        path_a = ManifestWriter.write(ctx_a, path)
+        path_b = ManifestWriter.write(ctx_b, path)
+        path_c = ManifestWriter.write(ctx_c, path)
+
+        assert path_a == path
+        assert path_b == os.path.join(tmpdir, "run_1.jsonld")
+        assert path_c == os.path.join(tmpdir, "run_2.jsonld")
+
+
+def test_writer_rejects_invalid_path():
+    """Directory paths (existing dir, or trailing slash) raise OSError."""
+    ctx = ManifestContext(command="download")
+    ctx.record_file(url="https://example.org/f", status="success")
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Case 1: path is an existing directory
+        with pytest.raises(OSError, match="is a directory"):
+            ManifestWriter.write(ctx, tmpdir)
+
+        # Case 2: path ends with a trailing slash
+        trailing_slash_path = os.path.join(tmpdir, "subdir") + os.sep
+        with pytest.raises(OSError, match="is a directory"):
+            ManifestWriter.write(ctx, trailing_slash_path)
