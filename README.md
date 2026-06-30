@@ -676,3 +676,29 @@ Or to ensure compatibility with the `pyproject.toml` configured dependencies, ru
 ```bash
 poetry run pytest tests/
 ```
+
+## Manifest
+
+All three commands support an optional `--manifest` flag that writes a structured JSON-LD record of the operation to disk:
+
+```bash
+databusclient download https://databus.dbpedia.org/dbpedia/generic/labels/2023.12.01 \
+  --manifest ./manifests/labels-download.jsonld
+
+databusclient deploy --version-id https://databus.dbpedia.org/myaccount/mygroup/mydata/1.0 \
+  --title "My Dataset" --abstract "..." --description "..." \
+  --license https://creativecommons.org/licenses/by-sa/3.0/ \
+  --apikey YOUR_KEY --manifest ./manifests/deploy-run.jsonld \
+  myfile.nt
+
+databusclient delete https://databus.dbpedia.org/myaccount/mygroup/mydata/1.0 \
+  --databus-key YOUR_KEY --manifest ./manifests/delete-run.jsonld
+```
+
+The manifest records input parameters, per-file URLs, checksums, byte sizes, timestamps, and success/failure status for each file. It uses the DataID vocabulary and is versioned via `dbus:schemaVersion`.
+
+- If the target path already exists, the manifest is written to an auto-suffixed path (e.g. `run_1.jsonld`) with a warning.
+- Sensitive fields (API keys, vault tokens) are never written.
+- If manifest writing fails, a warning is printed and the exit code reflects the actual operation result.
+
+See `examples/reproducible-download.md` for a full walkthrough.
