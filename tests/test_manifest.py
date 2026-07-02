@@ -258,3 +258,62 @@ def test_writer_rejects_invalid_path():
         trailing_slash_path = os.path.join(tmpdir, "subdir") + os.sep
         with pytest.raises(OSError, match="is a directory"):
             ManifestWriter.write(ctx, trailing_slash_path)
+
+def test_context_records_operation_error():
+    """record_operation_error captures exception type, message, and traceback."""
+    ctx = ManifestContext(command="deploy")
+    try:
+        raise ValueError("Authentication failed.")
+    except ValueError as e:
+        ctx.record_operation_error(e)
+
+    assert ctx.operation_error is not None
+    assert ctx.operation_error["error_type"] == "ValueError"
+    assert "Authentication failed." in ctx.operation_error["error_message"]
+    assert ctx.operation_error["error_traceback"] is not None
+
+
+def test_writer_includes_operation_error():
+    """ManifestWriter writes dbus:operationError when operation_error is set."""
+    ctx = ManifestContext(command="deploy")
+    ctx.record_params({"version_id": "https://example.org/v1"})
+    try:
+        raise RuntimeError("DeployError: bad API key")
+    except RuntimeError as e:
+        ctx.record_operation_error(e)
+
+    with tempfile.NamedTemporaryFile(suffix=".jsonld", delete=False) as f:
+        path = f.name
+    os.remove(path)
+    try:
+        actual_path = ManifestWriter.write(ctx, path)
+        with open(actual_path, "r", encoding="utf-8") as f:
+            manifest = json.load(f)
+
+        assert "dbus:operationError" in manifest
+        err = manifest["dbus:operationError"]
+        assert err["@type"] == "dbus:OperationError"
+        assert err["dbus:errorType"] == "RuntimeError"
+        assert "bad API key" in err["dbus:errorMessage"]
+        assert err["dbus:errorTraceback"] is not None
+    finally:
+        if os.path.exists(actual_path):
+            os.remove(actual_path)
+
+
+def test_writer_no_operation_error_field_when_success():
+    """dbus:operationError is absent from manifest when operation succeeded."""
+    ctx = ManifestContext(command="download")
+    ctx.record_file(url="https://example.org/f", status="success")
+
+    with tempfile.NamedTemporaryFile(suffix=".jsonld", delete=False) as f:
+        path = f.name
+    os.remove(path)
+    try:
+        actual_path = ManifestWriter.write(ctx, path)
+        with open(actual_path, "r", encoding="utf-8") as f:
+            manifest = json.load(f)
+        assert "dbus:operationError" not in manifest
+    finally:
+        if os.path.exists(actual_path):
+            os.remove(actual_path)

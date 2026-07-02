@@ -143,6 +143,10 @@ def deploy(
                 for dist in distributions:
                     url = str(dist).split("|")[0]
                     manifest_context.record_file(url=url, status="success")
+        except Exception as exc:
+            if manifest_context:
+                manifest_context.record_operation_error(exc)
+            raise
         finally:
             _write_manifest()
         return
@@ -164,6 +168,10 @@ def deploy(
                         sha256=entry.get("checksum"),
                         size_bytes=entry.get("size"),
                     )
+        except Exception as exc:
+            if manifest_context:
+                manifest_context.record_operation_error(exc)
+            raise
         finally:
             _write_manifest()
         return
@@ -194,6 +202,10 @@ def deploy(
                         sha256=entry.get("checksum"),
                         size_bytes=entry.get("size"),
                     )
+        except Exception as exc:
+            if manifest_context:
+                manifest_context.record_operation_error(exc)
+            raise
         finally:
             _write_manifest()
         return
@@ -352,8 +364,12 @@ def download(
             manifest_context=manifest_context,
         )
     except DownloadAuthError as e:
+        if manifest_context:
+            manifest_context.record_operation_error(e)
         raise click.ClickException(str(e))
     except ValueError as e:
+        if manifest_context:
+            manifest_context.record_operation_error(e)
         raise click.ClickException(str(e))
     finally:
         if manifest_path and manifest_context is not None:
@@ -409,6 +425,10 @@ def delete(databusuris: List[str], databus_key: str, dry_run: bool, force: bool,
             force=force,
             manifest_context=manifest_context,
         )
+    except Exception as exc:
+        if manifest_context:
+            manifest_context.record_operation_error(exc)
+        raise
     finally:
         if manifest_path and manifest_context is not None:
             try:

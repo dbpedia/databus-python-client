@@ -44,6 +44,7 @@ class ManifestContext:
         self.issued: str = datetime.now(timezone.utc).isoformat()
         self.replay_params: dict = {}
         self.files: list = []
+        self.operation_error: Optional[dict] = None
 
     def record_params(self, params: dict) -> None:
         """Save the replay parameters for this operation.
@@ -121,6 +122,23 @@ class ManifestContext:
             error_message=str(exc),
             error_traceback=tb.format_exc(),
         )
+
+    def record_operation_error(self, exc: Exception) -> None:
+        """Record a top-level operation failure.
+
+        Used when the entire operation fails (e.g. DeployError, auth failure)
+        rather than an individual file failing. Captures the exception message
+        and full traceback so the manifest is useful for debugging even when
+        no per-file recording happened.
+
+        Args:
+            exc: The exception that caused the operation to fail.
+        """
+        self.operation_error = {
+            "error_message": str(exc),
+            "error_traceback": tb.format_exc(),
+            "error_type": type(exc).__name__,
+        }
 
     def summary(self) -> dict:
         """Return execution summary counts.

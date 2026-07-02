@@ -113,6 +113,14 @@ class ManifestWriter:
             "dbus:totalBytes": summary["total_bytes"],
         }
 
+        if context.operation_error:
+            manifest["dbus:operationError"] = {
+                "@type": "dbus:OperationError",
+                "dbus:errorType": context.operation_error["error_type"],
+                "dbus:errorMessage": context.operation_error["error_message"],
+                "dbus:errorTraceback": context.operation_error["error_traceback"],
+            }
+
         parent = os.path.dirname(os.path.abspath(path))
         if parent:
             os.makedirs(parent, exist_ok=True)
