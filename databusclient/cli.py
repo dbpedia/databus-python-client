@@ -251,10 +251,10 @@ def deploy(
 @click.option(
     "--compression",
     "compression",
-    type=click.Choice(["bz2", "gz", "xz"], case_sensitive=False),
+    type=click.Choice(["bz2", "gz", "xz", "none"], case_sensitive=False),
     help="Target compression format for on-the-fly conversion during download. "
          "Source compression is detected automatically from the file extension. "
-         "All compressed files will be converted to the target format (bz2, gz, xz).",
+         "Use 'none' to decompress files without recompressing.",
 )
 @click.option(
     "--format",

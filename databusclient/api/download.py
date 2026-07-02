@@ -64,12 +64,15 @@ def _should_convert_compression(
     """Determine if a file should have its compression format converted or compressed.
 
     Source compression is detected automatically from the file extension.
+    If compression='none', compressed files are decompressed and saved without
+    any compression. If the file is already uncompressed and compression='none',
+    nothing is done.
     If the file is uncompressed and a target compression is specified,
     it will be compressed to the target format (source_format returned as None).
 
     Args:
         filename: Name of the file.
-        compression: Target compression format ('bz2', 'gz', 'xz') or None.
+        compression: Target compression format ('bz2', 'gz', 'xz', 'none') or None.
 
     Returns:
         Tuple of (should_convert: bool, source_format: Optional[str]).
@@ -80,7 +83,14 @@ def _should_convert_compression(
 
     source_format = _detect_compression_format(filename)
 
-    # If file is not compressed, don't convert
+    # 'none' means decompress — only meaningful if file is compressed
+    if compression.lower() == "none":
+        if source_format is None:
+            # Already uncompressed, nothing to do
+            return False, None
+        return True, source_format
+
+    # If file is not compressed, compress it to the target format
     if source_format is None:
         return True, None
 
@@ -99,12 +109,21 @@ def _get_converted_filename(
     Args:
         filename: Original filename.
         source_format: Source compression format ('bz2', 'gz', 'xz').
-        target_format: Target compression format ('bz2', 'gz', 'xz').
+        target_format: Target compression format ('bz2', 'gz', 'xz') or 'none'
+                       to decompress without recompressing.
 
     Returns:
-        New filename with updated extension.
+        New filename with updated extension. If target_format is 'none',
+        the compression extension is stripped and nothing is added.
     """
     source_ext = COMPRESSION_EXTENSIONS[source_format]
+
+    # 'none' means decompress — strip compression extension, add nothing
+    if target_format.lower() == "none":
+        if filename.lower().endswith(source_ext):
+            return filename[: -len(source_ext)]
+        return filename
+
     target_ext = COMPRESSION_EXTENSIONS[target_format]
 
     # Handle case-insensitive extension matching
@@ -561,6 +580,18 @@ def _download_file(
                         shutil.copyfileobj(sf, tf)
                 os.remove(filename)
                 print(f"Compression complete: {os.path.basename(target_filepath)}")
+            elif compression.lower() == "none":
+                # Decompress — strip compression extension, save plain file.
+                target_filename = _get_converted_filename(file, source_fmt, "none")
+                target_filepath = os.path.join(localDir, target_filename)
+                print(
+                    f"Decompressing {file} -> {os.path.basename(target_filepath)}..."
+                )
+                with COMPRESSION_MODULES[source_fmt].open(filename, "rb") as sf:
+                    with open(target_filepath, "wb") as tf:
+                        shutil.copyfileobj(sf, tf)
+                os.remove(filename)
+                print(f"Decompression complete: {os.path.basename(target_filepath)}")
             else:
                 target_filename = _get_converted_filename(file, source_fmt, compression)
                 target_filepath = os.path.join(localDir, target_filename)
@@ -707,10 +738,11 @@ def _download_file(
         # 4. Source was NOT compressed, no --compression given -> no compression
         if source_compression is not None:
             if should_convert_compression and compression:
-                final_compression = compression
+                # 'none' means no recompression after format conversion
+                final_compression = None if compression.lower() == "none" else compression
             else:
                 final_compression = source_compression
-        elif compression:
+        elif compression and compression.lower() != "none":
             # Source was uncompressed but user explicitly requested --compression
             final_compression = compression
         else:
