@@ -23,13 +23,16 @@ class DeleteQueue:
     Allows adding multiple databus URIs to a queue and executing their deletion in batch.
     """
 
-    def __init__(self, databus_key: str):
+    def __init__(self, databus_key: str, manifest_context=None):
         """Create a DeleteQueue bound to a given Databus API key.
 
         Args:
             databus_key: API key used to authenticate deletion requests.
+            manifest_context: Optional ManifestContext to record deletion
+                outcomes into. Passed through to _delete_list on execute().
         """
         self.databus_key = databus_key
+        self.manifest_context = manifest_context
         self.queue: set[str] = set()
 
     def add_uri(self, databusURI: str):
@@ -69,11 +72,13 @@ class DeleteQueue:
         """Execute all queued deletions.
 
         Each queued URI will be deleted using `_delete_resource`.
+        Passes manifest_context through so deletions are recorded.
         """
         _delete_list(
             list(self.sorted_queue()),
             self.databus_key,
             force=True,
+            manifest_context=self.manifest_context,
         )
 
 
@@ -294,7 +299,7 @@ def delete(databusURIs: List[str], databus_key: str, dry_run: bool, force: bool,
         force: If True, skip confirmation prompt and proceed with deletion.
     """
 
-    queue = DeleteQueue(databus_key)
+    queue = DeleteQueue(databus_key, manifest_context=manifest_context)
 
     for databusURI in databusURIs:
         _host, _account, group, artifact, version, file = (

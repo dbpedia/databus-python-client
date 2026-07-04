@@ -523,16 +523,16 @@ def _download_file(
                     f"Checksum mismatch for {filename}: expected {expected_checksum}, got {actual_checksum}"
                 )
 
-    # Record file to manifest after all verification passes.
-    # Use actual computed checksum if available, otherwise fall back to expected.
-    if manifest_context is not None:
-        manifest_context.record_file(
-            url=url,
-            status="success",
-            sha256=actual_checksum or expected_checksum,
-            size_bytes=total_size_in_bytes if total_size_in_bytes else None,
-            downloaded_at=datetime.now(timezone.utc).isoformat(),
-        )
+    # # Record file to manifest after all verification passes.
+    # # Use actual computed checksum if available, otherwise fall back to expected.
+    # if manifest_context is not None:
+    #     manifest_context.record_file(
+    #         url=url,
+    #         status="success",
+    #         sha256=actual_checksum or expected_checksum,
+    #         size_bytes=total_size_in_bytes if total_size_in_bytes else None,
+    #         downloaded_at=datetime.now(timezone.utc).isoformat(),
+    #     )
 
     # --- 7. Unified compression/format conversion pass ---
     source_compression = _detect_compression_format(file)
@@ -542,6 +542,14 @@ def _download_file(
     needs_format_conversion = convert_format is not None
 
     if not should_convert_compression and not needs_format_conversion:
+        if manifest_context is not None:
+            manifest_context.record_file(
+                url=url,
+                status="success",
+                sha256=actual_checksum or expected_checksum,
+                size_bytes=total_size_in_bytes if total_size_in_bytes else None,
+                downloaded_at=datetime.now(timezone.utc).isoformat(),
+            )
         return
 
     temp_paths: list[str] = []
@@ -714,6 +722,16 @@ def _download_file(
             if os.path.exists(temp_path):
                 os.remove(temp_path)
 
+    # Record file to manifest only after all conversion completes successfully.
+    # This ensures the manifest reflects the actual final output, not just the download.
+    if manifest_context is not None:
+        manifest_context.record_file(
+            url=url,
+            status="success",
+            sha256=actual_checksum or expected_checksum,
+            size_bytes=total_size_in_bytes if total_size_in_bytes else None,
+            downloaded_at=datetime.now(timezone.utc).isoformat(),
+        )
 
 def _download_files(
     urls: List[str],

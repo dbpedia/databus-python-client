@@ -30,11 +30,6 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
-# Explicitly un-ignore the manifest module folder (MANIFEST above is for Python packaging artifacts)
-!databusclient/manifest/
-!databusclient/manifest/**
-databusclient/manifest/__pycache__/
-*.py[cod]
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
