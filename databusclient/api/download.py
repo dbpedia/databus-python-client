@@ -844,6 +844,18 @@ def _download_artifact(
         )
 
 
+def _parse_version_key(url: str) -> tuple:
+    """Return a numeric sort key derived from the version segment of a Databus URL.
+
+    Splits the trailing version segment by non-digit characters and compares each
+    part as an integer, so '2.10.0' correctly sorts after '2.9.0' (unlike plain
+    lexicographic sort where '2.9' > '2.10' as strings).
+    """
+    segment = url.rstrip("/").split("/")[-1]
+    parts = re.split(r"[^0-9]+", segment)
+    return tuple(int(p) for p in parts if p.isdigit())
+
+
 def _get_databus_versions_of_artifact(
     json_str: str, all_versions: bool
 ) -> str | List[str]:
@@ -875,7 +887,7 @@ def _get_databus_versions_of_artifact(
     if not version_urls:
         raise ValueError("No versions found in artifact JSON-LD")
 
-    version_urls.sort(reverse=True)  # Sort versions in descending order
+    version_urls.sort(key=_parse_version_key, reverse=True)
 
     if all_versions:
         return version_urls
