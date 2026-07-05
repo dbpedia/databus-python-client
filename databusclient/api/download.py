@@ -590,7 +590,7 @@ def _query_sparql_endpoint(endpoint_url, query, databus_key=None) -> dict:
         Dictionary containing the query results.
     """
     sparql = SPARQLWrapper(endpoint_url)
-    sparql.method = "POST"
+    sparql.setMethod("POST")
     sparql.setQuery(query)
     sparql.setReturnFormat(JSON)
     if databus_key is not None:
