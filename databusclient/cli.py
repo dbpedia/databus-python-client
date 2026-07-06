@@ -371,6 +371,10 @@ def download(
         if manifest_context:
             manifest_context.record_operation_error(e)
         raise click.ClickException(str(e))
+    except Exception as e:
+        if manifest_context:
+            manifest_context.record_operation_error(e)
+        raise
     finally:
         if manifest_path and manifest_context is not None:
             try:

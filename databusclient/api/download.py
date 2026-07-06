@@ -581,6 +581,14 @@ def _download_file(
                     source_fmt,
                     compression,
                 )
+            if manifest_context is not None:
+                manifest_context.record_file(
+                    url=url,
+                    status="success",
+                    sha256=actual_checksum or expected_checksum,
+                    size_bytes=total_size_in_bytes if total_size_in_bytes else None,
+                    downloaded_at=datetime.now(timezone.utc).isoformat(),
+                )
             return
 
         # Early exit: if format conversion is requested but input format
@@ -600,6 +608,14 @@ def _download_file(
                         filename, target_filepath, source_fmt, compression
                     )
                 # No format conversion needed, no further work.
+                if manifest_context is not None:
+                    manifest_context.record_file(
+                        url=url,
+                        status="success",
+                        sha256=actual_checksum or expected_checksum,
+                        size_bytes=total_size_in_bytes if total_size_in_bytes else None,
+                        downloaded_at=datetime.now(timezone.utc).isoformat(),
+                    )
                 return
 
         # Determine input for format conversion.
@@ -665,6 +681,14 @@ def _download_file(
             if os.path.exists(filename):
                 os.remove(filename)
                 print(f"Removed original file: {os.path.basename(filename)}")
+            if manifest_context is not None:
+                manifest_context.record_file(
+                    url=url,
+                    status="success",
+                    sha256=actual_checksum or expected_checksum,
+                    size_bytes=total_size_in_bytes if total_size_in_bytes else None,
+                    downloaded_at=datetime.now(timezone.utc).isoformat(),
+                )
             return
 
         # Standard single-output-file path (Layer 2, and the remaining
