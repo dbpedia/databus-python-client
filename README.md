@@ -18,6 +18,7 @@ Command-line and Python client for downloading and deploying datasets on DBpedia
   - [Download](#cli-download)
   - [Deploy](#cli-deploy)
   - [Delete](#cli-delete)
+  - [Manifest](#cli-manifest)
 - [Module Usage](#module-usage)
   - [Deploy](#module-deploy)
 - [Development & Contributing](#development--contributing)
@@ -555,6 +556,55 @@ databusclient delete https://databus.dbpedia.org/dbpedia/collections/dbpedia-sna
 # Docker
 docker run --rm -v $(pwd):/data dbpedia/databus-python-client delete https://databus.dbpedia.org/dbpedia/collections/dbpedia-snapshot-2022-12 --databus-key YOUR_API_KEY
 ```
+
+<a id="cli-manifest"></a>
+### Manifest
+
+All three commands support an optional `--manifest` flag that writes a structured JSON-LD record of the operation to disk:
+
+**Download**
+```bash
+# Python
+databusclient download https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals/2022.12.01/mappingbased-literals_lang=az.ttl.bz2 --manifest ./manifests/download-run.jsonld
+# Docker
+docker run --rm -v $(pwd):/data dbpedia/databus-python-client download https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals/2022.12.01/mappingbased-literals_lang=az.ttl.bz2 --manifest ./manifests/download-run.jsonld
+```
+
+**Deploy**
+```bash
+# Python
+databusclient deploy \
+  --version-id https://databus.dbpedia.org/user1/group1/artifact1/2022-05-18 \
+  --title "Client Testing" --abstract "Testing the client...." \
+  --description "Testing the client...." \
+  --license http://dalicc.net/licenselibrary/AdaptivePublicLicense10 \
+  --apikey YOUR_KEY --manifest ./manifests/deploy-run.jsonld \
+  'https://raw.githubusercontent.com/dbpedia/databus/master/server/app/api/swagger.yml|type=swagger'
+# Docker
+docker run --rm -v $(pwd):/data dbpedia/databus-python-client deploy \
+  --version-id https://databus.dbpedia.org/user1/group1/artifact1/2022-05-18 \
+  --title "Client Testing" --abstract "Testing the client...." \
+  --description "Testing the client...." \
+  --license http://dalicc.net/licenselibrary/AdaptivePublicLicense10 \
+  --apikey YOUR_KEY --manifest ./manifests/deploy-run.jsonld \
+  'https://raw.githubusercontent.com/dbpedia/databus/master/server/app/api/swagger.yml|type=swagger'
+```
+**Delete**
+```bash
+# Python
+databusclient delete https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals/2022.12.01 --databus-key YOUR_API_KEY --manifest ./manifests/delete-run.jsonld
+# Docker
+docker run --rm -v $(pwd):/data dbpedia/databus-python-client delete https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals/2022.12.01 --databus-key YOUR_API_KEY --manifest ./manifests/delete-run.jsonld
+```
+
+The manifest records input parameters, per-file URLs, checksums, byte sizes, timestamps, and success/failure status for each file. It uses the DataID vocabulary and is versioned via `dbus:schemaVersion`.
+
+- If the target path already exists, the manifest is written to an auto-suffixed path (e.g. `run_1.jsonld`) with a warning.
+- Sensitive fields (API keys, vault tokens) are never written.
+- If manifest writing fails, a warning is printed and the exit code reflects the actual operation result.
+- If the operation itself fails, a `dbus:operationError` block is recorded in the manifest capturing the error type, message, and traceback.
+
+Refer [examples/reproducible-download.md](examples/reproducible-download.md) for a full walkthrough.
 
 ## Module Usage
 
