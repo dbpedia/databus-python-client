@@ -604,7 +604,7 @@ The manifest records input parameters, per-file URLs, checksums, byte sizes, tim
 - If manifest writing fails, a warning is printed and the exit code reflects the actual operation result.
 - If the operation itself fails, a `dbus:operationError` block is recorded in the manifest capturing the error type, message, and traceback.
 
-See `examples/reproducible-download.md` for a full walkthrough.
+Refer [examples/reproducible-download.md](examples/reproducible-download.md) for a full walkthrough.
 
 ## Module Usage
 

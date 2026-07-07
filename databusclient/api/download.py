@@ -523,17 +523,6 @@ def _download_file(
                     f"Checksum mismatch for {filename}: expected {expected_checksum}, got {actual_checksum}"
                 )
 
-    # # Record file to manifest after all verification passes.
-    # # Use actual computed checksum if available, otherwise fall back to expected.
-    # if manifest_context is not None:
-    #     manifest_context.record_file(
-    #         url=url,
-    #         status="success",
-    #         sha256=actual_checksum or expected_checksum,
-    #         size_bytes=total_size_in_bytes if total_size_in_bytes else None,
-    #         downloaded_at=datetime.now(timezone.utc).isoformat(),
-    #     )
-
     # --- 7. Unified compression/format conversion pass ---
     source_compression = _detect_compression_format(file)
     should_convert_compression, source_fmt = _should_convert_compression(

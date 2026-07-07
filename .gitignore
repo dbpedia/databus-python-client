@@ -35,6 +35,7 @@ MANIFEST
 # on Windows, preventing the manifest module from being committed.
 !databusclient/manifest/
 !databusclient/manifest/**
+databusclient/manifest/__pycache__/
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
