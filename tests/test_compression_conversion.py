@@ -6,7 +6,6 @@ import bz2
 import lzma
 import tempfile
 import pytest
-import shutil
 from databusclient.api.download import (
     _detect_compression_format,
     _should_convert_compression,
@@ -221,7 +220,7 @@ def test_get_converted_filename_none_strips_extension():
 
 
 def test_decompress_bz2_to_plain():
-    """--compression none on bz2 file produces plain uncompressed file."""
+    """--compression none on bz2 file decompresses to plain file via _convert_compression_format."""
     with tempfile.TemporaryDirectory() as tmpdir:
         test_data = b"Decompression test data" * 50
 
@@ -230,10 +229,7 @@ def test_decompress_bz2_to_plain():
             f.write(test_data)
 
         plain_file = os.path.join(tmpdir, "test.txt")
-        with bz2.open(bz2_file, "rb") as sf:
-            with open(plain_file, "wb") as tf:
-                shutil.copyfileobj(sf, tf)
-        os.remove(bz2_file)
+        _convert_compression_format(bz2_file, plain_file, "bz2", "none")
 
         assert not os.path.exists(bz2_file)
         assert os.path.exists(plain_file)

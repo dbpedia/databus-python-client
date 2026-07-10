@@ -135,36 +135,57 @@ def _get_converted_filename(
 def _convert_compression_format(
     source_file: str, target_file: str, source_format: str, target_format: str
 ) -> None:
-    """Convert a compressed file from one format to another.
+    """Convert or decompress a compressed file.
+
+    Handles two cases:
+    - target_format is 'none': decompress source_file to target_file without recompressing.
+    - target_format is a compression format: decompress then recompress to target format.
 
     Args:
         source_file: Path to source compressed file.
-        target_file: Path to target compressed file.
+        target_file: Path to target file.
         source_format: Source compression format ('bz2', 'gz', 'xz').
-        target_format: Target compression format ('bz2', 'gz', 'xz').
+        target_format: Target compression format ('bz2', 'gz', 'xz') or 'none' to decompress only.
 
     Raises:
-        ValueError: If source_format or target_format is not supported.
-        RuntimeError: If compression conversion fails.
+        ValueError: If source_format is not supported.
+        RuntimeError: If the operation fails.
     """
-    # Validate compression formats
     if source_format not in COMPRESSION_MODULES:
         raise ValueError(
-            f"Unsupported source compression format: {source_format}. Supported formats: {list(COMPRESSION_MODULES.keys())}"
-        )
-    if target_format not in COMPRESSION_MODULES:
-        raise ValueError(
-            f"Unsupported target compression format: {target_format}. Supported formats: {list(COMPRESSION_MODULES.keys())}"
+            f"Unsupported source compression format: {source_format}. "
+            f"Supported formats: {list(COMPRESSION_MODULES.keys())}"
         )
 
     source_module = COMPRESSION_MODULES[source_format]
+
+    # Decompression-only path: target_format == 'none'
+    if target_format.lower() == "none":
+        print(f"Decompressing {os.path.basename(source_file)} -> {os.path.basename(target_file)}")
+        try:
+            with source_module.open(source_file, "rb") as sf:
+                with open(target_file, "wb") as tf:
+                    shutil.copyfileobj(sf, tf)
+            os.remove(source_file)
+            print(f"Decompression complete: {os.path.basename(target_file)}")
+        except Exception as e:
+            if os.path.exists(target_file):
+                os.remove(target_file)
+            raise RuntimeError(f"Decompression failed: {e}")
+        return
+
+    if target_format not in COMPRESSION_MODULES:
+        raise ValueError(
+            f"Unsupported target compression format: {target_format}. "
+            f"Supported formats: {list(COMPRESSION_MODULES.keys())}"
+        )
+
     target_module = COMPRESSION_MODULES[target_format]
 
     print(
         f"Converting {source_format} → {target_format}: {os.path.basename(source_file)}"
     )
 
-    # Decompress and recompress with progress indication
     chunk_size = 8192
 
     try:
@@ -176,11 +197,9 @@ def _convert_compression_format(
                         break
                     tf.write(chunk)
 
-        # Remove the original file after successful conversion
         os.remove(source_file)
         print(f"Conversion complete: {os.path.basename(target_file)}")
     except Exception as e:
-        # If conversion fails, ensure the partial target file is removed
         if os.path.exists(target_file):
             os.remove(target_file)
         raise RuntimeError(f"Compression conversion failed: {e}")
@@ -584,14 +603,7 @@ def _download_file(
                 # Decompress — strip compression extension, save plain file.
                 target_filename = _get_converted_filename(file, source_fmt, "none")
                 target_filepath = os.path.join(localDir, target_filename)
-                print(
-                    f"Decompressing {file} -> {os.path.basename(target_filepath)}..."
-                )
-                with COMPRESSION_MODULES[source_fmt].open(filename, "rb") as sf:
-                    with open(target_filepath, "wb") as tf:
-                        shutil.copyfileobj(sf, tf)
-                os.remove(filename)
-                print(f"Decompression complete: {os.path.basename(target_filepath)}")
+                _convert_compression_format(filename, target_filepath, source_fmt, "none")
             else:
                 target_filename = _get_converted_filename(file, source_fmt, compression)
                 target_filepath = os.path.join(localDir, target_filename)
