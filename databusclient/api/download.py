@@ -197,9 +197,11 @@ def _convert_compression_format(
                         break
                     tf.write(chunk)
 
+        # Remove the original file after successful conversion
         os.remove(source_file)
         print(f"Conversion complete: {os.path.basename(target_file)}")
     except Exception as e:
+        # If conversion fails, ensure the partial target file is removed
         if os.path.exists(target_file):
             os.remove(target_file)
         raise RuntimeError(f"Compression conversion failed: {e}")
