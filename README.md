@@ -176,7 +176,7 @@ docker run --rm -v $(pwd):/data dbpedia/databus-python-client download $DOWNLOAD
 - `--databus-key`
   - If the databus is protected and needs API key authentication, you can provide the API key with `--databus-key YOUR_API_KEY`.
 - `--compression`
-  - Enables on-the-fly compression format conversion during download. Supported formats: `bz2`, `gz`, `xz`. The source compression is auto-detected from the file extension. Example: `--compression gz` converts all downloaded compressed files to gzip format.
+  - Enables on-the-fly compression format conversion during download. Supported formats: `bz2`, `gz`, `xz`, `none`. The source compression is auto-detected from the file extension. Use `none` to decompress files without recompressing. Example: `--compression gz` converts all downloaded compressed files to gzip format.
 - `--format`
   - Enables on-the-fly RDF and tabular format conversion during download (Layer 2 and Layer 3). Supported formats: `ntriples` (`nt`), `turtle` (`ttl`), `rdf-xml` (`rdf`, `xml`), `nquads` (`nq`), `trig`, `trix`, `json-ld` (`jsonld`), `csv`, `tsv`. Short aliases shown in brackets. Only the converted output file is kept — the original is deleted after successful conversion. Within the same equivalence class (e.g. turtle to ntriples) conversion is lossless. Across classes (e.g. RDF to CSV) some flags below may be required.
 - `--graph-name`
@@ -284,6 +284,9 @@ databusclient download https://databus.dbpedia.org/dbpedia/mappings/mappingbased
 
 # Download a collection and unify all files to bz2 format
 databusclient download https://databus.dbpedia.org/dbpedia/collections/dbpedia-snapshot-2022-12 --compression bz2
+
+# Decompress files without recompressing
+databusclient download https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals/2022.12.01/mappingbased-literals_lang=az.ttl.bz2 --compression none
 ```
 
 **Download with Format Conversion**: download files and convert RDF or tabular format on-the-fly. Only the converted output file is kept.

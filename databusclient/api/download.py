@@ -64,12 +64,15 @@ def _should_convert_compression(
     """Determine if a file should have its compression format converted or compressed.
 
     Source compression is detected automatically from the file extension.
+    If compression='none', compressed files are decompressed and saved without
+    any compression. If the file is already uncompressed and compression='none',
+    nothing is done.
     If the file is uncompressed and a target compression is specified,
     it will be compressed to the target format (source_format returned as None).
 
     Args:
         filename: Name of the file.
-        compression: Target compression format ('bz2', 'gz', 'xz') or None.
+        compression: Target compression format ('bz2', 'gz', 'xz', 'none') or None.
 
     Returns:
         Tuple of (should_convert: bool, source_format: Optional[str]).
@@ -80,7 +83,14 @@ def _should_convert_compression(
 
     source_format = _detect_compression_format(filename)
 
-    # If file is not compressed, don't convert
+    # 'none' means decompress — only meaningful if file is compressed
+    if compression.lower() == "none":
+        if source_format is None:
+            # Already uncompressed, nothing to do
+            return False, None
+        return True, source_format
+
+    # If file is not compressed, compress it to the target format
     if source_format is None:
         return True, None
 
@@ -99,12 +109,21 @@ def _get_converted_filename(
     Args:
         filename: Original filename.
         source_format: Source compression format ('bz2', 'gz', 'xz').
-        target_format: Target compression format ('bz2', 'gz', 'xz').
+        target_format: Target compression format ('bz2', 'gz', 'xz') or 'none'
+                       to decompress without recompressing.
 
     Returns:
-        New filename with updated extension.
+        New filename with updated extension. If target_format is 'none',
+        the compression extension is stripped and nothing is added.
     """
     source_ext = COMPRESSION_EXTENSIONS[source_format]
+
+    # 'none' means decompress — strip compression extension, add nothing
+    if target_format.lower() == "none":
+        if filename.lower().endswith(source_ext):
+            return filename[: -len(source_ext)]
+        return filename
+
     target_ext = COMPRESSION_EXTENSIONS[target_format]
 
     # Handle case-insensitive extension matching
@@ -116,36 +135,57 @@ def _get_converted_filename(
 def _convert_compression_format(
     source_file: str, target_file: str, source_format: str, target_format: str
 ) -> None:
-    """Convert a compressed file from one format to another.
+    """Convert or decompress a compressed file.
+
+    Handles two cases:
+    - target_format is 'none': decompress source_file to target_file without recompressing.
+    - target_format is a compression format: decompress then recompress to target format.
 
     Args:
         source_file: Path to source compressed file.
-        target_file: Path to target compressed file.
+        target_file: Path to target file.
         source_format: Source compression format ('bz2', 'gz', 'xz').
-        target_format: Target compression format ('bz2', 'gz', 'xz').
+        target_format: Target compression format ('bz2', 'gz', 'xz') or 'none' to decompress only.
 
     Raises:
-        ValueError: If source_format or target_format is not supported.
-        RuntimeError: If compression conversion fails.
+        ValueError: If source_format is not supported.
+        RuntimeError: If the operation fails.
     """
-    # Validate compression formats
     if source_format not in COMPRESSION_MODULES:
         raise ValueError(
-            f"Unsupported source compression format: {source_format}. Supported formats: {list(COMPRESSION_MODULES.keys())}"
-        )
-    if target_format not in COMPRESSION_MODULES:
-        raise ValueError(
-            f"Unsupported target compression format: {target_format}. Supported formats: {list(COMPRESSION_MODULES.keys())}"
+            f"Unsupported source compression format: {source_format}. "
+            f"Supported formats: {list(COMPRESSION_MODULES.keys())}"
         )
 
     source_module = COMPRESSION_MODULES[source_format]
+
+    # Decompression-only path: target_format == 'none'
+    if target_format.lower() == "none":
+        print(f"Decompressing {os.path.basename(source_file)} -> {os.path.basename(target_file)}")
+        try:
+            with source_module.open(source_file, "rb") as sf:
+                with open(target_file, "wb") as tf:
+                    shutil.copyfileobj(sf, tf)
+            os.remove(source_file)
+            print(f"Decompression complete: {os.path.basename(target_file)}")
+        except Exception as e:
+            if os.path.exists(target_file):
+                os.remove(target_file)
+            raise RuntimeError(f"Decompression failed: {e}")
+        return
+
+    if target_format not in COMPRESSION_MODULES:
+        raise ValueError(
+            f"Unsupported target compression format: {target_format}. "
+            f"Supported formats: {list(COMPRESSION_MODULES.keys())}"
+        )
+
     target_module = COMPRESSION_MODULES[target_format]
 
     print(
         f"Converting {source_format} → {target_format}: {os.path.basename(source_file)}"
     )
 
-    # Decompress and recompress with progress indication
     chunk_size = 8192
 
     try:
@@ -561,6 +601,11 @@ def _download_file(
                         shutil.copyfileobj(sf, tf)
                 os.remove(filename)
                 print(f"Compression complete: {os.path.basename(target_filepath)}")
+            elif compression.lower() == "none":
+                # Decompress — strip compression extension, save plain file.
+                target_filename = _get_converted_filename(file, source_fmt, "none")
+                target_filepath = os.path.join(localDir, target_filename)
+                _convert_compression_format(filename, target_filepath, source_fmt, "none")
             else:
                 target_filename = _get_converted_filename(file, source_fmt, compression)
                 target_filepath = os.path.join(localDir, target_filename)
@@ -707,10 +752,11 @@ def _download_file(
         # 4. Source was NOT compressed, no --compression given -> no compression
         if source_compression is not None:
             if should_convert_compression and compression:
-                final_compression = compression
+                # 'none' means no recompression after format conversion
+                final_compression = None if compression.lower() == "none" else compression
             else:
                 final_compression = source_compression
-        elif compression:
+        elif compression and compression.lower() != "none":
             # Source was uncompressed but user explicitly requested --compression
             final_compression = compression
         else:
