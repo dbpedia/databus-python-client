@@ -10,6 +10,7 @@ from databusclient.api.delete import delete as api_delete
 from databusclient.api.download import download as api_download, DownloadAuthError
 from databusclient.manifest.context import ManifestContext
 from databusclient.manifest.writer import ManifestWriter
+from databusclient.manifest.replay import ManifestReplayError, replay_manifest
 from databusclient.extensions import webdav
 
 
@@ -444,6 +445,66 @@ def delete(databusuris: List[str], databus_key: str, dry_run: bool, force: bool,
                     err=True,
                 )
 
+@app.group()
+def manifest():
+    """
+    Manifest utilities.
+
+    Includes replay of previously recorded operations from JSON-LD manifests.
+    """
+    pass
+
+
+@manifest.command("replay")
+@click.argument("manifest_path", type=click.Path(exists=True, dir_okay=False))
+@click.option(
+    "--localdir",
+    default=None,
+    help="Override local output directory for download replay.",
+)
+@click.option(
+    "--databus",
+    default=None,
+    help="Override Databus endpoint for replay (example: https://databus.dbpedia.org/sparql).",
+)
+@click.option(
+    "--vault-token",
+    default=None,
+    help="Vault token file path required if manifest auth method is vault_token.",
+)
+@click.option(
+    "--databus-key",
+    default=None,
+    help="Databus API key required if manifest auth method is databus_key.",
+)
+def manifest_replay(manifest_path, localdir, databus, vault_token, databus_key):
+    """
+    Replay a previously recorded manifest operation.
+
+    Currently supports replay of download manifests.
+    """
+    overrides = {
+        "localDir": localdir,
+        "endpoint": databus,
+        "token": vault_token,
+        "databus_key": databus_key,
+    }
+
+    # Keep only explicitly provided overrides
+    overrides = {k: v for k, v in overrides.items() if v is not None}
+
+    try:
+        replay_info = replay_manifest(manifest_path, overrides=overrides)
+        click.echo(f"Replayed command: {replay_info['command']}")
+        click.echo(f"Source manifest: {manifest_path}")
+    except ManifestReplayError as e:
+        raise click.ClickException(str(e))
+    except DownloadAuthError as e:
+        raise click.ClickException(str(e))
+    except ValueError as e:
+        raise click.ClickException(str(e))
+    except Exception as e:
+        raise click.ClickException(str(e))
 
 if __name__ == "__main__":
     app()
