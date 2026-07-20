@@ -12,6 +12,7 @@ from databusclient.api.deploy import (
     BadArgumentException,
 )
 
+
 EXAMPLE_URL = "https://raw.githubusercontent.com/dbpedia/databus/608482875276ef5df00f2360a2f81005e62b58bd/server/app/api/swagger.yml"
 
 

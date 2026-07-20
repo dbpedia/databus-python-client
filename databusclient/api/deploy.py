@@ -215,6 +215,41 @@ def get_file_info(distribution_str: str) -> Tuple[Dict[str, str], str, str, str,
     return cvs, format_extension, compression, sha256sum, content_length
 
 
+def _get_file_info_from_dict(dist_dict: Dict[str, any]) -> Tuple[Dict[str, str], str, str, str, int]:
+    """
+    Extract file info from a pre-parsed distribution dictionary.
+    
+    Parameters
+    ----------
+    dist_dict : dict
+        A dictionary with keys: url, variants, formatExtension, compression
+        (as returned by parse_distribution_str in cli.py)
+    
+    Returns
+    -------
+    Tuple containing:
+        - cvs: Dict of content variants
+        - format_extension: File format extension
+        - compression: Compression type
+        - sha256sum: SHA-256 hash of file
+        - content_length: File size in bytes
+    """
+    url = dist_dict.get("url", "")
+    cvs = dist_dict.get("variants", {})
+    format_extension = dist_dict.get("formatExtension") or "file"
+    compression = dist_dict.get("compression") or "none"
+    
+    # Check if sha256sum and content_length are provided
+    sha256sum = dist_dict.get("sha256sum")
+    content_length = dist_dict.get("byteSize")
+    
+    # If not provided, load from URL
+    if sha256sum is None or content_length is None:
+        sha256sum, content_length = _load_file_stats(url)
+    
+    return cvs, format_extension, compression, sha256sum, content_length
+
+
 def create_distribution(
     url: str,
     cvs: Dict[str, str],
@@ -314,7 +349,7 @@ def create_dataset(
     artifact_version_abstract: str,
     artifact_version_description: str,
     license_url: str,
-    distributions: List[str],
+    distributions: Union[List[str], List[Dict]],
     attribution: str = None,
     derived_from: str = None,
     group_title: str = None,
@@ -338,8 +373,10 @@ def create_dataset(
         Artifact & Version Description: used for BOTH artifact and version. Supports Markdown. Updating it changes both artifact and version metadata.
     license_url: str
         The license of the dataset as a URI.
-    distributions: str
-        Distribution information string as it is in the CLI. Can be created by running the create_distribution function
+    distributions: Union[List[str], List[Dict]]
+        Distribution information. Can be either:
+        - List[str]: Legacy format with pipe-separated strings (created by create_distribution function)
+        - List[Dict]: Pre-parsed dictionaries with keys: url, variants, formatExtension, compression
     attribution: str
         OPTIONAL! The attribution information for the Dataset
     derived_from: str
@@ -368,15 +405,28 @@ def create_dataset(
     artifact_id = _versionId.rsplit("/", 1)[0]
 
     distribution_list = []
-    for dst_string in distributions:
-        __url = str(dst_string).split("|")[0]
-        (
-            cvs,
-            formatExtension,
-            compression,
-            sha256sum,
-            content_length,
-        ) = get_file_info(dst_string)
+    for dst in distributions:
+        # Check if distribution is a pre-parsed dict or a legacy string
+        if isinstance(dst, dict):
+            # New format: pre-parsed dictionary from parse_distribution_str()
+            __url = dst.get("url", "")
+            (
+                cvs,
+                formatExtension,
+                compression,
+                sha256sum,
+                content_length,
+            ) = _get_file_info_from_dict(dst)
+        else:
+            # Legacy format: pipe-separated string
+            __url = str(dst).split("|")[0]
+            (
+                cvs,
+                formatExtension,
+                compression,
+                sha256sum,
+                content_length,
+            ) = get_file_info(dst)
 
         if not cvs and len(distributions) > 1:
             raise BadArgumentException(
