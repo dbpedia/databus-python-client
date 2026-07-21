@@ -514,10 +514,11 @@ def manifest_replay(manifest_path, localdir, databus, vault_token, databus_key, 
     """
     Replay a previously recorded manifest operation.
 
-    Currently supports replay of download and delete manifests.
+    Currently supports replay of download, delete, and deploy manifests.
     For delete manifests, an interactive confirmation is required by
     default -- use --force to skip it for scripted/unattended use, or
-    --dry-run to preview without prompting or deleting.
+    --dry-run to preview without prompting or deleting. Deploy replay
+    supports classic and metadata-file modes only (not WebDAV).
     """
     overrides = {
         "localDir": localdir,
