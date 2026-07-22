@@ -20,6 +20,7 @@ Command-line and Python client for downloading and deploying datasets on DBpedia
   - [Delete](#cli-delete)
   - [Manifest](#cli-manifest)
     - [Replay](#cli-manifest-replay)
+    - [Summary](#cli-manifest-summary)
 - [Module Usage](#module-usage)
   - [Deploy](#module-deploy)
 - [Development & Contributing](#development--contributing)
@@ -681,6 +682,32 @@ databusclient manifest replay ./manifests/delete-run.jsonld --databus-key YOUR_A
 databusclient manifest replay ./manifests/deploy-run.jsonld --apikey YOUR_API_KEY
 ```
 Replaying redeploys the same version — if it already exists on Databus, it is updated. WebDAV/Nextcloud deploys cannot be replayed, since the originally uploaded local files may no longer exist at their original paths by the time replay runs.
+
+<a id="cli-manifest-summary"></a>
+#### Summary
+
+Print a readable summary of any recorded manifest without replaying it:
+
+```bash
+# Python
+databusclient manifest summary ./manifests/download-run.jsonld
+# Docker
+docker run --rm -v $(pwd):/data dbpedia/databus-python-client manifest summary ./manifests/download-run.jsonld
+```
+
+Example output:
+
+```
+Command  : download
+Executed : 2024-03-24T10:02:49.500418+00:00
+Endpoint : https://databus.dbpedia.org/sparql
+Auth     : vault_token
+Files    : 1 succeeded · 0 failed
+Total    : 100.0 MB
+Status   : completed
+```
+
+Only existing data already stored in the manifest is read — no new files are downloaded or written, and no network access happens.
 
 ## Module Usage
 

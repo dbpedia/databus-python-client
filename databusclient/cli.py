@@ -10,7 +10,8 @@ from databusclient.api.delete import delete as api_delete
 from databusclient.api.download import download as api_download, DownloadAuthError
 from databusclient.manifest.context import ManifestContext
 from databusclient.manifest.writer import ManifestWriter
-from databusclient.manifest.replay import ManifestReplayError, replay_manifest
+from databusclient.manifest.replay import ManifestReplayError, replay_manifest, _load_manifest
+from databusclient.manifest.summary import format_summary
 from databusclient.extensions import webdav
 
 
@@ -550,6 +551,21 @@ def manifest_replay(manifest_path, localdir, databus, vault_token, databus_key, 
     except ValueError as e:
         raise click.ClickException(str(e))
     except Exception as e:
+        raise click.ClickException(str(e))
+
+@manifest.command("summary")
+@click.argument("manifest_path", type=click.Path(exists=True, dir_okay=False))
+def manifest_summary(manifest_path):
+    """
+    Print a readable summary of a recorded manifest operation.
+
+    Reads the existing summary data already stored in the manifest --
+    no new data is collected and no new file is written.
+    """
+    try:
+        manifest = _load_manifest(manifest_path)
+        click.echo(format_summary(manifest))
+    except ManifestReplayError as e:
         raise click.ClickException(str(e))
 
 if __name__ == "__main__":
