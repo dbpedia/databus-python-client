@@ -10,7 +10,7 @@ from databusclient.api.delete import delete as api_delete
 from databusclient.api.download import download as api_download, DownloadAuthError
 from databusclient.manifest.context import ManifestContext
 from databusclient.manifest.writer import ManifestWriter
-from databusclient.manifest.replay import ManifestReplayError, replay_manifest, _load_manifest
+from databusclient.manifest.replay import ManifestReplayError, replay_manifest, load_manifest
 from databusclient.manifest.summary import format_summary
 from databusclient.extensions import webdav
 
@@ -153,7 +153,7 @@ def deploy(
         except Exception as exc:
             if manifest_context:
                 manifest_context.record_operation_error(exc)
-            raise
+            raise click.ClickException(str(exc))
         finally:
             _write_manifest()
         return
@@ -162,7 +162,7 @@ def deploy(
     if metadata_file:
         click.echo(f"[MODE] Deploy from metadata file: {metadata_file}")
         try:
-            with open(metadata_file, "r") as f:
+            with open(metadata_file, "r", encoding="utf-8-sig") as f:
                 metadata = json.load(f)
             if manifest_context:
                 manifest_context.replay_params["deploy_mode"] = "metadata"
@@ -181,7 +181,7 @@ def deploy(
         except Exception as exc:
             if manifest_context:
                 manifest_context.record_operation_error(exc)
-            raise
+            raise click.ClickException(str(exc))
         finally:
             _write_manifest()
         return
@@ -217,7 +217,7 @@ def deploy(
         except Exception as exc:
             if manifest_context:
                 manifest_context.record_operation_error(exc)
-            raise
+            raise click.ClickException(str(exc))
         finally:
             _write_manifest()
         return
@@ -563,7 +563,7 @@ def manifest_summary(manifest_path):
     no new data is collected and no new file is written.
     """
     try:
-        manifest = _load_manifest(manifest_path)
+        manifest = load_manifest(manifest_path)
         click.echo(format_summary(manifest))
     except ManifestReplayError as e:
         raise click.ClickException(str(e))

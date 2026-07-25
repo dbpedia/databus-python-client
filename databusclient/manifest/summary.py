@@ -72,4 +72,13 @@ def format_summary(manifest: Dict[str, Any]) -> str:
 
     lines.append(f"Status   : {_derive_status(manifest)}")
 
+    operation_error = manifest.get("dbus:operationError")
+    if operation_error:
+        error_type = operation_error.get("dbus:errorType", "")
+        error_message = operation_error.get("dbus:errorMessage", "")
+        if error_type:
+            lines.append(f"Error    : {error_type}: {error_message}")
+        else:
+            lines.append(f"Error    : {error_message}")
+
     return "\n".join(lines)

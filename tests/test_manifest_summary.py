@@ -87,3 +87,31 @@ def test_summary_total_omitted_for_non_download_command():
     }
     output = format_summary(manifest)
     assert "Total" not in output
+
+def test_summary_includes_error_message_when_operation_failed():
+    manifest = {
+        "dbus:command": "deploy",
+        "dcterms:issued": {"@value": "2024-03-24T10:00:00Z"},
+        "dbus:executionResult": {
+            "dbus:succeeded": 0,
+            "dbus:failed": 0,
+            "dbus:totalBytes": 0,
+        },
+        "dbus:operationError": {
+            "dbus:errorType": "DeployError",
+            "dbus:errorMessage": "Could not deploy dataset to databus. Reason: 'Invalid API key'",
+        },
+    }
+    output = format_summary(manifest)
+    assert "Status   : failed" in output
+    assert "Error    : DeployError: Could not deploy dataset to databus. Reason: 'Invalid API key'" in output
+
+
+def test_summary_no_error_line_when_no_operation_error():
+    manifest = {
+        "dbus:command": "download",
+        "dcterms:issued": {"@value": "2024-03-24T10:00:00Z"},
+        "dbus:executionResult": {"dbus:succeeded": 1, "dbus:failed": 0, "dbus:totalBytes": 100},
+    }
+    output = format_summary(manifest)
+    assert "Error" not in output

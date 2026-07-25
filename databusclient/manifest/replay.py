@@ -7,7 +7,7 @@ from databusclient.api.deploy import (
     create_dataset as api_create_dataset,
     deploy as api_deploy_call,
     create_distribution as api_create_distribution,
-    _create_distributions_from_metadata,
+    create_distributions_from_metadata,
 )
 
 
@@ -15,7 +15,7 @@ class ManifestReplayError(Exception):
     """Raised when replay manifest is invalid or cannot be replayed safely."""
 
 
-def _load_manifest(path: str) -> Dict[str, Any]:
+def load_manifest(path: str) -> Dict[str, Any]:
     try:
         with open(path, "r", encoding="utf-8-sig") as f:
             data = json.load(f)
@@ -237,7 +237,7 @@ def _build_deploy_kwargs(replay_params: Dict[str, Any]) -> Dict[str, Any]:
                 "Manifest replay for metadata-mode deploy requires "
                 "replayParams.resolved_metadata."
             )
-        distributions = _create_distributions_from_metadata(metadata)
+        distributions = create_distributions_from_metadata(metadata)
     else:
         raise ManifestReplayError(
             f"Manifest replay for deploy has an unknown or missing "
@@ -288,7 +288,7 @@ def replay_manifest(
     confirm_fn is injectable for testing (defaults to the built-in input()).
     """
     overrides = overrides or {}
-    manifest = _load_manifest(manifest_path)
+    manifest = load_manifest(manifest_path)
 
     command = manifest.get("dbus:command")
     if not command:
