@@ -5,6 +5,7 @@ from typing import List
 
 import click
 
+from databusclient import __version__
 import databusclient.api.deploy as api_deploy
 from databusclient.api.delete import delete as api_delete
 from databusclient.api.download import download as api_download, DownloadAuthError
@@ -12,6 +13,7 @@ from databusclient.extensions import webdav
 
 
 @click.group()
+@click.version_option(version=__version__, prog_name="databusclient")
 def app():
     """Databus Client CLI.
 
