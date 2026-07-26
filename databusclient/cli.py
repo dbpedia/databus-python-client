@@ -61,6 +61,9 @@ def app():
 )
 @click.option("--remote", help="rclone remote name (e.g., 'nextcloud')")
 @click.option("--path", help="Remote path on Nextcloud (e.g., 'datasets/mydataset')")
+@click.option(
+    "--dry-run", is_flag=True, help="Generate and print JSON-LD without deploying"
+)
 @click.argument("distributions", nargs=-1)
 def deploy(
     version_id,
@@ -73,6 +76,7 @@ def deploy(
     webdav_url,
     remote,
     path,
+    dry_run,
     distributions: List[str],
 ):
     """
@@ -105,6 +109,12 @@ def deploy(
             license_url=license_url,
             distributions=distributions,
         )
+
+        if dry_run:
+            click.echo("[DRY-RUN] Generated DataID JSON-LD:")
+            click.echo(json.dumps(dataid, indent=2))
+            return
+
         api_deploy.deploy(dataid=dataid, api_key=apikey)
         return
 
@@ -113,6 +123,21 @@ def deploy(
         click.echo(f"[MODE] Deploy from metadata file: {metadata_file}")
         with open(metadata_file, "r") as f:
             metadata = json.load(f)
+
+        if dry_run:
+            click.echo("[DRY-RUN] Would deploy from metadata file")
+            # We could still generate the full DataID here to show it
+            dataid = api_deploy.create_dataset(
+                version_id=version_id,
+                artifact_version_title=title,
+                artifact_version_abstract=abstract,
+                artifact_version_description=description,
+                license_url=license_url,
+                distributions=api_deploy._create_distributions_from_metadata(metadata),
+            )
+            click.echo(json.dumps(dataid, indent=2))
+            return
+
         api_deploy.deploy_from_metadata(
             metadata, version_id, title, abstract, description, license_url, apikey
         )
@@ -134,7 +159,17 @@ def deploy(
 
         click.echo("[MODE] Upload & Deploy to DBpedia Databus via Nextcloud")
         click.echo(f"→ Uploading to: {remote}:{path}")
-        metadata = webdav.upload_to_webdav(distributions, remote, path, webdav_url)
+        if dry_run:
+            click.echo("[DRY-RUN] Skipping WebDAV upload")
+            metadata = []
+        else:
+            metadata = webdav.upload_to_webdav(distributions, remote, path, webdav_url)
+
+        if dry_run:
+            click.echo("[DRY-RUN] Generated metadata (partial):")
+            click.echo(json.dumps(metadata, indent=2))
+            return
+
         api_deploy.deploy_from_metadata(
             metadata, version_id, title, abstract, description, license_url, apikey
         )
@@ -252,6 +287,20 @@ def delete(databusuris: List[str], databus_key: str, dry_run: bool, force: bool)
         dry_run=dry_run,
         force=force,
     )
+
+
+@app.command()
+@click.argument("shell", type=click.Choice(["bash", "zsh", "fish"]))
+def completion(shell):
+    """Generate shell completion script."""
+    import os
+
+    if shell == "bash":
+        os.system("_DATABUSCLIENT_COMPLETE=bash_source databusclient")
+    elif shell == "zsh":
+        os.system("_DATABUSCLIENT_COMPLETE=zsh_source databusclient")
+    elif shell == "fish":
+        os.system("_DATABUSCLIENT_COMPLETE=fish_source databusclient")
 
 
 if __name__ == "__main__":
