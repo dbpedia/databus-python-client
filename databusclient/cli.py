@@ -10,6 +10,8 @@ from databusclient.api.delete import delete as api_delete
 from databusclient.api.download import download as api_download, DownloadAuthError
 from databusclient.manifest.context import ManifestContext
 from databusclient.manifest.writer import ManifestWriter
+from databusclient.manifest.replay import ManifestReplayError, replay_manifest, load_manifest
+from databusclient.manifest.summary import format_summary
 from databusclient.extensions import webdav
 
 
@@ -138,6 +140,11 @@ def deploy(
                 license_url=license_url,
                 distributions=distributions,
             )
+            if manifest_context:
+                manifest_context.replay_params["deploy_mode"] = "classic"
+                manifest_context.replay_params["resolved_distributions"] = (
+                    dataid["@graph"][-1].get("distribution", [])
+                )
             api_deploy.deploy(dataid=dataid, api_key=apikey)
             if manifest_context:
                 for dist in distributions:
@@ -146,7 +153,7 @@ def deploy(
         except Exception as exc:
             if manifest_context:
                 manifest_context.record_operation_error(exc)
-            raise
+            raise click.ClickException(str(exc))
         finally:
             _write_manifest()
         return
@@ -155,8 +162,11 @@ def deploy(
     if metadata_file:
         click.echo(f"[MODE] Deploy from metadata file: {metadata_file}")
         try:
-            with open(metadata_file, "r") as f:
+            with open(metadata_file, "r", encoding="utf-8-sig") as f:
                 metadata = json.load(f)
+            if manifest_context:
+                manifest_context.replay_params["deploy_mode"] = "metadata"
+                manifest_context.replay_params["resolved_metadata"] = metadata
             api_deploy.deploy_from_metadata(
                 metadata, version_id, title, abstract, description, license_url, apikey
             )
@@ -171,7 +181,7 @@ def deploy(
         except Exception as exc:
             if manifest_context:
                 manifest_context.record_operation_error(exc)
-            raise
+            raise click.ClickException(str(exc))
         finally:
             _write_manifest()
         return
@@ -189,6 +199,8 @@ def deploy(
             )
         click.echo("[MODE] Upload & Deploy to DBpedia Databus via Nextcloud")
         click.echo(f"→ Uploading to: {remote}:{path}")
+        if manifest_context:
+            manifest_context.replay_params["deploy_mode"] = "webdav"
         try:
             metadata = webdav.upload_to_webdav(distributions, remote, path, webdav_url)
             api_deploy.deploy_from_metadata(
@@ -205,7 +217,7 @@ def deploy(
         except Exception as exc:
             if manifest_context:
                 manifest_context.record_operation_error(exc)
-            raise
+            raise click.ClickException(str(exc))
         finally:
             _write_manifest()
         return
@@ -444,6 +456,117 @@ def delete(databusuris: List[str], databus_key: str, dry_run: bool, force: bool,
                     err=True,
                 )
 
+@app.group()
+def manifest():
+    """
+    Manifest utilities.
+
+    Includes replay of previously recorded operations from JSON-LD manifests.
+    """
+    pass
+
+
+@manifest.command("replay")
+@click.argument("manifest_path", type=click.Path(exists=True, dir_okay=False))
+@click.option(
+    "--localdir",
+    default=None,
+    help="Override local output directory for download replay.",
+)
+@click.option(
+    "--databus",
+    default=None,
+    help="Override Databus endpoint for replay (example: https://databus.dbpedia.org/sparql).",
+)
+@click.option(
+    "--vault-token",
+    default=None,
+    help="Vault token file path required if manifest auth method is vault_token.",
+)
+@click.option(
+    "--databus-key",
+    default=None,
+    help="Databus API key required if manifest auth method is databus_key. "
+         "Also required for delete replay (never stored in the manifest).",
+)
+@click.option(
+    "--apikey",
+    "apikey",
+    default=None,
+    help="Databus API key required for deploy replay (never stored in the manifest).",
+)
+@click.option(
+    "--force",
+    is_flag=True,
+    default=False,
+    help="For delete replay: skip the interactive confirmation prompt. "
+         "Required for unattended/scripted replay of a delete operation.",
+)
+@click.option(
+    "--dry-run",
+    "dry_run",
+    is_flag=True,
+    default=False,
+    help="Force a dry-run preview even if the original operation wasn't "
+         "one. If the original delete WAS a dry run, replay already "
+         "previews automatically -- this flag cannot turn that off.",
+)
+def manifest_replay(manifest_path, localdir, databus, vault_token, databus_key, force, dry_run, apikey):
+    """
+    Replay a previously recorded manifest operation.
+
+    Currently supports replay of download, delete, and deploy manifests.
+    For delete manifests, an interactive confirmation is required by
+    default -- use --force to skip it for scripted/unattended use, or
+    --dry-run to preview without prompting or deleting. Deploy replay
+    supports classic and metadata-file modes only (not WebDAV).
+    """
+    overrides = {
+        "localDir": localdir,
+        "endpoint": databus,
+        "token": vault_token,
+        "databus_key": databus_key,
+        "api_key": apikey,
+    }
+    # Keep only explicitly provided text overrides
+    overrides = {k: v for k, v in overrides.items() if v is not None}
+    # Flags are always explicit values (False is a real, meaningful default)
+    overrides["force"] = force
+    overrides["dry_run"] = dry_run
+
+    try:
+        replay_info = replay_manifest(manifest_path, overrides=overrides)
+        if replay_info["command"] == "delete" and not replay_info.get("executed", True):
+            if replay_info.get("dry_run"):
+                click.echo("Delete replay: dry run only, nothing was deleted.")
+            else:
+                click.echo("Delete replay cancelled — nothing was deleted.")
+        else:
+            click.echo(f"Replayed command: {replay_info['command']}")
+        click.echo(f"Source manifest: {manifest_path}")
+    except ManifestReplayError as e:
+        raise click.ClickException(str(e))
+    except DownloadAuthError as e:
+        raise click.ClickException(str(e))
+    except ValueError as e:
+        raise click.ClickException(str(e))
+    except Exception as e:
+        raise click.ClickException(str(e))
+
+@manifest.command("summary")
+@click.argument("manifest_path", type=click.Path(exists=True, dir_okay=False))
+def manifest_summary(manifest_path):
+    """
+    Print a readable summary of a recorded manifest operation.
+
+    Reads the existing summary data already stored in the manifest --
+    no new data is collected and no new file is written.
+    """
+    try:
+        manifest = load_manifest(manifest_path)
+        click.echo(format_summary(manifest))
+    except ManifestReplayError as e:
+        raise click.ClickException(str(e))
 
 if __name__ == "__main__":
     app()

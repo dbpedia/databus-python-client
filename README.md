@@ -19,6 +19,8 @@ Command-line and Python client for downloading and deploying datasets on DBpedia
   - [Deploy](#cli-deploy)
   - [Delete](#cli-delete)
   - [Manifest](#cli-manifest)
+    - [Replay](#cli-manifest-replay)
+    - [Summary](#cli-manifest-summary)
 - [Module Usage](#module-usage)
   - [Deploy](#module-deploy)
 - [Development & Contributing](#development--contributing)
@@ -149,8 +151,10 @@ Options:
   --help  Show this message and exit.
 
 Commands:
+  delete    Delete a dataset from the databus.
   deploy    Flexible deploy to Databus command supporting three modes:
   download  Download datasets from databus, optionally using vault access...
+  manifest  Manifest utilities.
 ```
 
 <a id="cli-download"></a>
@@ -608,6 +612,102 @@ The manifest records input parameters, per-file URLs, checksums, byte sizes, tim
 - If the operation itself fails, a `dbus:operationError` block is recorded in the manifest capturing the error type, message, and traceback.
 
 Refer [examples/reproducible-download.md](examples/reproducible-download.md) for a full walkthrough.
+
+<a id="cli-manifest-replay"></a>
+#### Replay
+
+Any manifest written with `--manifest` can be replayed later using `databusclient manifest replay <path>`. Replay re-executes the original operation using the parameters recorded in the manifest — you don't need to remember or retype the original command.
+
+```bash
+# Python
+databusclient manifest replay [OPTIONS] MANIFEST_PATH
+# Docker
+docker run --rm -v $(pwd):/data dbpedia/databus-python-client manifest replay [OPTIONS] MANIFEST_PATH
+```
+
+**Important:** credentials are never stored in the manifest and must always be supplied fresh at replay time — `--vault-token`, `--databus-key`, and `--apikey` behave exactly as they do on the original commands.
+
+```bash
+databusclient manifest replay --help
+
+# Output:
+Usage: databusclient manifest replay [OPTIONS] MANIFEST_PATH
+
+  Replay a previously recorded manifest operation.
+
+  Currently supports replay of download, delete, and deploy manifests.
+  For delete manifests, an interactive confirmation is required by
+  default -- use --force to skip it for scripted/unattended use, or
+  --dry-run to preview without prompting or deleting.
+
+Options:
+  --localdir TEXT     Override local output directory for download replay.
+  --databus TEXT      Override Databus endpoint for replay.
+  --vault-token TEXT  Vault token file path, required if manifest auth
+                      method is vault_token.
+  --databus-key TEXT  Databus API key, required if manifest auth method is
+                      databus_key. Also required for delete replay.
+  --apikey TEXT       Databus API key, required for deploy replay.
+  --force             For delete replay: skip the interactive confirmation
+                      prompt. Required for unattended/scripted replay.
+  --dry-run           For delete replay: force a dry-run preview even if
+                      the original operation wasn't one.
+  --help              Show this message and exit.
+```
+
+**Replaying a download:**
+```bash
+databusclient manifest replay ./manifests/download-run.jsonld --localdir ./replayed-data
+```
+If `--localdir` is omitted, replay falls back to the same auto-computed folder structure a fresh download would use — this is not necessarily the same folder the original download used, since the original folder location itself is never stored in the manifest.
+
+**Replaying a delete:** by default, replay asks for confirmation before deleting, exactly like a normal `delete` call:
+```bash
+databusclient manifest replay ./manifests/delete-run.jsonld --databus-key YOUR_API_KEY
+# About to replay a DELETE operation for the following 1 URI(s):
+#   - https://databus.dbpedia.org/...
+# This is irreversible. Proceed? [y/N]:
+```
+For unattended/scripted use (e.g. CI/CD), skip the prompt with `--force`:
+```bash
+databusclient manifest replay ./manifests/delete-run.jsonld --databus-key YOUR_API_KEY --force
+```
+If the original delete was run with `--dry-run --manifest ...`, replay automatically previews without deleting — no flag needed. You can also force a preview on a manifest that wasn't originally a dry run:
+```bash
+databusclient manifest replay ./manifests/delete-run.jsonld --databus-key YOUR_API_KEY --dry-run
+```
+
+**Replaying a deploy:** supported for classic (distributions-as-arguments) and metadata-file deploys. The manifest stores fully-resolved deployment metadata (checksums, sizes, formats already computed), so replay never re-downloads or re-hashes the original files:
+```bash
+databusclient manifest replay ./manifests/deploy-run.jsonld --apikey YOUR_API_KEY
+```
+Replaying redeploys the same version — if it already exists on Databus, it is updated. WebDAV/Nextcloud deploys cannot be replayed, since the originally uploaded local files may no longer exist at their original paths by the time replay runs.
+
+<a id="cli-manifest-summary"></a>
+#### Summary
+
+Print a readable summary of any recorded manifest without replaying it:
+
+```bash
+# Python
+databusclient manifest summary ./manifests/download-run.jsonld
+# Docker
+docker run --rm -v $(pwd):/data dbpedia/databus-python-client manifest summary ./manifests/download-run.jsonld
+```
+
+Example output:
+
+```
+Command  : download
+Executed : 2024-03-24T10:02:49.500418+00:00
+Endpoint : https://databus.dbpedia.org/sparql
+Auth     : vault_token
+Files    : 1 succeeded · 0 failed
+Total    : 100.0 MB
+Status   : completed
+```
+
+Only existing data already stored in the manifest is read — no new files are downloaded or written, and no network access happens.
 
 ## Module Usage
 

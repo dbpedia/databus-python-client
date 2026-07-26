@@ -249,7 +249,7 @@ def create_distribution(
     return f"{url}|{meta_string}"
 
 
-def _create_distributions_from_metadata(
+def create_distributions_from_metadata(
     metadata: List[Dict[str, Union[str, int]]],
 ) -> List[str]:
     """
@@ -524,7 +524,7 @@ def deploy_from_metadata(
     Parameters
     ----------
     metadata : List[Dict[str, Union[str, int]]]
-        List of file metadata entries (see _create_distributions_from_metadata)
+        List of file metadata entries (see create_distributions_from_metadata)
     version_id : str
         Dataset version ID in the form $DATABUS_BASE/$ACCOUNT/$GROUP/$ARTIFACT/$VERSION
     artifact_version_title : str
@@ -538,7 +538,7 @@ def deploy_from_metadata(
     apikey : str
         API key for authentication
     """
-    distributions = _create_distributions_from_metadata(metadata)
+    distributions = create_distributions_from_metadata(metadata)
 
     dataset = create_dataset(
         version_id=version_id,
