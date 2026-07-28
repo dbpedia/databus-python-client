@@ -880,7 +880,24 @@ def _get_databus_versions_of_artifact(
     if not version_urls:
         raise ValueError("No versions found in artifact JSON-LD")
 
-    version_urls.sort(reverse=True)  # Sort versions in descending order
+    def _version_key(url: str) -> tuple:
+        """Extract version segment from URL and parse as numeric tuple for sorting.
+
+        Handles semver-style versions (e.g., 2.10.0 > 2.9.0) by comparing
+        numeric segments. Falls back to lexicographic comparison for
+        non-standard formats.
+        """
+        segment = url.rstrip("/").split("/")[-1]
+        try:
+            # Split on dots and convert each part to int for numeric comparison
+            parts = tuple(int(p) for p in segment.split("."))
+            return parts
+        except (ValueError, AttributeError):
+            # Fallback for non-numeric versions (e.g., date-based: 2022.12.01)
+            # Prefix with (0,) to sort after numeric versions
+            return (0, segment)
+
+    version_urls.sort(key=_version_key, reverse=True)  # Sort versions in descending order
 
     if all_versions:
         return version_urls
