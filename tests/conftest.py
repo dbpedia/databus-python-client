@@ -10,6 +10,9 @@ if "SPARQLWrapper" not in sys.modules:
         def __init__(self, *args, **kwargs):
             pass
 
+        def setMethod(self, m):
+            self._method = m
+
         def setQuery(self, q):
             self._q = q
 
