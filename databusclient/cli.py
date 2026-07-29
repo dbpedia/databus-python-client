@@ -13,6 +13,9 @@ from databusclient.manifest.writer import ManifestWriter
 from databusclient.manifest.replay import ManifestReplayError, replay_manifest, load_manifest
 from databusclient.manifest.summary import format_summary
 from databusclient.extensions import webdav
+from databusclient.workflow.parser import WorkflowParseError, parse_workflow
+from databusclient.workflow.engine import WorkflowEngine, WorkflowExecutionError
+from databusclient.workflow.context import StepContext
 
 
 @click.group()
@@ -567,6 +570,43 @@ def manifest_summary(manifest_path):
         click.echo(format_summary(manifest))
     except ManifestReplayError as e:
         raise click.ClickException(str(e))
+
+@app.group()
+def workflow():
+    """
+    Workflow utilities.
+
+    Run multi-step download/deploy/delete pipelines defined in YAML.
+    """
+    pass
+
+
+@workflow.command("run")
+@click.argument("workflow_path", type=click.Path(exists=True, dir_okay=False))
+def workflow_run(workflow_path):
+    """
+    Run a declarative workflow pipeline from a YAML file.
+
+    Executes each step in order, chaining outputs between steps via
+    ${steps.name.output_files}-style references, and applying each
+    step's on_error behavior (fail/continue/retry).
+    """
+    try:
+        parsed = parse_workflow(workflow_path)
+    except WorkflowParseError as e:
+        raise click.ClickException(str(e))
+
+    context = StepContext()
+    engine = WorkflowEngine(context=context)
+
+    try:
+        results = engine.run(parsed["steps"])
+    except WorkflowExecutionError as e:
+        raise click.ClickException(str(e))
+
+    click.echo("Workflow complete.")
+    for result in results:
+        click.echo(f"  {result.name}: {result.status}")
 
 if __name__ == "__main__":
     app()
