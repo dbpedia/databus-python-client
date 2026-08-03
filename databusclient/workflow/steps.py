@@ -13,8 +13,9 @@ import os
 from typing import Any, Dict
 
 from databusclient.api.delete import delete as api_delete
-from databusclient.api.deploy import create_dataset, deploy as api_deploy_call
+from databusclient.api.deploy import (create_dataset, deploy as api_deploy_call, deploy_from_metadata,)
 from databusclient.api.download import download as api_download
+from databusclient.extensions import webdav
 
 from databusclient.workflow.context import StepContext
 
@@ -75,7 +76,18 @@ class DownloadStep:
 
 
 class DeployStep:
-    """Adapts a workflow step to a call to create_dataset() + deploy()."""
+    """Adapts a workflow step to a call to create_dataset() + deploy(),
+    or to webdav.upload_to_webdav() + deploy_from_metadata() in WebDAV mode.
+
+    Classic and metadata-file deploy modes operate on their normal inputs
+    (URLs, or an already-resolved metadata list) and must NOT be given
+    local file paths from a previous step -- neither mode can turn a local
+    path into a fetchable URL. Chaining a previous step's local files into
+    a deploy step is only supported via WebDAV mode: local files are
+    uploaded first, which produces real URLs, and any local modifications
+    (format/compression conversions) are correctly reflected since the
+    upload happens after those conversions.
+    """
 
     def run(self, step_config: Dict[str, Any], context: StepContext) -> None:
         resolved = context.resolve(step_config)
@@ -89,11 +101,43 @@ class DeployStep:
                 f"{', '.join(missing)}."
             )
 
+        webdav_url = resolved.get("webdav_url")
+        remote = resolved.get("remote")
+        path = resolved.get("path")
+        webdav_fields = [webdav_url, remote, path]
+
+        if any(webdav_fields) and not all(webdav_fields):
+            raise StepValidationError(
+                f"Step '{name}': WebDAV deploy mode requires 'webdav_url', "
+                f"'remote', and 'path' together."
+            )
+
+        if all(webdav_fields):
+            output_files = self._run_webdav_mode(resolved, name)
+        else:
+            output_files = self._run_classic_mode(resolved, name)
+
+        context.set_output(name, "output_files", output_files)
+        context.set_output(name, "version_id", resolved["version_id"])
+
+    def _run_classic_mode(self, resolved: Dict[str, Any], name: str) -> list:
         files = resolved.get("files")
         if not files:
-            raise StepValidationError(f"Step '{name}': deploy step requires 'files'.")
+            raise StepValidationError(
+                f"Step '{name}': deploy step requires 'files' (a list of URLs)."
+            )
         if isinstance(files, str):
             files = [files]
+
+        non_urls = [f for f in files if not str(f).split("|")[0].startswith(("http://", "https://"))]
+        if non_urls:
+            raise StepValidationError(
+                f"Step '{name}': 'files' must be URLs (http:// or https://). "
+                f"Found non-URL value(s): {non_urls}. Local file paths from "
+                f"a previous download step are not accepted in classic "
+                f"deploy mode -- use WebDAV mode ('webdav_url', 'remote', "
+                f"'path') to deploy locally modified files."
+            )
 
         dataid = create_dataset(
             version_id=resolved["version_id"],
@@ -104,9 +148,31 @@ class DeployStep:
             distributions=files,
         )
         api_deploy_call(dataid=dataid, api_key=resolved["api_key"])
+        return files
 
-        context.set_output(name, "output_files", files)
-        context.set_output(name, "version_id", resolved["version_id"])
+    def _run_webdav_mode(self, resolved: Dict[str, Any], name: str) -> list:
+        local_files = resolved.get("files")
+        if not local_files:
+            raise StepValidationError(
+                f"Step '{name}': WebDAV deploy mode requires 'files' (local "
+                f"file paths to upload, e.g. from a previous download step)."
+            )
+        if isinstance(local_files, str):
+            local_files = [local_files]
+
+        metadata = webdav.upload_to_webdav(
+            local_files, resolved["remote"], resolved["path"], resolved["webdav_url"]
+        )
+        deploy_from_metadata(
+            metadata,
+            resolved["version_id"],
+            resolved["title"],
+            resolved["abstract"],
+            resolved["description"],
+            resolved["license"],
+            resolved["api_key"],
+        )
+        return [entry.get("url", "") for entry in metadata]
 
 
 class DeleteStep:

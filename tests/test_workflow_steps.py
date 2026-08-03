@@ -77,7 +77,11 @@ def test_deploy_step_requires_fields():
         step.run({"name": "publish", "command": "deploy"}, ctx)
 
 
-def test_deploy_step_resolves_step_reference_and_calls_deploy(monkeypatch):
+def test_deploy_step_resolves_step_reference_to_urls_and_calls_deploy(monkeypatch):
+    """Chaining a step reference into classic mode works when the referenced
+    output is itself URLs (e.g. output_urls from a download step) -- not
+    local file paths. See test_deploy_step_classic_mode_rejects_local_paths_
+    with_clear_error for the local-path rejection case."""
     captured = {}
 
     def fake_create_dataset(**kwargs):
@@ -91,7 +95,7 @@ def test_deploy_step_resolves_step_reference_and_calls_deploy(monkeypatch):
     monkeypatch.setattr("databusclient.workflow.steps.api_deploy_call", fake_deploy)
 
     ctx = StepContext()
-    ctx.set_output("fetch", "output_files", ["/data/a.ttl"])
+    ctx.set_output("fetch", "output_urls", ["https://example.org/data/a.ttl"])
 
     step = DeployStep()
     step.run({
@@ -99,10 +103,10 @@ def test_deploy_step_resolves_step_reference_and_calls_deploy(monkeypatch):
         "version_id": "https://databus.dbpedia.org/a/b/c/1.0",
         "title": "T", "abstract": "A", "description": "D",
         "license": "https://license.example.org", "api_key": "key123",
-        "files": "${steps.fetch.output_files}",
+        "files": "${steps.fetch.output_urls}",
     }, ctx)
 
-    assert captured["create_dataset_kwargs"]["distributions"] == ["/data/a.ttl"]
+    assert captured["create_dataset_kwargs"]["distributions"] == ["https://example.org/data/a.ttl"]
     assert captured["api_key"] == "key123"
 
 
@@ -157,3 +161,109 @@ def test_download_step_records_output_urls(monkeypatch, tmp_path):
     )
 
     assert ctx.get_output("fetch", "output_urls") == ["https://example.org/data/a.ttl"]
+
+def test_deploy_step_classic_mode_rejects_missing_files():
+    ctx = StepContext()
+    step = DeployStep()
+    with pytest.raises(StepValidationError, match="requires 'files'"):
+        step.run({
+            "name": "publish", "command": "deploy",
+            "version_id": "https://databus.dbpedia.org/a/b/c/1.0",
+            "title": "T", "abstract": "A", "description": "D",
+            "license": "https://license.example.org", "api_key": "key123",
+        }, ctx)
+
+
+def test_deploy_step_classic_mode_rejects_local_paths_with_clear_error():
+    """The actual bug we hit manually: classic mode given local file paths
+    (e.g. chained from a download step's output_files) must fail with a
+    clear, actionable error -- not a raw 'Invalid URL' crash."""
+    ctx = StepContext()
+    ctx.set_output("fetch", "output_files", ["./tmp/workflow-demo/download/swagger.yml"])
+
+    step = DeployStep()
+    with pytest.raises(StepValidationError, match="Local file paths.*not accepted"):
+        step.run({
+            "name": "publish", "command": "deploy",
+            "version_id": "https://databus.dbpedia.org/a/b/c/1.0",
+            "title": "T", "abstract": "A", "description": "D",
+            "license": "https://license.example.org", "api_key": "key123",
+            "files": "${steps.fetch.output_files}",
+        }, ctx)
+
+
+def test_deploy_step_webdav_mode_requires_all_three_fields():
+    ctx = StepContext()
+    step = DeployStep()
+    with pytest.raises(StepValidationError, match="requires 'webdav_url', 'remote', and 'path' together"):
+        step.run({
+            "name": "publish", "command": "deploy",
+            "version_id": "https://databus.dbpedia.org/a/b/c/1.0",
+            "title": "T", "abstract": "A", "description": "D",
+            "license": "https://license.example.org", "api_key": "key123",
+            "webdav_url": "https://cloud.example.com/webdav",
+            # 'remote' and 'path' deliberately missing
+        }, ctx)
+
+
+def test_deploy_step_webdav_mode_uploads_then_deploys(monkeypatch):
+    captured = {}
+
+    def fake_upload(distributions, remote, path, webdav_url):
+        captured["upload_args"] = (distributions, remote, path, webdav_url)
+        return [{"url": "https://cloud.example.com/webdav/data/a.ttl",
+                  "checksum": "abc123", "size": 100}]
+
+    def fake_deploy_from_metadata(metadata, version_id, title, abstract, description, license_url, apikey):
+        captured["deploy_metadata"] = metadata
+        captured["api_key"] = apikey
+
+    monkeypatch.setattr("databusclient.workflow.steps.webdav.upload_to_webdav", fake_upload)
+    monkeypatch.setattr("databusclient.workflow.steps.deploy_from_metadata", fake_deploy_from_metadata)
+
+    ctx = StepContext()
+    ctx.set_output("fetch", "output_files", ["/local/path/a.ttl"])
+
+    step = DeployStep()
+    step.run({
+        "name": "publish", "command": "deploy",
+        "version_id": "https://databus.dbpedia.org/a/b/c/1.0",
+        "title": "T", "abstract": "A", "description": "D",
+        "license": "https://license.example.org", "api_key": "key123",
+        "webdav_url": "https://cloud.example.com/webdav",
+        "remote": "nextcloud", "path": "datasets/mydata",
+        "files": "${steps.fetch.output_files}",
+    }, ctx)
+
+    assert captured["upload_args"][0] == ["/local/path/a.ttl"]
+    assert captured["upload_args"][1:] == ("nextcloud", "datasets/mydata", "https://cloud.example.com/webdav")
+    assert captured["api_key"] == "key123"
+    assert ctx.get_output("publish", "output_files") == ["https://cloud.example.com/webdav/data/a.ttl"]
+
+
+def test_deploy_step_classic_mode_still_works_with_urls(monkeypatch):
+    """Confirms classic mode behavior is unchanged for normal URL-based deploys."""
+    captured = {}
+
+    def fake_create_dataset(**kwargs):
+        captured["kwargs"] = kwargs
+        return {"@graph": [{"@id": "fake"}]}
+
+    def fake_deploy(dataid, api_key):
+        captured["api_key"] = api_key
+
+    monkeypatch.setattr("databusclient.workflow.steps.create_dataset", fake_create_dataset)
+    monkeypatch.setattr("databusclient.workflow.steps.api_deploy_call", fake_deploy)
+
+    ctx = StepContext()
+    step = DeployStep()
+    step.run({
+        "name": "publish", "command": "deploy",
+        "version_id": "https://databus.dbpedia.org/a/b/c/1.0",
+        "title": "T", "abstract": "A", "description": "D",
+        "license": "https://license.example.org", "api_key": "key123",
+        "files": ["https://example.org/data.ttl"],
+    }, ctx)
+
+    assert captured["kwargs"]["distributions"] == ["https://example.org/data.ttl"]
+    assert ctx.get_output("publish", "output_files") == ["https://example.org/data.ttl"]
