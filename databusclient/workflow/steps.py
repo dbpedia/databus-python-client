@@ -13,9 +13,14 @@ import os
 from typing import Any, Dict
 
 from databusclient.api.delete import delete as api_delete
-from databusclient.api.deploy import (create_dataset, deploy as api_deploy_call, deploy_from_metadata,)
+from databusclient.api.deploy import (
+    create_dataset,
+    deploy as api_deploy_call,
+    deploy_from_metadata,
+)
 from databusclient.api.download import download as api_download
 from databusclient.extensions import webdav
+from databusclient.manifest.context import ManifestContext
 
 from databusclient.workflow.context import StepContext
 
@@ -25,24 +30,49 @@ class StepValidationError(Exception):
 
 
 class DownloadStep:
-    """Adapts a workflow step to a call to download()."""
+    """Adapts a workflow step to a call to download().
+
+    Accepts either a single URI ('uri') or multiple ('uris') -- the
+    underlying download() function already supports a list.
+
+    output_urls records the ACTUAL, final URL each downloaded file was
+    fetched from -- after any HTTP redirect. download.py's _download_file
+    already resolves redirects internally and reports the final url via
+    manifest_context.record_file(); this step supplies a ManifestContext
+    (the user's real one if set on StepContext, otherwise a throwaway one
+    used purely to capture this information) and reads the resolved URLs
+    back from it, rather than re-deriving redirects itself. Re-deriving
+    was tried first and found to be wrong: a version/artifact/group URI
+    does not redirect the same way an individual file URL does, so
+    checking the input URI directly gives the wrong (un-redirected)
+    answer. Reading what download.py already resolved is correct
+    regardless of whether the input was a single file, version, artifact,
+    or group URI, and regardless of how many files it expanded to.
+    """
 
     def run(self, step_config: Dict[str, Any], context: StepContext) -> None:
         resolved = context.resolve(step_config)
         name = resolved["name"]
 
-        uri = resolved.get("uri")
-        if not uri:
-            raise StepValidationError(f"Step '{name}': download step requires 'uri'.")
+        uri_value = resolved.get("uri") or resolved.get("uris")
+        if not uri_value:
+            raise StepValidationError(
+                f"Step '{name}': download step requires 'uri' (single) or "
+                f"'uris' (list)."
+            )
+        uris = [uri_value] if isinstance(uri_value, str) else list(uri_value)
 
         local_dir = resolved.get("localdir")
         if local_dir is None:
             local_dir = os.path.join(os.getcwd(), ".workflow", name)
 
+        capture_context = context.manifest_context or ManifestContext(command="download")
+        files_before = len(capture_context.files)
+
         api_download(
             localDir=local_dir,
             endpoint=resolved.get("databus"),
-            databusURIs=[uri],
+            databusURIs=uris,
             token=resolved.get("vault_token"),
             databus_key=resolved.get("databus_key"),
             all_versions=resolved.get("all_versions", False),
@@ -51,12 +81,15 @@ class DownloadStep:
             graph_name=resolved.get("graph_name"),
             base_uri=resolved.get("base_uri"),
             validate_checksum=resolved.get("validate_checksum", False),
-            manifest_context=context.manifest_context,
+            manifest_context=capture_context,
         )
+
+        new_entries = capture_context.files[files_before:]
+        resolved_urls = [e["url"] for e in new_entries if e.get("status") == "success"]
 
         output_files = self._collect_output_files(local_dir)
         context.set_output(name, "output_files", output_files)
-        context.set_output(name, "output_urls", [uri])
+        context.set_output(name, "output_urls", resolved_urls)
 
     @staticmethod
     def _collect_output_files(local_dir: str) -> list:

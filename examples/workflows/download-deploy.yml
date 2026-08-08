@@ -1,12 +1,12 @@
 steps:
   - name: fetch_dataset
     command: download
-    uri: https://raw.githubusercontent.com/dbpedia/databus/master/server/app/api/swagger.yml
+    uri: https://databus.dbpedia.org/DhanashreeP/test-group/workflow-source-data/1.0
     localdir: ./workflow-output/download-deploy
 
   - name: publish_dataset
     command: deploy
-    version_id: https://databus.dbpedia.org/DhanashreeP/test-group/workflow-demo/2.0
+    version_id: https://databus.dbpedia.org/DhanashreeP/test-group/workflow-demo-deploy/1.0
     title: "Workflow Demo - Download and Deploy"
     abstract: "throwaway, testing workflow deploy chaining"
     description: "throwaway version testing deploy chaining via output_urls"

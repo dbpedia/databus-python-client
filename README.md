@@ -769,7 +769,7 @@ steps:
 
 **Step chaining:** a step's outputs can be referenced by later steps using `${steps.step_name.output_key}`:
 - `${steps.name.output_files}` — local file paths produced by a `download` step.
-- `${steps.name.output_urls}` — the original download URL(s), useful for redeploying an unmodified file via classic deploy mode.
+- `${steps.name.output_urls}` — the actual, redirect-resolved source URL(s) the file was downloaded from, useful for redeploying an unmodified file via classic deploy mode.
 
 #### Deploy step modes within a workflow
 

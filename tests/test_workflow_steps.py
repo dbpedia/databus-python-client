@@ -4,6 +4,7 @@ underlying api_download/api_deploy_call/api_delete functions are mocked."""
 import os
 import pytest
 
+from databusclient.manifest.context import ManifestContext
 from databusclient.workflow.context import StepContext
 from databusclient.workflow.steps import (
     DeleteStep,
@@ -29,6 +30,9 @@ def test_download_step_calls_api_download_and_collects_files(monkeypatch, tmp_pa
         os.makedirs(local_dir, exist_ok=True)
         with open(os.path.join(local_dir, "a.ttl"), "w") as f:
             f.write("data")
+        kwargs["manifest_context"].record_file(
+            url=kwargs["databusURIs"][0], status="success"
+        )
 
     monkeypatch.setattr("databusclient.workflow.steps.api_download", fake_download)
 
@@ -56,6 +60,9 @@ def test_download_step_collects_files_from_subdirectory(monkeypatch, tmp_path):
             f.write("data")
         with open(os.path.join(sub, "graph2.nt"), "w") as f:
             f.write("data")
+        kwargs["manifest_context"].record_file(
+            url=kwargs["databusURIs"][0], status="success"
+        )
 
     monkeypatch.setattr("databusclient.workflow.steps.api_download", fake_download)
 
@@ -69,6 +76,121 @@ def test_download_step_collects_files_from_subdirectory(monkeypatch, tmp_path):
     assert len(output) == 2
     assert all(isinstance(p, str) for p in output)
 
+
+def test_download_step_records_output_urls_from_manifest_context(monkeypatch, tmp_path):
+    """output_urls comes from what download.py itself resolved and recorded
+    -- not from re-checking the input URI, so this test uses an input URI
+    that DIFFERS from the resolved one, exactly like a real Databus
+    redirect would produce."""
+    def fake_download(**kwargs):
+        local_dir = kwargs["localDir"]
+        os.makedirs(local_dir, exist_ok=True)
+        with open(os.path.join(local_dir, "a.ttl"), "w") as f:
+            f.write("data")
+        # Simulates download.py resolving a redirect: the recorded url
+        # differs from the input databusURIs[0].
+        kwargs["manifest_context"].record_file(
+            url="https://raw.githubusercontent.com/real/a.ttl", status="success"
+        )
+
+    monkeypatch.setattr("databusclient.workflow.steps.api_download", fake_download)
+
+    ctx = StepContext()
+    step = DownloadStep()
+    step.run(
+        {"name": "fetch", "command": "download",
+         "uri": "https://databus.dbpedia.org/acct/grp/art/1.0/a.ttl",
+         "localdir": str(tmp_path)},
+        ctx,
+    )
+
+    assert ctx.get_output("fetch", "output_urls") == [
+        "https://raw.githubusercontent.com/real/a.ttl"
+    ]
+
+
+def test_download_step_output_urls_handles_multiple_files(monkeypatch, tmp_path):
+    """A version/artifact/group download can produce multiple files --
+    output_urls must contain the resolved URL for each one."""
+    def fake_download(**kwargs):
+        local_dir = kwargs["localDir"]
+        os.makedirs(local_dir, exist_ok=True)
+        for name in ("a.ttl", "b.ttl"):
+            with open(os.path.join(local_dir, name), "w") as f:
+                f.write("data")
+        ctx = kwargs["manifest_context"]
+        ctx.record_file(url="https://real.example.org/a.ttl", status="success")
+        ctx.record_file(url="https://real.example.org/b.ttl", status="success")
+
+    monkeypatch.setattr("databusclient.workflow.steps.api_download", fake_download)
+
+    ctx = StepContext()
+    step = DownloadStep()
+    step.run(
+        {"name": "fetch", "command": "download",
+         "uri": "https://databus.dbpedia.org/acct/grp/art/1.0",
+         "localdir": str(tmp_path)},
+        ctx,
+    )
+
+    assert ctx.get_output("fetch", "output_urls") == [
+        "https://real.example.org/a.ttl", "https://real.example.org/b.ttl"
+    ]
+
+
+def test_download_step_accepts_multiple_uris(monkeypatch, tmp_path):
+    captured = {}
+
+    def fake_download(**kwargs):
+        captured.update(kwargs)
+        local_dir = kwargs["localDir"]
+        os.makedirs(local_dir, exist_ok=True)
+        with open(os.path.join(local_dir, "a.ttl"), "w") as f:
+            f.write("data")
+        for uri in kwargs["databusURIs"]:
+            kwargs["manifest_context"].record_file(url=uri, status="success")
+
+    monkeypatch.setattr("databusclient.workflow.steps.api_download", fake_download)
+
+    ctx = StepContext()
+    step = DownloadStep()
+    step.run({
+        "name": "fetch", "command": "download",
+        "uris": ["https://example.org/a", "https://example.org/b"],
+        "localdir": str(tmp_path),
+    }, ctx)
+
+    assert captured["databusURIs"] == ["https://example.org/a", "https://example.org/b"]
+    assert ctx.get_output("fetch", "output_urls") == [
+        "https://example.org/a", "https://example.org/b"
+    ]
+
+
+def test_download_step_only_captures_entries_from_this_run(monkeypatch, tmp_path):
+    """If a real, shared manifest_context is used (future Milestone 5),
+    entries from a PRIOR step must not leak into this step's output_urls."""
+    def fake_download(**kwargs):
+        local_dir = kwargs["localDir"]
+        os.makedirs(local_dir, exist_ok=True)
+        with open(os.path.join(local_dir, "b.ttl"), "w") as f:
+            f.write("data")
+        kwargs["manifest_context"].record_file(
+            url="https://example.org/b.ttl", status="success"
+        )
+
+    monkeypatch.setattr("databusclient.workflow.steps.api_download", fake_download)
+
+    shared_context = ManifestContext(command="download")
+    shared_context.record_file(url="https://example.org/PRIOR.ttl", status="success")
+
+    ctx = StepContext(manifest_context=shared_context)
+    step = DownloadStep()
+    step.run(
+        {"name": "fetch", "command": "download", "uri": "x", "localdir": str(tmp_path)},
+        ctx,
+    )
+
+    assert ctx.get_output("fetch", "output_urls") == ["https://example.org/b.ttl"]
 
 def test_deploy_step_requires_fields():
     ctx = StepContext()
@@ -143,24 +265,6 @@ def test_delete_step_requires_api_key():
     with pytest.raises(StepValidationError, match="requires 'api_key'"):
         step.run({"name": "cleanup", "command": "delete", "uris": ["x"]}, ctx)
 
-def test_download_step_records_output_urls(monkeypatch, tmp_path):
-    def fake_download(**kwargs):
-        local_dir = kwargs["localDir"]
-        os.makedirs(local_dir, exist_ok=True)
-        with open(os.path.join(local_dir, "a.ttl"), "w") as f:
-            f.write("data")
-
-    monkeypatch.setattr("databusclient.workflow.steps.api_download", fake_download)
-
-    ctx = StepContext()
-    step = DownloadStep()
-    step.run(
-        {"name": "fetch", "command": "download", "uri": "https://example.org/data/a.ttl",
-         "localdir": str(tmp_path)},
-        ctx,
-    )
-
-    assert ctx.get_output("fetch", "output_urls") == ["https://example.org/data/a.ttl"]
 
 def test_deploy_step_classic_mode_rejects_missing_files():
     ctx = StepContext()

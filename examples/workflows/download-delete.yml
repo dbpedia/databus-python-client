@@ -1,11 +1,11 @@
 steps:
-  - name: fetch_dataset
+  - name: archive_dataset
     command: download
-    uri: https://raw.githubusercontent.com/dbpedia/databus/master/server/app/api/swagger.yml
-    localdir: ./workflow-output/download-delete
+    uri: https://databus.dbpedia.org/DhanashreeP/test-group/workflow-source-data/1.0
+    localdir: ./workflow-output/archive
 
-  - name: cleanup_old
+  - name: remove_archived_version
     command: delete
     uris:
-      - https://databus.dbpedia.org/DhanashreeP/test-group/deleteme/1.0
+      - https://databus.dbpedia.org/DhanashreeP/test-group/workflow-demo-deploy/1.0
     api_key: ${DATABUS_API_KEY}
