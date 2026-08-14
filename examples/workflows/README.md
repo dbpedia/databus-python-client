@@ -1,6 +1,6 @@
 ﻿# Example Workflows
 
-Three example workflow pipelines, each runnable directly. All three use real, existing Databus data as their download source.
+Three example workflow pipelines, each runnable directly, though the deploy/delete steps use paths under a specific Databus account -- swap in your own account/version paths before running them yourself. All three use real, existing Databus data as their download source.
 
 ```bash
 export DATABUS_API_KEY=your-key-here
