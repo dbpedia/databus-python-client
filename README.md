@@ -21,6 +21,7 @@ Command-line and Python client for downloading and deploying datasets on DBpedia
   - [Manifest](#cli-manifest)
     - [Replay](#cli-manifest-replay)
     - [Summary](#cli-manifest-summary)
+  - [Workflow](#cli-workflow)
 - [Module Usage](#module-usage)
   - [Deploy](#module-deploy)
 - [Development & Contributing](#development--contributing)
@@ -708,6 +709,124 @@ Status   : completed
 ```
 
 Only existing data already stored in the manifest is read — no new files are downloaded or written, and no network access happens.
+
+<a id="cli-workflow"></a>
+### Workflow
+
+The workflow command runs a multi-step pipeline of `download`, `deploy`, and `delete` operations defined in a YAML file. Steps run in order, and a later step can use the output of an earlier step — for example, deploying the exact file a previous step just downloaded.
+
+```bash
+# Python
+databusclient workflow run [OPTIONS] WORKFLOW_PATH
+# Docker
+docker run --rm -v $(pwd):/data dbpedia/databus-python-client workflow run [OPTIONS] WORKFLOW_PATH
+```
+
+**Help and further information on the workflow command:**
+```bash
+# Python
+databusclient workflow run --help
+# Docker
+docker run --rm -v $(pwd):/data dbpedia/databus-python-client workflow run --help
+
+# Output:
+Usage: databusclient workflow run [OPTIONS] WORKFLOW_PATH
+
+  Run a declarative workflow pipeline from a YAML file.
+
+  Executes each step in order, chaining outputs between steps via
+  ${steps.name.output_files}-style references, and applying each step's
+  on_error behavior (fail/continue/retry).
+
+Options:
+  --help  Show this message and exit.
+```
+
+#### Workflow YAML format
+
+A workflow file has a top-level `steps:` list. Each step needs a unique `name` and a `command` (`download`, `deploy`, or `delete`), plus fields specific to that command.
+
+```yaml
+steps:
+  - name: fetch_dataset
+    command: download
+    uri: https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals/2022.12.01/mappingbased-literals_lang=az.ttl.bz2
+    localdir: ./data
+
+  - name: publish_dataset
+    command: deploy
+    version_id: https://databus.dbpedia.org/myaccount/research/labels/2024.01
+    title: "Processed Labels"
+    abstract: "Processed from DBpedia 2023.12.01"
+    description: "Converted and redeployed labels dataset"
+    license: https://creativecommons.org/licenses/by-sa/3.0/
+    api_key: ${DATABUS_API_KEY}
+    files: ${steps.fetch_dataset.output_urls}
+    on_error: fail
+```
+
+**Environment variables:** any value written as `${VARIABLE_NAME}` is resolved from the environment when the workflow starts. If the variable is not set, the workflow fails immediately with a clear error before any step runs — credentials should always be passed this way, never written directly in the file.
+
+**Step chaining:** a step's outputs can be referenced by later steps using `${steps.step_name.output_key}`:
+- `${steps.name.output_files}` — local file paths produced by a `download` step.
+- `${steps.name.output_urls}` — the actual, redirect-resolved source URL(s) the file was downloaded from, useful for redeploying an unmodified file via classic deploy mode.
+
+#### Deploy step modes within a workflow
+
+A `deploy` step supports the same modes as the `deploy` CLI command:
+
+- **Classic mode** (`files:` is a list of URLs) — use `${steps.name.output_urls}` to redeploy a file exactly as it was downloaded, unmodified. Classic mode does not accept local file paths; if `files:` contains anything other than a `http://`/`https://` URL, the step fails with a clear error rather than crashing.
+- **WebDAV mode** (`webdav_url:`, `remote:`, `path:` all provided) — use `${steps.name.output_files}` (local paths) here. The step uploads the local files to the WebDAV server first, then deploys the resulting URLs. This is the only way to deploy a file that was locally modified during the workflow (e.g. via `--format`/`--compression` on the download step), since only WebDAV mode re-establishes a real, fetchable URL for locally changed content.
+
+```yaml
+  - name: publish_converted_dataset
+    command: deploy
+    version_id: https://databus.dbpedia.org/myaccount/research/labels/2024.01
+    title: "Processed Labels"
+    abstract: "Processed from DBpedia 2023.12.01"
+    description: "Converted and redeployed labels dataset"
+    license: https://creativecommons.org/licenses/by-sa/3.0/
+    api_key: ${DATABUS_API_KEY}
+    webdav_url: https://cloud.example.com/remote.php/webdav
+    remote: nextcloud
+    path: datasets/mydataset
+    files: ${steps.fetch_dataset.output_files}
+```
+
+#### Error handling
+
+Each step declares an `on_error` behavior (defaults to `fail` if not set):
+
+| Mode | Behavior |
+|---|---|
+| `fail` | Stop the entire workflow immediately if this step fails. |
+| `continue` | Log the failure and move on to the next step anyway. |
+| `retry` | Retry the step up to `max_attempts` times, waiting `delay_seconds` between attempts. If all attempts fail, the workflow stops. |
+
+```yaml
+  - name: fetch_dataset
+    command: download
+    uri: https://databus.dbpedia.org/...
+    on_error: retry
+    retry:
+      max_attempts: 3
+      delay_seconds: 5
+```
+
+A retry re-runs the entire step from scratch, not just the part that failed.
+
+**Delete steps never prompt for confirmation inside a workflow** — since workflows are meant to run unattended, a `delete` step always behaves as if `--force` was passed.
+
+#### Examples
+
+Full working example files are available under [`examples/workflows/`](examples/workflows/):
+- `download-deploy.yml` — download a file, then redeploy it (classic mode).
+- `download-delete.yml` — download a file, then delete an old version.
+- `full-pipeline.yml` — download, deploy, and delete chained together in one run.
+
+```bash
+databusclient workflow run examples/workflows/download-deploy.yml
+```
 
 ## Module Usage
 

@@ -1,0 +1,11 @@
+steps:
+  - name: archive_dataset
+    command: download
+    uri: https://databus.dbpedia.org/DhanashreeP/test-group/workflow-source-data/1.0
+    localdir: ./workflow-output/archive
+
+  - name: remove_archived_version
+    command: delete
+    uris:
+      - https://databus.dbpedia.org/DhanashreeP/test-group/workflow-demo-deploy/1.0
+    api_key: ${DATABUS_API_KEY}

@@ -1,0 +1,23 @@
+steps:
+  - name: fetch_dataset
+    command: download
+    uri: https://databus.dev.dbpedia.link/fhofer/gsoc26/test-data/2.0
+    localdir: ./workflow-output/full-pipeline
+
+  - name: publish_dataset
+    command: deploy
+    version_id: https://databus.dbpedia.org/DhanashreeP/test-group/workflow-full-pipeline-demo/1.0
+    title: "Workflow Demo - Full Pipeline"
+    abstract: "throwaway, testing full download-deploy-delete pipeline"
+    description: "throwaway version testing all three commands chained together, using real Databus test data as source"
+    license: https://creativecommons.org/licenses/by-sa/3.0/
+    api_key: ${DATABUS_API_KEY}
+    files: ${steps.fetch_dataset.output_urls}
+    on_error: fail
+
+  - name: cleanup_previous_version
+    command: delete
+    uris:
+      - https://databus.dbpedia.org/DhanashreeP/test-group/workflow-full-pipeline-demo/1.0
+    api_key: ${DATABUS_API_KEY}
+    on_error: continue
