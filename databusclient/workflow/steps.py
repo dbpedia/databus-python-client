@@ -153,6 +153,14 @@ class DeployStep:
         context.set_output(name, "output_files", output_files)
         context.set_output(name, "version_id", resolved["version_id"])
 
+        # deploy()/deploy_from_metadata() do not accept manifest_context
+        # (unlike download()/delete()) -- manifest recording for deploy is
+        # always done manually by the caller. This mirrors exactly what
+        # cli.py's own `deploy` command does after a successful deploy.
+        if context.manifest_context is not None:
+            for url in output_files:
+                context.manifest_context.record_file(url=url, status="success")
+
     def _run_classic_mode(self, resolved: Dict[str, Any], name: str) -> list:
         files = resolved.get("files")
         if not files:

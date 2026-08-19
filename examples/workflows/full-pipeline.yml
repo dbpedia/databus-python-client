@@ -1,7 +1,7 @@
 steps:
   - name: fetch_dataset
     command: download
-    uri: https://databus.dev.dbpedia.link/fhofer/gsoc26/test-data/2.0
+    uri: https://databus.dbpedia.org/DhanashreeP/test-group/workflow-source-data/1.0
     localdir: ./workflow-output/full-pipeline
 
   - name: publish_dataset

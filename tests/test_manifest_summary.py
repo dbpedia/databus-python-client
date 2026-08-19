@@ -115,3 +115,15 @@ def test_summary_no_error_line_when_no_operation_error():
     }
     output = format_summary(manifest)
     assert "Error" not in output
+
+def test_summary_ignores_step_name_field_gracefully():
+    """dbus:stepName is a per-file field, not surfaced in the top-level
+    summary -- confirms it doesn't break formatting."""
+    manifest = {
+        "dbus:command": "workflow",
+        "dcterms:issued": {"@value": "2024-03-24T10:00:00Z"},
+        "dbus:executionResult": {"dbus:succeeded": 1, "dbus:failed": 0, "dbus:totalBytes": 0},
+        "dataid:distribution": {"dataid:file": [{"dbus:stepName": "fetch"}]},
+    }
+    output = format_summary(manifest)
+    assert "Command  : workflow" in output

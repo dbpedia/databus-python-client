@@ -583,30 +583,67 @@ def workflow():
 
 @workflow.command("run")
 @click.argument("workflow_path", type=click.Path(exists=True, dir_okay=False))
-def workflow_run(workflow_path):
+@click.option(
+    "--manifest",
+    "manifest_path",
+    default=None,
+    help="Write a unified JSON-LD manifest of the entire workflow run to PATH.",
+)
+def workflow_run(workflow_path, manifest_path):
     """
     Run a declarative workflow pipeline from a YAML file.
 
     Executes each step in order, chaining outputs between steps via
     ${steps.name.output_files}-style references, and applying each
-    step's on_error behavior (fail/continue/retry).
+    step's on_error behavior (fail/continue/retry). Prints a console
+    summary after every run. Use --manifest to also write a unified
+    JSON-LD manifest covering every step.
     """
     try:
         parsed = parse_workflow(workflow_path)
     except WorkflowParseError as e:
         raise click.ClickException(str(e))
 
-    context = StepContext()
-    engine = WorkflowEngine(context=context)
+    # CLI flag takes priority; falls back to the YAML file's own
+    # top-level 'manifest:' key if --manifest was not given on the
+    # command line.
+    if manifest_path is None:
+        manifest_path = parsed.get("manifest")
 
+    # A workflow-level manifest is always built internally (for the
+    # automatic console summary), even when no manifest path is set.
+    # It's only written to disk when a path is provided (via --manifest
+    # or the YAML file's own 'manifest:' key).
+    manifest_ctx = ManifestContext(command="workflow")
+
+    step_context = StepContext()
+    engine = WorkflowEngine(context=step_context, manifest_context=manifest_ctx)
+
+    workflow_error = None
     try:
-        results = engine.run(parsed["steps"])
+        engine.run(parsed["steps"])
     except WorkflowExecutionError as e:
-        raise click.ClickException(str(e))
+        workflow_error = e
+    finally:
+        click.echo("Workflow complete." if workflow_error is None else "Workflow failed.")
+        for result in engine.results:
+            click.echo(f"  {result.name}: {result.status}")
 
-    click.echo("Workflow complete.")
-    for result in results:
-        click.echo(f"  {result.name}: {result.status}")
+        click.echo("")
+        click.echo(format_summary(ManifestWriter.build_manifest_dict(manifest_ctx)))
+
+        if manifest_path:
+            try:
+                actual_path = ManifestWriter.write(manifest_ctx, manifest_path)
+                click.echo(f"\nManifest written to {actual_path}")
+            except (OSError, IOError) as e:
+                click.echo(
+                    f"WARNING: Manifest could not be written to {manifest_path}: {e}",
+                    err=True,
+                )
+
+    if workflow_error is not None:
+        raise click.ClickException(str(workflow_error))
 
 if __name__ == "__main__":
     app()

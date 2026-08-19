@@ -30,31 +30,14 @@ class ManifestWriter:
     """Serializes a ManifestContext to a JSON-LD manifest file."""
 
     @staticmethod
-    def write(context: ManifestContext, path: str) -> str:
-        """Write the manifest to a JSON-LD file at the given path.
-
-        Creates parent directories if they do not exist.
-        If a file already exists at `path`, auto-suffixes with _1, _2, etc.
-        and prints a warning rather than silently overwriting.
-        On failure, raises OSError — callers should catch and warn.
-
-        Args:
-            context: The completed ManifestContext to serialize.
-            path: File path to write the manifest to.
-
-        Raises:
-            OSError: If the file cannot be written, or if path is a directory.
+    def build_manifest_dict(context: ManifestContext) -> dict:
+        """Build the JSON-LD manifest dict from a context, without writing
+        to disk. Extracted from write() so callers (like the workflow
+        engine's automatic console summary) can get the dict without
+        needing a file path.
         """
-        if path.endswith(("/", "\\")) or os.path.isdir(path):
-            stripped = path.rstrip("/\\")
-            raise OSError(
-                f"--manifest path '{path}' is a directory, not a file. "
-                f"Please provide a full file path, e.g. '{stripped}/manifest.jsonld'."
-            )
-
         summary = context.summary()
 
-        # Build file entries using DataID vocabulary
         file_entries = []
         for f in context.files:
             entry: dict = {
@@ -79,6 +62,8 @@ class ManifestWriter:
                 entry["dbus:errorTraceback"] = f["error_traceback"]
             if f.get("retry_count"):
                 entry["dbus:retryCount"] = f["retry_count"]
+            if f.get("step"):
+                entry["dbus:stepName"] = f["step"]
             file_entries.append(entry)
 
         manifest = {
@@ -120,6 +105,33 @@ class ManifestWriter:
                 "dbus:errorMessage": context.operation_error["error_message"],
                 "dbus:errorTraceback": context.operation_error["error_traceback"],
             }
+
+        return manifest
+
+    @staticmethod
+    def write(context: ManifestContext, path: str) -> str:
+        """Write the manifest to a JSON-LD file at the given path.
+
+        Creates parent directories if they do not exist.
+        If a file already exists at `path`, auto-suffixes with _1, _2, etc.
+        and prints a warning rather than silently overwriting.
+        On failure, raises OSError — callers should catch and warn.
+
+        Args:
+            context: The completed ManifestContext to serialize.
+            path: File path to write the manifest to.
+
+        Raises:
+            OSError: If the file cannot be written, or if path is a directory.
+        """
+        if path.endswith(("/", "\\")) or os.path.isdir(path):
+            stripped = path.rstrip("/\\")
+            raise OSError(
+                f"--manifest path '{path}' is a directory, not a file. "
+                f"Please provide a full file path, e.g. '{stripped}/manifest.jsonld'."
+            )
+
+        manifest = ManifestWriter.build_manifest_dict(context)
 
         parent = os.path.dirname(os.path.abspath(path))
         if parent:
