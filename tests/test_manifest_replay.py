@@ -446,3 +446,17 @@ def test_replay_deploy_missing_deploy_mode_raises(tmp_path):
 
     with pytest.raises(ManifestReplayError, match="predate"):
         replay_manifest(str(path), overrides={"api_key": "dummy-key"})
+
+def test_replay_workflow_manifest_gives_clean_not_implemented_error(tmp_path):
+    """Workflow manifests have no replayParams (workflows don't call
+    record_params()). Confirm this gives the standard 'not implemented'
+    message, not a confusing validation error about a missing field."""
+    manifest = {
+        "@type": "dbus:OperationManifest",
+        "dbus:command": "workflow",
+    }
+    path = tmp_path / "workflow-manifest.jsonld"
+    _write_manifest(path, manifest)
+
+    with pytest.raises(ManifestReplayError, match="not implemented"):
+        replay_manifest(str(path))

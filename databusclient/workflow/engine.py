@@ -130,17 +130,26 @@ class WorkflowEngine:
         workflow-level master manifest, tagged with the step name. If the
         step failed, also record a synthetic entry so the failure is
         visible in the manifest even if the step recorded no per-file
-        entries before failing.
+        entries before failing. The synthetic entry is tagged with the
+        same "step" field merge_from() uses, so format_summary()'s
+        [stepname] prefix mechanism works consistently for BOTH per-file
+        failures (merged from a step's own context) and whole-step
+        failures (no file-level detail available at all) -- previously
+        only the merged case was tagged, so whole-step failures (like an
+        auth error before any file work happens) showed up without the
+        [stepname] prefix, relying on the step name being embedded in a
+        fake url string instead.
         """
         if self.manifest_context is None or step_manifest_ctx is None:
             return
         self.manifest_context.merge_from(step_manifest_ctx, step_name=step_name)
         if error is not None:
             self.manifest_context.record_file(
-                url=f"step:{step_name}",
+                url="(no file-level detail -- step failed before producing one)",
                 status="failed",
                 error_message=str(error),
             )
+            self.manifest_context.files[-1]["step"] = step_name
 
     def _run_with_retry(self, name: str, step: Any, step_config: Dict[str, Any]) -> StepResult:
         retry_config = step_config["retry"]
