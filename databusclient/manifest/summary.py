@@ -87,7 +87,7 @@ def format_summary(manifest: Dict[str, Any]) -> str:
     ]
     if failed_files:
         lines.append("")
-        lines.append("Failed files:")
+        lines.append("Failures:")
         for f in failed_files:
             step = f.get("dbus:stepName")
             url = f.get("dcat:downloadURL", "unknown")

@@ -146,7 +146,7 @@ def test_summary_lists_failed_file_details_with_step_name():
         },
     }
     output = format_summary(manifest)
-    assert "Failed files:" in output
+    assert "Failures:" in output
     assert "[deploy_with_bad_key] step:deploy_with_bad_key: Authentication failed." in output
 
 
@@ -168,7 +168,7 @@ def test_summary_lists_failed_file_details_without_step_name():
         },
     }
     output = format_summary(manifest)
-    assert "Failed files:" in output
+    assert "Failures:" in output
     assert "https://a.org/missing.ttl: 404 Not Found" in output
 
 
@@ -182,4 +182,4 @@ def test_summary_no_failed_files_section_when_all_succeeded():
         },
     }
     output = format_summary(manifest)
-    assert "Failed files:" not in output
+    assert "Failures:" not in output
