@@ -160,7 +160,7 @@ def test_summary_lists_failed_file_details_without_step_name():
         "dataid:distribution": {
             "dataid:file": [
                 {
-                    "dcat:downloadURL": "https://a.org/missing.ttl",
+                    "dcat:downloadURL": "https://databus.dbpedia.org/account/notexisting",
                     "dbus:status": "failed",
                     "dbus:errorMessage": "404 Not Found",
                 },
@@ -169,7 +169,7 @@ def test_summary_lists_failed_file_details_without_step_name():
     }
     output = format_summary(manifest)
     assert "Failures:" in output
-    assert "https://a.org/missing.ttl: 404 Not Found" in output
+    assert "https://databus.dbpedia.org/account/notexisting: 404 Not Found" in output
 
 
 def test_summary_no_failed_files_section_when_all_succeeded():

@@ -56,7 +56,7 @@ def test_404_records_failed_manifest_entry(monkeypatch):
     monkeypatch.setattr("requests.get", lambda *a, **k: FakeGetResp())
 
     ctx = ManifestContext(command="download")
-    dl._download_file("https://example.org/missing.ttl", localDir=".", manifest_context=ctx)
+    dl._download_file("https://databus.dbpedia.org/account/notexisting", localDir=".", manifest_context=ctx)
 
     assert len(ctx.files) == 1
     assert ctx.files[0]["status"] == "failed"
