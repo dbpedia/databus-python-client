@@ -25,4 +25,4 @@ databusclient workflow run download-deploy.yml
 
 Workflows can write a unified manifest covering every step in two ways: pass `--manifest path.jsonld` on the command line, or set a top-level `manifest:` key inside the YAML file itself (the command-line flag takes priority if both are given). Several of the examples above use the YAML key. Every manifest file entry that came from a workflow step is tagged with `dbus:stepName`, so a multi-step run stays traceable to which step produced or failed on which file.
 
-See the main [README's Workflow section](../../README.md#cli-workflow) for the full YAML format, step chaining, error handling, and WebDAV deploy mode documentation.
+See the [CLI usage documentation](../../cli-usage.md#workflow) for the full YAML format, step chaining, error handling, and WebDAV deploy mode documentation.
