@@ -1,0 +1,24 @@
+manifest: ./manifests/nightly-publish.jsonld
+steps:
+  - name: fetch_latest_data
+    command: download
+    uri: https://databus.dbpedia.org/DhanashreeP/test-group/workflow-source-data/1.0
+    localdir: ./workflow-output/nightly
+
+  - name: publish_processed_dataset
+    command: deploy
+    version_id: https://databus.dbpedia.org/DhanashreeP/test-group/nightly-demo/1.0
+    title: "Nightly Publishing Demo"
+    abstract: "Automated nightly publishing pipeline example"
+    description: "Demonstrates download -> deploy -> cleanup running unattended"
+    license: https://creativecommons.org/licenses/by-sa/3.0/
+    api_key: ${DATABUS_API_KEY}
+    files: ${steps.fetch_latest_data.output_urls}
+    on_error: fail
+
+  - name: cleanup_previous_version
+    command: delete
+    uris:
+      - https://databus.dbpedia.org/DhanashreeP/test-group/nightly-demo/1.0
+    api_key: ${DATABUS_API_KEY}
+    on_error: continue

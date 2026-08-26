@@ -294,6 +294,12 @@ def replay_manifest(
     if not command:
         raise ManifestReplayError("Manifest missing required field dbus:command.")
 
+    if command not in ("download", "delete", "deploy"):
+        raise ManifestReplayError(
+            f"Replay for command '{command}' is not implemented yet. "
+            "Currently supported: download, delete, deploy."
+        )
+
     replay_params = _validate_replay_params(manifest.get("dbus:replayParams"))
 
     if command == "download":
@@ -306,8 +312,3 @@ def replay_manifest(
 
     if command == "deploy":
         return _replay_deploy(replay_params, overrides)
-
-    raise ManifestReplayError(
-        f"Replay for command '{command}' is not implemented yet. "
-        "Currently supported: download, delete, deploy."
-    )

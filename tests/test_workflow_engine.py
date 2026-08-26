@@ -134,3 +134,89 @@ def test_unknown_step_reference_surfaces_as_workflow_execution_error(monkeypatch
             {"name": "publish", "command": "deploy",
              "files": "${steps.nonexistent.output_files}"},
         ])
+
+def test_workflow_manifest_records_step_names(monkeypatch, tmp_path):
+    from databusclient.manifest.context import ManifestContext
+
+    class FetchStep:
+        def run(self, step_config, context):
+            context.manifest_context.record_file(url="https://a.org/x", status="success")
+
+    class PublishStep:
+        def run(self, step_config, context):
+            context.manifest_context.record_file(url="https://a.org/y", status="success")
+
+    from databusclient.workflow import steps as steps_module
+    monkeypatch.setitem(steps_module.STEP_REGISTRY, "download", FetchStep)
+    monkeypatch.setitem(steps_module.STEP_REGISTRY, "deploy", PublishStep)
+
+    manifest_ctx = ManifestContext(command="workflow")
+    engine = WorkflowEngine(manifest_context=manifest_ctx)
+    engine.run([
+        {"name": "fetch", "command": "download"},
+        {"name": "publish", "command": "deploy"},
+    ])
+
+    steps_seen = {f["url"]: f.get("step") for f in manifest_ctx.files}
+    assert steps_seen["https://a.org/x"] == "fetch"
+    assert steps_seen["https://a.org/y"] == "publish"
+
+
+def test_workflow_manifest_records_failed_step(monkeypatch):
+    from databusclient.manifest.context import ManifestContext
+
+    class FailingStep:
+        def run(self, step_config, context):
+            raise RuntimeError("boom")
+
+    from databusclient.workflow import steps as steps_module
+    monkeypatch.setitem(steps_module.STEP_REGISTRY, "download", FailingStep)
+
+    manifest_ctx = ManifestContext(command="workflow")
+    engine = WorkflowEngine(manifest_context=manifest_ctx)
+
+    with pytest.raises(WorkflowExecutionError):
+        engine.run([{"name": "a", "command": "download"}])
+
+    failed_entries = [f for f in manifest_ctx.files if f["status"] == "failed"]
+    assert len(failed_entries) == 1
+    assert failed_entries[0]["step"] == "a"
+    assert "boom" in failed_entries[0]["error_message"]
+
+
+def test_workflow_without_manifest_context_still_works(monkeypatch):
+    """No manifest_context given -- workflow still runs normally, no crash."""
+    class OKStep:
+        def run(self, step_config, context):
+            pass
+
+    from databusclient.workflow import steps as steps_module
+    monkeypatch.setitem(steps_module.STEP_REGISTRY, "download", OKStep)
+
+    engine = WorkflowEngine()
+    results = engine.run([{"name": "a", "command": "download"}])
+    assert results[0].status == "success"
+
+def test_workflow_manifest_whole_step_failure_gets_step_tag(monkeypatch):
+    """Whole-step failures (no file-level work happened) must be tagged
+    with 'step' the same way merged per-file failures are, so
+    format_summary()'s [stepname] prefix works for both cases."""
+    from databusclient.manifest.context import ManifestContext
+
+    class FailingStep:
+        def run(self, step_config, context):
+            raise RuntimeError("auth failed")
+
+    from databusclient.workflow import steps as steps_module
+    monkeypatch.setitem(steps_module.STEP_REGISTRY, "deploy", FailingStep)
+
+    manifest_ctx = ManifestContext(command="workflow")
+    engine = WorkflowEngine(manifest_context=manifest_ctx)
+
+    with pytest.raises(WorkflowExecutionError):
+        engine.run([{"name": "deploy_with_bad_key", "command": "deploy"}])
+
+    failed = [f for f in manifest_ctx.files if f["status"] == "failed"]
+    assert len(failed) == 1
+    assert failed[0]["step"] == "deploy_with_bad_key"
+    assert "auth failed" in failed[0]["error_message"]

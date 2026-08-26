@@ -371,3 +371,53 @@ def test_deploy_step_classic_mode_still_works_with_urls(monkeypatch):
 
     assert captured["kwargs"]["distributions"] == ["https://example.org/data.ttl"]
     assert ctx.get_output("publish", "output_files") == ["https://example.org/data.ttl"]
+
+def test_deploy_step_records_to_manifest_context_on_success(monkeypatch):
+    from databusclient.manifest.context import ManifestContext
+
+    def fake_create_dataset(**kwargs):
+        return {"@graph": [{"@id": "fake"}]}
+
+    def fake_deploy(dataid, api_key):
+        pass
+
+    monkeypatch.setattr("databusclient.workflow.steps.create_dataset", fake_create_dataset)
+    monkeypatch.setattr("databusclient.workflow.steps.api_deploy_call", fake_deploy)
+
+    manifest_ctx = ManifestContext(command="download")
+    ctx = StepContext(manifest_context=manifest_ctx)
+    step = DeployStep()
+    step.run({
+        "name": "publish", "command": "deploy",
+        "version_id": "https://databus.dbpedia.org/a/b/c/1.0",
+        "title": "T", "abstract": "A", "description": "D",
+        "license": "https://license.example.org", "api_key": "key123",
+        "files": ["https://example.org/data.ttl"],
+    }, ctx)
+
+    assert len(manifest_ctx.files) == 1
+    assert manifest_ctx.files[0]["url"] == "https://example.org/data.ttl"
+    assert manifest_ctx.files[0]["status"] == "success"
+
+
+def test_deploy_step_does_nothing_when_no_manifest_context(monkeypatch):
+    """No manifest_context set -- must not crash, just skip recording."""
+    def fake_create_dataset(**kwargs):
+        return {"@graph": [{"@id": "fake"}]}
+
+    def fake_deploy(dataid, api_key):
+        pass
+
+    monkeypatch.setattr("databusclient.workflow.steps.create_dataset", fake_create_dataset)
+    monkeypatch.setattr("databusclient.workflow.steps.api_deploy_call", fake_deploy)
+
+    ctx = StepContext()
+    step = DeployStep()
+    step.run({
+        "name": "publish", "command": "deploy",
+        "version_id": "https://databus.dbpedia.org/a/b/c/1.0",
+        "title": "T", "abstract": "A", "description": "D",
+        "license": "https://license.example.org", "api_key": "key123",
+        "files": ["https://example.org/data.ttl"],
+    }, ctx)
+    # No assertion needed beyond "did not raise"

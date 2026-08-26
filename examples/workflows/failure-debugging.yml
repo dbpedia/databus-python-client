@@ -1,0 +1,17 @@
+manifest: ./manifests/failure-debug.jsonld
+steps:
+  - name: fetch_source
+    command: download
+    uri: https://databus.dbpedia.org/DhanashreeP/test-group/workflow-source-data/1.0
+    localdir: ./workflow-output/failure-demo
+
+  - name: deploy_with_bad_key
+    command: deploy
+    version_id: https://databus.dbpedia.org/DhanashreeP/test-group/failure-demo/1.0
+    title: "Failure Debugging Demo"
+    abstract: "Intentionally fails to demonstrate manifest/console error output"
+    description: "Deploys with an invalid API key on purpose"
+    license: https://creativecommons.org/licenses/by-sa/3.0/
+    api_key: THIS-KEY-IS-INTENTIONALLY-INVALID
+    files: ${steps.fetch_source.output_urls}
+    on_error: fail

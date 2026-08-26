@@ -157,3 +157,24 @@ class ManifestContext:
             "failed": failed,
             "total_bytes": total_bytes,
         }
+    
+    def merge_from(self, other: "ManifestContext", step_name: Optional[str] = None) -> None:
+        """Merge another context's recorded files into this one.
+
+        Used by the workflow engine: each step records into its own
+        temporary ManifestContext (so per-step failures/successes stay
+        isolated), then that context's entries are merged into the
+        workflow-level master context here, tagged with which step
+        produced them.
+
+        Args:
+            other: The ManifestContext to merge entries from.
+            step_name: If given, tags each merged file entry with
+                "step": step_name, so a multi-step workflow manifest
+                remains traceable to which step produced which file.
+        """
+        for entry in other.files:
+            merged_entry = dict(entry)
+            if step_name is not None:
+                merged_entry["step"] = step_name
+            self.files.append(merged_entry)

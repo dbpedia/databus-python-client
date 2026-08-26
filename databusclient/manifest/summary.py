@@ -39,7 +39,7 @@ def format_summary(manifest: Dict[str, Any]) -> str:
 
     Args:
         manifest: A manifest dict, as produced by loading a manifest
-            JSON-LD file (e.g. via replay._load_manifest).
+            JSON-LD file (e.g. via replay.load_manifest).
 
     Returns:
         A formatted multi-line string ready to print to the console.
@@ -80,5 +80,19 @@ def format_summary(manifest: Dict[str, Any]) -> str:
             lines.append(f"Error    : {error_type}: {error_message}")
         else:
             lines.append(f"Error    : {error_message}")
+
+    failed_files = [
+        f for f in manifest.get("dataid:distribution", {}).get("dataid:file", [])
+        if f.get("dbus:status") == "failed"
+    ]
+    if failed_files:
+        lines.append("")
+        lines.append("Failures:")
+        for f in failed_files:
+            step = f.get("dbus:stepName")
+            url = f.get("dcat:downloadURL", "unknown")
+            error_message = f.get("dbus:errorMessage", "no error message recorded")
+            prefix = f"  [{step}] " if step else "  "
+            lines.append(f"{prefix}{url}: {error_message}")
 
     return "\n".join(lines)

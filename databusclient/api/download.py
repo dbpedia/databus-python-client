@@ -517,6 +517,12 @@ def _download_file(
     except requests.exceptions.HTTPError as e:
         if response.status_code == 404:
             print(f"WARNING: Skipping file {url} because it was not found (404).")
+            if manifest_context is not None:
+                manifest_context.record_file(
+                    url=url,
+                    status="failed",
+                    error_message="404 Not Found",
+                )
             return
         else:
             raise e
