@@ -6,82 +6,8 @@ To get started with the command-line interface (CLI) of the databus-python-clien
 
 ```bash
 databusclient --help
-
-# Output:
-Usage: databusclient [OPTIONS] COMMAND [ARGS]...
-
-  Databus Client CLI
-
-Options:
-  --help  Show this message and exit.
-
-Commands:
-  deploy    Flexible deploy to Databus command supporting three modes:
-  download  Download datasets from databus, optionally using vault access...
 ```
-
-<a id="cli-download"></a>
-### Download
-
-With the download command, you can download datasets or parts thereof from the Databus. The download command expects one or more Databus URIs or a SPARQL query as arguments. The URIs can point to files, versions, artifacts, groups, or collections. If a SPARQL query is provided, the query must return download URLs from the Databus which will be downloaded.
-
-```bash
-databusclient download $DOWNLOADTARGET
-```
-
-- `$DOWNLOADTARGET`
-  - Can be any Databus URI including collections OR SPARQL query (or several thereof).
-- `--localdir`
-  - If no `--localdir` is provided, the current working directory is used as base directory `./$ACCOUNT/$GROUP/$ARTIFACT/$VERSION/`. If `--localdir` is provided, it is used as the base directory for the same Databus layout, i.e. `$LOCALDIR/$ACCOUNT/$GROUP/$ARTIFACT/$VERSION/`.
-- `--vault-token`
-  - If the dataset/files to be downloaded require vault authentication, you need to provide a vault token with `--vault-token /path/to/vault-token.dat`. See [Registration (Access Token)](#registration-access-token) for details on how to get a vault token.
-
-  Note: Vault tokens are only required for certain protected Databus hosts (for example: `data.dbpedia.io`, `data.dev.dbpedia.link`). The client now detects those hosts and will fail early with a clear message if a token is required but not provided. Do not pass `--vault-token` for public downloads.
-- `--databus-key`
-  - If the databus is protected and needs API key authentication, you can provide the API key with `--databus-key YOUR_API_KEY`.
-- `--convert-to`
-  - Enables on-the-fly compression format conversion during download. Supported formats: `bz2`, `gz`, `xz`. Downloaded files will be automatically decompressed and recompressed to the target format. Example: `--convert-to gz` converts all downloaded compressed files to gzip format.
-- `--convert-from`
-  - Optional filter to specify which source compression format should be converted. Use with `--convert-to` to convert only files with a specific compression format. Example: `--convert-to gz --convert-from bz2` converts only `.bz2` files to `.gz`, leaving other formats unchanged.
-- `--validate-checksum`
-  - Validates the checksums of downloaded files against the checksums provided by the Databus. If a checksum does not match, an error is raised and the file is deleted.
-
-**Help and further information on download command:**
-```bash
 databusclient download --help
-
-# Output:
-Usage: databusclient download [OPTIONS] DATABUSURIS...
-
-  Download datasets from databus, optionally using vault access if vault
-  options are provided. Supports on-the-fly compression format conversion
-  using --convert-to and --convert-from options.
-
-Options:
-  --localdir TEXT             Base directory for the local Databus folder
-                              structure (if not given, current working
-                              directory is used)
-  --databus TEXT              Databus URL (if not given, inferred from
-                              databusuri, e.g.
-                              https://databus.dbpedia.org/sparql)
-  --vault-token TEXT          Path to Vault refresh token file
-  --databus-key TEXT          Databus API key to download from protected
-                              databus
-  --all-versions              When downloading artifacts, download all
-                              versions instead of only the latest
-  --authurl TEXT              Keycloak token endpoint URL  [default: https://a
-                              uth.dbpedia.org/realms/dbpedia/protocol/openid-
-                              connect/token]
-  --clientid TEXT             Client ID for token exchange  [default: vault-
-                              token-exchange]
-  --convert-to [bz2|gz|xz]    Target compression format for on-the-fly
-                              conversion during download (supported: bz2, gz,
-                              xz)
-  --convert-from [bz2|gz|xz]  Source compression format to convert from
-                              (optional filter). Only files with this
-                              compression will be converted.
-  --validate-checksum         Validate checksums of downloaded files
-  --help                      Show this message and exit.
 ```
 
 #### Examples of using the download command
@@ -119,13 +45,13 @@ databusclient download 'PREFIX dcat: <http://www.w3.org/ns/dcat#> SELECT ?x WHER
 **Download with Compression Conversion**: download files and convert them to a different compression format on-the-fly
 ```bash
 # Convert all compressed files to gzip format
-databusclient download https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals/2022.12.01 --convert-to gz
+databusclient download https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals/2022.12.01 --compression gz
 
-# Convert only bz2 files to xz format, leaving other compressions unchanged
-databusclient download https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals --convert-to xz --convert-from bz2
+# Decompress files without recompressing
+databusclient download https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals --compression none
 
 # Download a collection and unify all files to bz2 format
-databusclient download https://databus.dbpedia.org/dbpedia/collections/dbpedia-snapshot-2022-12 --convert-to bz2
+databusclient download https://databus.dbpedia.org/dbpedia/collections/dbpedia-snapshot-2022-12 --compression bz2
 ```
 
 <a id="cli-deploy"></a>
@@ -143,39 +69,6 @@ databusclient deploy [OPTIONS] [DISTRIBUTIONS]...
 **Help and further information on deploy command:**
 ```bash
 databusclient deploy --help
-
-# Output:
-Usage: databusclient deploy [OPTIONS] [DISTRIBUTIONS]...
-
-  Flexible deploy to Databus command supporting three modes:
-
-  - Classic deploy (distributions as arguments)
-
-  - Metadata-based deploy (--metadata <file>)
-
-  - Upload & deploy via Nextcloud (--webdav-url, --remote, --path)
-
-Options:
-  --version-id TEXT   Target databus version/dataset identifier of the form <h
-                      ttps://databus.dbpedia.org/$ACCOUNT/$GROUP/$ARTIFACT/$VE
-                      RSION>  [required]
-  --title TEXT        Artifact & Version Title: used for BOTH artifact and
-                      version. Keep stable across releases; identifies the
-                      data series.  [required]
-  --abstract TEXT     Artifact & Version Abstract: used for BOTH artifact and
-                      version (max 200 chars). Updating it changes both
-                      artifact and version metadata.  [required]
-  --description TEXT  Artifact & Version Description: used for BOTH artifact
-                      and version. Supports Markdown. Updating it changes both
-                      artifact and version metadata.  [required]
-  --license TEXT      License (see dalicc.net)  [required]
-  --apikey TEXT       API key  [required]
-  --metadata PATH     Path to metadata JSON file (for metadata mode)
-  --webdav-url TEXT   WebDAV URL (e.g.,
-                      https://cloud.example.com/remote.php/webdav)
-  --remote TEXT       rclone remote name (e.g., 'nextcloud')
-  --path TEXT         Remote path on Nextcloud (e.g., 'datasets/mydataset')
-  --help              Show this message and exit.
 ```
 
 ### Mode 1: Classic Deploy (Distributions)
@@ -264,20 +157,6 @@ databusclient delete [OPTIONS] DATABUSURIS...
 **Help and further information on delete command:**
 ```bash
 databusclient delete --help
-
-# Output:
-Usage: databusclient delete [OPTIONS] DATABUSURIS...
-
-  Delete a dataset from the databus.
-
-  Delete a group, artifact, or version identified by the given databus URI.
-  Will recursively delete all data associated with the dataset.
-
-Options:
-  --databus-key TEXT  Databus API key to access protected databus  [required]
-  --dry-run           Perform a dry run without actual deletion
-  --force             Force deletion without confirmation prompt
-  --help              Show this message and exit.
 ```
 
 To authenticate the delete request, you need to provide an API key with `--databus-key YOUR_API_KEY`.

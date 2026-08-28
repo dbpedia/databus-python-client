@@ -10,10 +10,10 @@ Command-line and Python client for downloading and deploying datasets on DBpedia
 - [DBpedia](#dbpedia)
   - [Registration (Access Token)](#registration-access-token)
   - [DBpedia Knowledge Graphs](#dbpedia-knowledge-graphs)
-    - [Download Live Fusion KG Dump](#download-live-fusion-kg-dump)
-    - [Download Enriched Knowledge Graphs](#download-enriched-knowledge-graphs)
-    - [Download DBpedia Wikipedia Knowledge Graphs](#download-dbpedia-wikipedia-knowledge-graphs)
-    - [Download DBpedia Wikidata Knowledge Graphs](#download-dbpedia-wikidata-knowledge-graphs)
+    - [Download Live Fusion KG Dump (BUSL 1.1, registration needed)](#download-live-fusion-kg-dump-busl-11-registration-needed)
+    - [Download Enriched Knowledge Graphs (BUSL 1.1, registration needed)](#download-enriched-knowledge-graphs-busl-11-registration-needed)
+    - [Download DBpedia Wikipedia Knowledge Graphs (CC-BY-SA, no registration needed)](#download-dbpedia-wikipedia-knowledge-graphs-cc-by-sa-no-registration-needed)
+    - [Download DBpedia Wikidata Knowledge Graphs (CC-BY-SA, no registration needed)](#download-dbpedia-wikidata-knowledge-graphs-cc-by-sa-no-registration-needed)
 - [CLI Usage](#cli-usage)
   - [Download](#cli-download)
   - [Deploy](#cli-deploy)
@@ -52,9 +52,7 @@ You can then use the client in the command line:
 
 ```bash
 databusclient --help
-databusclient deploy --help
-databusclient delete --help
-databusclient download --help
+databusclient [delete|deploy|download|manifest|workflow] --help
 ```
 
 ### Docker
@@ -84,7 +82,7 @@ To download BUSL 1.1 licensed datasets, you need to register and get an access t
 
 ### DBpedia Knowledge Graphs
 
-#### Download Live Fusion KG Dump
+#### Download Live Fusion KG Dump (BUSL 1.1, registration needed)
 
 High-frequency, conflict-resolved knowledge graph that merges Live Wikipedia and Wikidata signals into a single, queryable dump for enterprise consumption. [More information](https://databus.dbpedia.org/dbpedia-enterprise/live-fusion-kg-dump).
 
@@ -92,7 +90,7 @@ High-frequency, conflict-resolved knowledge graph that merges Live Wikipedia and
 databusclient download https://databus.dbpedia.org/dbpedia-enterprise/live-fusion-kg-dump --vault-token vault-token.dat
 ```
 
-#### Download Enriched Knowledge Graphs
+#### Download Enriched Knowledge Graphs (BUSL 1.1, registration needed)
 
 **DBpedia Wikipedia Extraction Enriched**
 
@@ -102,7 +100,7 @@ DBpedia-based enrichment of structured Wikipedia extractions, currently EN DBped
 databusclient download https://databus.dbpedia.org/dbpedia-enterprise/dbpedia-wikipedia-kg-enriched-dump --vault-token vault-token.dat
 ```
 
-#### Download DBpedia Wikipedia Knowledge Graphs
+#### Download DBpedia Wikipedia Knowledge Graphs (CC-BY-SA, no registration needed)
 
 Original extraction of structured Wikipedia data before enrichment. [More information](https://databus.dbpedia.org/dbpedia/dbpedia-wikipedia-kg-dump).
 
@@ -110,7 +108,7 @@ Original extraction of structured Wikipedia data before enrichment. [More inform
 databusclient download https://databus.dbpedia.org/dbpedia/dbpedia-wikipedia-kg-dump
 ```
 
-#### Download DBpedia Wikidata Knowledge Graphs
+#### Download DBpedia Wikidata Knowledge Graphs (CC-BY-SA, no registration needed)
 
 Original extraction of structured Wikidata data before enrichment. [More information](https://databus.dbpedia.org/dbpedia/dbpedia-wikidata-kg-dump).
 
@@ -125,27 +123,27 @@ The command-line interface provides commands for downloading, deploying, and del
 <a id="cli-download"></a>
 ### Download
 
-The `download` command retrieves Databus files, versions, artifacts, groups, collections, or SPARQL query results. It supports authentication, checksum validation, compression conversion, and RDF or tabular format conversion. See the [download docs](doc/cli-usage.md#download).
+The `download` command retrieves Databus files, versions, artifacts, groups, collections, or SPARQL query results. It supports authentication, checksum validation, compression conversion, and RDF or tabular format conversion. See the [download docs](doc/cli-usage.md#cli-download).
 
 <a id="cli-deploy"></a>
 ### Deploy
 
-The `deploy` command publishes datasets using distribution arguments, metadata JSON files, or WebDAV/Nextcloud uploads. See the [deploy docs](doc/cli-usage.md#deploy).
+The `deploy` command publishes datasets using distribution arguments, metadata JSON files, or WebDAV/Nextcloud uploads. See the [deploy docs](doc/cli-usage.md#cli-deploy).
 
 <a id="cli-delete"></a>
 ### Delete
 
-The `delete` command removes Databus versions, artifacts, groups, or collections and provides dry-run and confirmation safeguards. See the [delete docs](doc/cli-usage.md#delete).
+The `delete` command removes Databus versions, artifacts, groups, or collections and provides dry-run and confirmation safeguards. See the [delete docs](doc/cli-usage.md#cli-delete).
 
 <a id="cli-manifest"></a>
 ### Manifest
 
-The manifest options record operation parameters, file outcomes, checksums, byte sizes, and execution summaries in JSON-LD. Manifests can also be replayed or summarized. See the [manifest docs](doc/cli-usage.md#manifest).
+The manifest options record operation parameters, file outcomes, checksums, byte sizes, and execution summaries in JSON-LD. Manifests can also be replayed or summarized. See the [manifest docs](doc/cli-usage.md#cli-manifest).
 
 <a id="cli-workflow"></a>
 ### Workflow
 
-The `workflow` command runs declarative download, deploy, and delete pipelines from YAML files, with step chaining and per-step error handling. See the [workflow docs](doc/cli-usage.md#workflow).
+The `workflow` command runs declarative download, deploy, and delete pipelines from YAML files, with step chaining and per-step error handling. See the [workflow docs](doc/cli-usage.md#cli-workflow).
 
 ## Module Usage
 
