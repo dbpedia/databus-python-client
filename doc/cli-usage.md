@@ -307,3 +307,69 @@ databusclient delete https://databus.dbpedia.org/dbpedia/mappings --databus-key 
 ```bash
 databusclient delete https://databus.dbpedia.org/dbpedia/collections/dbpedia-snapshot-2022-12 --databus-key YOUR_API_KEY
 ```
+
+<a id="cli-manifest"></a>
+### Manifest
+
+The `download`, `deploy`, and `delete` commands accept `--manifest PATH` to write a structured JSON-LD record of the operation.
+
+```bash
+databusclient download https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals/2022.12.01 --manifest ./manifests/download-run.jsonld
+```
+
+The manifest records input parameters, file URLs, checksums, byte sizes, timestamps, and success or failure status. API keys and vault tokens are not stored. If the operation fails, the manifest includes a `dbus:operationError` record with the error type and message. Existing target paths are preserved by writing an auto-suffixed manifest path.
+
+See [Reproducible Download](examples/reproducible-download.md) for a complete download recording and replay example.
+
+<a id="cli-manifest-replay"></a>
+#### Replay
+
+Replay a recorded download, deploy, or delete operation with:
+
+```bash
+databusclient manifest replay [OPTIONS] MANIFEST_PATH
+```
+
+Credentials are never stored in manifests and must be supplied again when needed. Use `--localdir` for download output, `--databus` for the endpoint, `--vault-token`, `--databus-key`, or `--apikey` for authentication, and `--force` or `--dry-run` for delete replay. Deploy replay supports classic and metadata-file deployments, but not WebDAV deployments because their original local files may no longer exist.
+
+```bash
+databusclient manifest replay ./manifests/download-run.jsonld --localdir ./replayed-data
+```
+
+<a id="cli-manifest-summary"></a>
+#### Summary
+
+Print the stored results from a manifest without replaying the operation or accessing the network:
+
+```bash
+databusclient manifest summary ./manifests/download-run.jsonld
+```
+
+The summary displays the command, execution time, file counts, byte total when available, overall status, operation errors, and individual failed files.
+
+<a id="cli-workflow"></a>
+### Workflow
+
+Run a multi-step `download`, `deploy`, and `delete` pipeline from YAML:
+
+```bash
+databusclient workflow run [OPTIONS] WORKFLOW_PATH
+```
+
+Each workflow has a top-level `steps` list. Steps run in order, can reference earlier outputs using `${steps.step_name.output_files}` or `${steps.step_name.output_urls}`, and support `on_error: fail`, `continue`, or `retry`. Retry settings use `max_attempts` and `delay_seconds`.
+
+```yaml
+steps:
+  - name: fetch_dataset
+    command: download
+    uri: https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals/2022.12.01/mappingbased-literals_lang=az.ttl.bz2
+    localdir: ./data
+  - name: publish_dataset
+    command: deploy
+    files: ${steps.fetch_dataset.output_urls}
+    on_error: fail
+```
+
+Workflow runs always produce a console summary. Pass `--manifest PATH`, or set the top-level YAML `manifest` value, to also write one unified JSON-LD manifest covering the complete workflow and each step.
+
+See [Workflow Examples](examples/workflows/README.md) for ready-to-use download, deploy, delete, and failure-handling workflows.

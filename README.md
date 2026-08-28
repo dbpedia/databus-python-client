@@ -205,6 +205,6 @@ My project extended the Databus Python Client with reproducible, workflow-aware 
 4. **Declarative Workflow Engine** — YAML-defined pipelines chaining `download`/`deploy`/`delete` steps, with step-to-step output chaining and per-step error handling (`fail`/`continue`/`retry`). [CLI usage](doc/cli-usage.md).
 5. **Workflow-Manifest Integration and Example Workflows** — a unified manifest covering an entire workflow run, an automatic console summary, and eight example workflows. [Workflow examples](doc/examples/).
 
-My project proposal is available [here](https://summerofcode.withgoogle.com/media/user/a5b28077d47f/proposal/gAAAAABqhtwUQIp0-YsMfaOyBcw-aLusAYRh7-yoTxIbd4i3J3KZHjb3xU3aePu51_bUmlQGAZZrnOf9NgWgY9LFWqTmF0poD6C0iiB2bgmPkkoSYTBx-xE=.pdf).
+My project proposal is available [here](https://drive.google.com/file/d/1Ie_xWJ3Ncis1f_AoLroCZyjd6GsH-RVG/view?usp=sharing).
 
 Thank you.
