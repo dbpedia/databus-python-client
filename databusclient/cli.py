@@ -333,7 +333,7 @@ def download(
 ):
     """
     Download datasets from databus, optionally using vault access if vault options are provided.
-    Supports on-the-fly compression format conversion using --convert-to and --convert-from options.
+    Supports on-the-fly compression format conversion using the --compression option.
     """
     # Determine auth method for manifest (never store the token itself)
     auth_method = None

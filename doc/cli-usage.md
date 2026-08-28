@@ -6,7 +6,6 @@ To get started with the command-line interface (CLI) of the databus-python-clien
 
 ```bash
 databusclient --help
-```
 databusclient download --help
 ```
 
