@@ -62,7 +62,7 @@ Requirements: [Docker](https://docs.docker.com/get-docker/).
 docker run --rm -v $(pwd):/data dbpedia/databus-python-client --help
 ```
 
-The same Docker invocation pattern can be used for the commands documented in [CLI Usage](doc/cli-usage.md).
+The same Docker invocation pattern can be used for the commands documented in the [download](doc/cli-usage.md#cli-download), [deploy](doc/cli-usage.md#cli-deploy), [delete](doc/cli-usage.md#cli-delete), [manifest](doc/cli-usage.md#cli-manifest), and [workflow](doc/cli-usage.md#cli-workflow) sections.
 
 ## DBpedia
 
@@ -117,7 +117,7 @@ databusclient download https://databus.dbpedia.org/dbpedia/dbpedia-wikidata-kg-d
 
 ## CLI Usage
 
-The command-line interface provides commands for downloading, deploying, and deleting datasets, as well as recording manifests and running declarative workflows. Detailed command documentation, options, examples, manifest operations, and workflow syntax are available in [CLI Usage](doc/cli-usage.md).
+The command-line interface provides commands for downloading, deploying, and deleting datasets, as well as recording manifests and running declarative workflows. Detailed command documentation, options, examples, manifest operations, and workflow syntax are available in the [download](doc/cli-usage.md#cli-download), [deploy](doc/cli-usage.md#cli-deploy), [delete](doc/cli-usage.md#cli-delete), [manifest](doc/cli-usage.md#cli-manifest), and [workflow](doc/cli-usage.md#cli-workflow) sections.
 
 <a id="cli-download"></a>
 ### Download
