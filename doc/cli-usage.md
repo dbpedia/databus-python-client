@@ -1,12 +1,104 @@
 ## CLI Usage
 
-To get started with the command-line interface (CLI) of the databus-python-client, you can use either the Python installation or the Docker image. The examples below show both methods.
+To get started with the command-line interface (CLI) of the databus-python-client, the examples below show the current CLI usage.
 
 **Help and further general information:**
 
 ```bash
 databusclient --help
+
+# Output:
+Usage: databusclient [OPTIONS] COMMAND [ARGS]...
+
+  Databus Client CLI
+
+Options:
+  --help  Show this message and exit.
+
+Commands:
+  deploy    Flexible deploy to Databus command supporting three modes:
+  download  Download datasets from databus, optionally using vault access...
+```
+
+<a id="cli-download"></a>
+### Download
+
+With the download command, you can download datasets or parts thereof from the Databus. The download command expects one or more Databus URIs or a SPARQL query as arguments. The URIs can point to files, versions, artifacts, groups, or collections. If a SPARQL query is provided, the query must return download URLs from the Databus which will be downloaded.
+
+```bash
+databusclient download $DOWNLOADTARGET
+```
+
+- `$DOWNLOADTARGET`
+  - Can be any Databus URI including collections OR SPARQL query (or several thereof).
+- `--localdir`
+  - If no `--localdir` is provided, the current working directory is used as base directory `./$ACCOUNT/$GROUP/$ARTIFACT/$VERSION/`. If `--localdir` is provided, it is used as the base directory for the same Databus layout, i.e. `$LOCALDIR/$ACCOUNT/$GROUP/$ARTIFACT/$VERSION/`.
+- `--vault-token`
+  - If the dataset/files to be downloaded require vault authentication, you need to provide a vault token with `--vault-token /path/to/vault-token.dat`. See [Registration (Access Token)](#registration-access-token) for details on how to get a vault token.
+  
+  Note: Vault tokens are only required for certain protected Databus hosts (for example: `data.dbpedia.io`, `data.dev.dbpedia.link`). The client now detects those hosts and will fail early with a clear message if a token is required but not provided. Do not pass `--vault-token` for public downloads.
+- `--databus-key`
+  - If the databus is protected and needs API key authentication, you can provide the API key with `--databus-key YOUR_API_KEY`.
+- `--compression`
+  - Target compression conversion during download. Supported values are `bz2`, `gz`, `xz`, and `none`. Use `none` to decompress files without recompressing them.
+- `--format`
+  - Converts downloaded RDF or tabular files into another supported format. Common values include `ttl`, `nt`, `nq`, `trig`, `jsonld`, `csv`, `tsv`, and their full-name equivalents.
+- `--graph-name`
+  - Required when converting RDF triple formats into quad-based formats.
+- `--base-uri`
+  - Required when converting CSV/TSV inputs to RDF triples.
+- `--manifest`
+  - Writes a JSON-LD manifest for the download operation.
+- `--validate-checksum`
+  - Validates the checksums of downloaded files against the checksums provided by the Databus. If a checksum does not match, an error is raised and the file is deleted.
+
+**Help and further information on download command:**
+```bash
 databusclient download --help
+
+# Output:
+Usage: python -m databusclient.cli download [OPTIONS] DATABUSURIS...
+
+  Download datasets from databus, optionally using vault access if vault
+  options are provided. Supports on-the-fly compression format conversion
+  using the --compression option.
+
+Options:
+  --localdir TEXT                 Local databus folder (if not given, databus
+                                  folder structure is created in current
+                                  working directory)
+  --databus TEXT                  Databus URL (if not given, inferred from
+                                  databusuri, e.g.
+                                  https://databus.dbpedia.org/sparql)
+  --vault-token TEXT              Path to Vault refresh token file
+  --databus-key TEXT              Databus API key to download from protected
+                                  databus
+  --all-versions                  When downloading artifacts, download all
+                                  versions instead of only the latest
+  --authurl TEXT                  Keycloak token endpoint URL  [default: https
+                                  ://auth.dbpedia.org/realms/dbpedia/protocol/
+                                  openid-connect/token]
+  --clientid TEXT                 Client ID for token exchange  [default:
+                                  vault-token-exchange]
+  --compression [bz2|gz|xz|none]  Target compression format for on-the-fly
+                                  conversion during download. Source
+                                  compression is detected automatically from
+                                  the file extension. Use 'none' to decompress
+                                  files without recompressing.
+  --format [ntriples|nt|turtle|ttl|rdf-xml|rdf|xml|nquads|nq|trig|trix|json-ld|jsonld|csv|tsv]
+                                  Target format for on-the-fly format
+                                  conversion during download (Layer 2 and
+                                  Layer 3). Accepts full names or short aliases.
+  --graph-name TEXT               Named graph URI for Triple -> Quad
+                                  conversion. Required when converting RDF
+                                  triple formats to quad formats.
+  --base-uri TEXT                 Base URI for CSV -> RDF Triple conversion.
+                                  Required when converting CSV/TSV to RDF
+                                  triple formats.
+  --manifest TEXT                 Write a JSON-LD manifest of this operation
+                                  to PATH.
+  --validate-checksum             Validate checksums of downloaded files
+  --help                          Show this message and exit.
 ```
 
 #### Examples of using the download command
@@ -53,6 +145,20 @@ databusclient download https://databus.dbpedia.org/dbpedia/mappings/mappingbased
 databusclient download https://databus.dbpedia.org/dbpedia/collections/dbpedia-snapshot-2022-12 --compression bz2
 ```
 
+**Download and convert to another RDF or tabular format**
+```bash
+databusclient download https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals --format ttl
+
+# Use a named graph when converting triple RDF to quad RDF
+databusclient download https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals --format nq --graph-name http://example.org/graph
+
+# Use a base URI when converting CSV/TSV inputs to RDF triples
+databusclient download https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals --format ttl --base-uri http://example.org/base
+
+# Record the operation in a JSON-LD manifest
+databusclient download https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals --manifest ./manifests/download-run.jsonld
+```
+
 <a id="cli-deploy"></a>
 ### Deploy
 
@@ -68,6 +174,39 @@ databusclient deploy [OPTIONS] [DISTRIBUTIONS]...
 **Help and further information on deploy command:**
 ```bash
 databusclient deploy --help
+
+# Output:
+Usage: databusclient deploy [OPTIONS] [DISTRIBUTIONS]...
+
+  Flexible deploy to Databus command supporting three modes:
+
+  - Classic deploy (distributions as arguments)
+
+  - Metadata-based deploy (--metadata <file>)
+
+  - Upload & deploy via Nextcloud (--webdav-url, --remote, --path)
+
+Options:
+  --version-id TEXT   Target databus version/dataset identifier of the form <h
+                      ttps://databus.dbpedia.org/$ACCOUNT/$GROUP/$ARTIFACT/$VE
+                      RSION>  [required]
+  --title TEXT        Artifact & Version Title: used for BOTH artifact and
+                      version. Keep stable across releases; identifies the
+                      data series.  [required]
+  --abstract TEXT     Artifact & Version Abstract: used for BOTH artifact and
+                      version (max 200 chars). Updating it changes both
+                      artifact and version metadata.  [required]
+  --description TEXT  Artifact & Version Description: used for BOTH artifact
+                      and version. Supports Markdown. Updating it changes both
+                      artifact and version metadata.  [required]
+  --license TEXT      License (see dalicc.net)  [required]
+  --apikey TEXT       API key  [required]
+  --metadata PATH     Path to metadata JSON file (for metadata mode)
+  --webdav-url TEXT   WebDAV URL (e.g.,
+                      https://cloud.example.com/remote.php/webdav)
+  --remote TEXT       rclone remote name (e.g., 'nextcloud')
+  --path TEXT         Remote path on Nextcloud (e.g., 'datasets/mydataset')
+  --help              Show this message and exit.
 ```
 
 ### Mode 1: Classic Deploy (Distributions)
@@ -87,7 +226,6 @@ A few more notes for CLI usage:
 - The content variants can be left out ONLY IF there is just one distribution
   - For complete inferred: Just use the URL with `https://raw.githubusercontent.com/dbpedia/databus/master/server/app/api/swagger.yml`
   - If other parameters are used, you need to leave them empty like `https://raw.githubusercontent.com/dbpedia/databus/master/server/app/api/swagger.yml||yml|7a751b6dd5eb8d73d97793c3c564c71ab7b565fa4ba619e4a8fd05a6f80ff653:367116`
-
 
 ### Mode 2: Deploy with Metadata File
 
@@ -156,6 +294,20 @@ databusclient delete [OPTIONS] DATABUSURIS...
 **Help and further information on delete command:**
 ```bash
 databusclient delete --help
+
+# Output:
+Usage: databusclient delete [OPTIONS] DATABUSURIS...
+
+  Delete a dataset from the databus.
+
+  Delete a group, artifact, or version identified by the given databus URI.
+  Will recursively delete all data associated with the dataset.
+
+Options:
+  --databus-key TEXT  Databus API key to access protected databus  [required]
+  --dry-run           Perform a dry run without actual deletion
+  --force             Force deletion without confirmation prompt
+  --help              Show this message and exit.
 ```
 
 To authenticate the delete request, you need to provide an API key with `--databus-key YOUR_API_KEY`.
@@ -248,6 +400,17 @@ steps:
     on_error: fail
 ```
 
-Workflow runs always produce a console summary. Pass `--manifest PATH`, or set the top-level YAML `manifest` value, to also write one unified JSON-LD manifest covering the complete workflow and each step.
+Workflow runs always produce a console summary. Pass `--manifest PATH`, or set the top-level YAML `manifest` value, to also write one unified JSON-LD manifest covering the complete workflow and each step. Retry behavior is configured with a nested `retry` block, for example:
+
+```yaml
+steps:
+  - name: publish_dataset
+    command: deploy
+    files: ${steps.fetch_dataset.output_urls}
+    on_error: retry
+    retry:
+      max_attempts: 3
+      delay_seconds: 10
+```
 
 See [Workflow Examples](examples/workflows/README.md) for ready-to-use download, deploy, delete, and failure-handling workflows.
