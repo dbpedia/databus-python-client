@@ -1,0 +1,3 @@
+<http://dbpedia.org/resource/Leipzig> <http://www.w3.org/2000/01/rdf-schema#label> "Leipzig"@en <http://example.org/graph1> .
+<http://dbpedia.org/resource/Leipzig> <http://dbpedia.org/ontology/country> <http://dbpedia.org/resource/Germany> <http://example.org/graph1> .
+<http://dbpedia.org/resource/Germany> <http://www.w3.org/2000/01/rdf-schema#label> "Germany"@en <http://example.org/graph2> .

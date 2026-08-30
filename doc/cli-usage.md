@@ -33,7 +33,7 @@ databusclient download $DOWNLOADTARGET
 - `--compression`
   - Enables on-the-fly compression format conversion during download. Supported formats: `bz2`, `gz`, `xz`, `none`. The source compression is auto-detected from the file extension. Use `none` to decompress files without recompressing. Example: `--compression gz` converts all downloaded compressed files to gzip format.
 - `--format`
-  - Enables on-the-fly RDF and tabular format conversion during download (Layer 2 and Layer 3). Supported formats: `ntriples` (`nt`), `turtle` (`ttl`), `rdf-xml` (`rdf`, `xml`), `nquads` (`nq`), `trig`, `trix`, `json-ld` (`jsonld`), `csv`, `tsv`. Short aliases shown in brackets. Only the converted output file is kept Î“Ã‡Ã¶ the original is deleted after successful conversion. Within the same equivalence class (e.g. turtle to ntriples) conversion is lossless. Across classes (e.g. RDF to CSV) some flags below may be required.
+  - Enables on-the-fly RDF and tabular format conversion during download (Layer 2 and Layer 3). Supported formats: `ntriples` (`nt`), `turtle` (`ttl`), `rdf-xml` (`rdf`, `xml`), `nquads` (`nq`), `trig`, `trix`, `json-ld` (`jsonld`), `csv`, `tsv`. Short aliases shown in brackets. Only the converted output file is kept — the original is deleted after successful conversion. Within the same equivalence class (e.g. turtle to ntriples) conversion is lossless. Across classes (e.g. RDF to CSV) some flags below may be required.
 - `--graph-name`
   - Required when converting RDF triples to a quad format (e.g. turtle to nquads). Assigns all triples to the specified named graph URI. Example: `--format nquads --graph-name https://example.org/mygraph`.
 - `--base-uri`
@@ -105,7 +105,7 @@ databusclient download https://databus.dbpedia.org/dbpedia/mappings/mappingbased
 databusclient download https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals/2022.12.01/mappingbased-literals_lang=az.ttl.bz2 --format ntriples --compression gz
 ```
 
-**Download with Mapping Conversion (Layer 3)**: convert across format classes Î“Ã‡Ã¶ between RDF triples, RDF quads, and tabular data.
+**Download with Mapping Conversion (Layer 3)**: convert across format classes — between RDF triples, RDF quads, and tabular data.
 ```bash
 # RDF Triples -> RDF Quads (requires --graph-name)
 databusclient download https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals/2022.12.01/mappingbased-literals_lang=az.ttl.bz2 --format nquads --graph-name https://example.org/mygraph
@@ -304,13 +304,13 @@ Refer [examples/reproducible-download.md](examples/reproducible-download.md) for
 <a id="cli-manifest-replay"></a>
 #### Replay
 
-Any manifest written with `--manifest` can be replayed later using `databusclient manifest replay <path>`. Replay re-executes the original operation using the parameters recorded in the manifest Î“Ã‡Ã¶ you don't need to remember or retype the original command.
+Any manifest written with `--manifest` can be replayed later using `databusclient manifest replay <path>`. Replay re-executes the original operation using the parameters recorded in the manifest — you don't need to remember or retype the original command.
 
 ```bash
 databusclient manifest replay [OPTIONS] MANIFEST_PATH
 ```
 
-**Important:** credentials are never stored in the manifest and must always be supplied fresh at replay time Î“Ã‡Ã¶ `--vault-token`, `--databus-key`, and `--apikey` behave exactly as they do on the original commands.
+**Important:** credentials are never stored in the manifest and must always be supplied fresh at replay time — `--vault-token`, `--databus-key`, and `--apikey` behave exactly as they do on the original commands.
 
 ```bash
 databusclient manifest replay --help
@@ -320,7 +320,7 @@ databusclient manifest replay --help
 ```bash
 databusclient manifest replay ./manifests/download-run.jsonld --localdir ./replayed-data
 ```
-If `--localdir` is omitted, replay falls back to the same auto-computed folder structure a fresh download would use Î“Ã‡Ã¶ this is not necessarily the same folder the original download used, since the original folder location itself is never stored in the manifest.
+If `--localdir` is omitted, replay falls back to the same auto-computed folder structure a fresh download would use — this is not necessarily the same folder the original download used, since the original folder location itself is never stored in the manifest.
 
 **Replaying a delete:** by default, replay asks for confirmation before deleting, exactly like a normal `delete` call:
 ```bash
@@ -333,7 +333,7 @@ For unattended/scripted use (e.g. CI/CD), skip the prompt with `--force`:
 ```bash
 databusclient manifest replay ./manifests/delete-run.jsonld --databus-key YOUR_API_KEY --force
 ```
-If the original delete was run with `--dry-run --manifest ...`, replay automatically previews without deleting Î“Ã‡Ã¶ no flag needed. You can also force a preview on a manifest that wasn't originally a dry run:
+If the original delete was run with `--dry-run --manifest ...`, replay automatically previews without deleting — no flag needed. You can also force a preview on a manifest that wasn't originally a dry run:
 ```bash
 databusclient manifest replay ./manifests/delete-run.jsonld --databus-key YOUR_API_KEY --dry-run
 ```
@@ -342,7 +342,7 @@ databusclient manifest replay ./manifests/delete-run.jsonld --databus-key YOUR_A
 ```bash
 databusclient manifest replay ./manifests/deploy-run.jsonld --apikey YOUR_API_KEY
 ```
-Replaying redeploys the same version Î“Ã‡Ã¶ if it already exists on Databus, it is updated. WebDAV/Nextcloud deploys cannot be replayed, since the originally uploaded local files may no longer exist at their original paths by the time replay runs.
+Replaying redeploys the same version — if it already exists on Databus, it is updated. WebDAV/Nextcloud deploys cannot be replayed, since the originally uploaded local files may no longer exist at their original paths by the time replay runs.
 
 <a id="cli-manifest-summary"></a>
 #### Summary
@@ -360,18 +360,18 @@ Command  : download
 Executed : 2024-03-24T10:02:49.500418+00:00
 Endpoint : https://databus.dbpedia.org/sparql
 Auth     : vault_token
-Files    : 1 succeeded â”¬â•– 0 failed
+Files    : 1 succeeded · 0 failed
 Total    : 100.0 MB
 Status   : completed
 ```
 
-Only existing data already stored in the manifest is read Î“Ã‡Ã¶ no new files are downloaded or written, and no network access happens.
+Only existing data already stored in the manifest is read — no new files are downloaded or written, and no network access happens.
 
 
 <a id="cli-workflow"></a>
 ### Workflow
 
-The workflow command runs a multi-step pipeline of `download`, `deploy`, and `delete` operations defined in a YAML file. Steps run in order, and a later step can use the output of an earlier step Î“Ã‡Ã¶ for example, deploying the exact file a previous step just downloaded.
+The workflow command runs a multi-step pipeline of `download`, `deploy`, and `delete` operations defined in a YAML file. Steps run in order, and a later step can use the output of an earlier step — for example, deploying the exact file a previous step just downloaded.
 
 ```bash
 databusclient workflow run [OPTIONS] WORKFLOW_PATH
@@ -405,18 +405,18 @@ steps:
     on_error: fail
 ```
 
-**Environment variables:** any value written as `${VARIABLE_NAME}` is resolved from the environment when the workflow starts. If the variable is not set, the workflow fails immediately with a clear error before any step runs Î“Ã‡Ã¶ credentials should always be passed this way, never written directly in the file.
+**Environment variables:** any value written as `${VARIABLE_NAME}` is resolved from the environment when the workflow starts. If the variable is not set, the workflow fails immediately with a clear error before any step runs — credentials should always be passed this way, never written directly in the file.
 
 **Step chaining:** a step's outputs can be referenced by later steps using `${steps.step_name.output_key}`:
-- `${steps.name.output_files}` Î“Ã‡Ã¶ local file paths produced by a `download` step.
-- `${steps.name.output_urls}` Î“Ã‡Ã¶ the actual, redirect-resolved source URL(s) the file was downloaded from, useful for redeploying an unmodified file via classic deploy mode.
+- `${steps.name.output_files}` — local file paths produced by a `download` step.
+- `${steps.name.output_urls}` — the actual, redirect-resolved source URL(s) the file was downloaded from, useful for redeploying an unmodified file via classic deploy mode.
 
 #### Deploy step modes within a workflow
 
 A `deploy` step supports the same modes as the `deploy` CLI command:
 
-- **Classic mode** (`files:` is a list of URLs) Î“Ã‡Ã¶ use `${steps.name.output_urls}` to redeploy a file exactly as it was downloaded, unmodified. Classic mode does not accept local file paths; if `files:` contains anything other than a `http://`/`https://` URL, the step fails with a clear error rather than crashing.
-- **WebDAV mode** (`webdav_url:`, `remote:`, `path:` all provided) Î“Ã‡Ã¶ use `${steps.name.output_files}` (local paths) here. The step uploads the local files to the WebDAV server first, then deploys the resulting URLs. This is the only way to deploy a file that was locally modified during the workflow (e.g. via `--format`/`--compression` on the download step), since only WebDAV mode re-establishes a real, fetchable URL for locally changed content.
+- **Classic mode** (`files:` is a list of URLs) — use `${steps.name.output_urls}` to redeploy a file exactly as it was downloaded, unmodified. Classic mode does not accept local file paths; if `files:` contains anything other than a `http://`/`https://` URL, the step fails with a clear error rather than crashing.
+- **WebDAV mode** (`webdav_url:`, `remote:`, `path:` all provided) — use `${steps.name.output_files}` (local paths) here. The step uploads the local files to the WebDAV server first, then deploys the resulting URLs. This is the only way to deploy a file that was locally modified during the workflow (e.g. via `--format`/`--compression` on the download step), since only WebDAV mode re-establishes a real, fetchable URL for locally changed content.
 
 ```yaml
   - name: publish_converted_dataset
@@ -455,7 +455,7 @@ Each step declares an `on_error` behavior (defaults to `fail` if not set):
 
 A retry re-runs the entire step from scratch, not just the part that failed.
 
-**Delete steps never prompt for confirmation inside a workflow** Î“Ã‡Ã¶ since workflows are meant to run unattended, a `delete` step always behaves as if `--force` was passed.
+**Delete steps never prompt for confirmation inside a workflow** — since workflows are meant to run unattended, a `delete` step always behaves as if `--force` was passed.
 
 #### Examples
 
