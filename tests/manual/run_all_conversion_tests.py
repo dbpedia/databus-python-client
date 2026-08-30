@@ -306,19 +306,19 @@ else:
 print("\n=== GROUP 4: CLI END-TO-END (run these manually) ===\n")
 cli_tests = [
     "CLI1: turtle->ntriples from compressed Databus file",
-    "  poetry run databusclient download \"https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals/2022.12.01/mappingbased-literals_lang=cy.ttl.bz2\" --convert-format ntriples --localdir ./test_outputs/cli/CLI1",
+    "  poetry run databusclient download \"https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals/2022.12.01/mappingbased-literals_lang=cy.ttl.bz2\" --format ntriples --localdir ./test_outputs/cli/CLI1",
     "",
     "CLI2: turtle->rdf-xml from compressed Databus file",
-    "  poetry run databusclient download \"https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals/2022.12.01/mappingbased-literals_lang=cy.ttl.bz2\" --convert-format rdf-xml --localdir ./test_outputs/cli/CLI2",
+    "  poetry run databusclient download \"https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals/2022.12.01/mappingbased-literals_lang=cy.ttl.bz2\" --format rdf-xml --localdir ./test_outputs/cli/CLI2",
     "",
     "CLI3: turtle->ntriples + compression bz2->gz",
-    "  poetry run databusclient download \"https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals/2022.12.01/mappingbased-literals_lang=cy.ttl.bz2\" --convert-format ntriples --convert-to gz --localdir ./test_outputs/cli/CLI3",
+    "  poetry run databusclient download \"https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals/2022.12.01/mappingbased-literals_lang=cy.ttl.bz2\" --format ntriples --compression gz --localdir ./test_outputs/cli/CLI3",
     "",
     "CLI4: turtle->ntriples + compression bz2->xz",
-    "  poetry run databusclient download \"https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals/2022.12.01/mappingbased-literals_lang=cy.ttl.bz2\" --convert-format ntriples --convert-to xz --localdir ./test_outputs/cli/CLI4",
+    "  poetry run databusclient download \"https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals/2022.12.01/mappingbased-literals_lang=cy.ttl.bz2\" --format ntriples --compression xz --localdir ./test_outputs/cli/CLI4",
     "",
     "CLI5: unsupported cross-class error (expect ValueError)",
-    "  poetry run databusclient download \"https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals/2022.12.01/mappingbased-literals_lang=cy.ttl.bz2\" --convert-format nquads --localdir ./test_outputs/cli/CLI5",
+    "  poetry run databusclient download \"https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals/2022.12.01/mappingbased-literals_lang=cy.ttl.bz2\" --format nquads --localdir ./test_outputs/cli/CLI5",
 ]
 for line in cli_tests:
     print(line)

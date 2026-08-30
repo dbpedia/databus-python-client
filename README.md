@@ -27,7 +27,7 @@ Command-line and Python client for downloading and deploying datasets on DBpedia
 
 ## Quickstart
 
-The client supports two main workflows: downloading datasets from the Databus and deploying datasets to the Databus. You can use Python or Docker, then follow the sections on [DBpedia downloads](#dbpedia-knowledge-graphs), [CLI usage](#cli-usage), or [module usage](#module-usage).
+The client supports two main workflows: downloading datasets from the Databus and deploying datasets to the Databus. Below you can choose how to run it (Python or Docker), then follow the sections on [DBpedia downloads](#dbpedia-knowledge-graphs), [CLI usage](#cli-usage), or [module usage](#module-usage).
 
 You can use either **Python** or **Docker**. Both methods support all client features. The Docker image is available at [dbpedia/databus-python-client](https://hub.docker.com/r/dbpedia/databus-python-client).
 

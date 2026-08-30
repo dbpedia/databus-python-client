@@ -33,9 +33,12 @@ distributions.append(
 )
 ```
 
-Compression and file type can be inferred from the path. A checksum and content length can be supplied when they are already known. The content variants dictionary may be empty only when there is one distribution. Compression cannot be used without a file format.
+A few notes:
 
-## Create dataset
+* The dict for content variants can be empty ONLY IF there is just one distribution
+* There can be no compression if there is no file format
+
+#### Step 2: Create dataset
 
 ```python
 from databusclient import create_dataset
@@ -64,9 +67,9 @@ dataset = create_dataset(
 )
 ```
 
-Group metadata can be supplied with `group_title`, `group_abstract`, and `group_description`. It is applied only when all group parameters are provided.
+NOTE: Group metadata is applied only if all group parameters are set.
 
-## Deploy a dataset
+#### Step 3: Deploy to Databus
 
 ```python
 from databusclient import deploy
