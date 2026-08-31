@@ -546,7 +546,10 @@ def _download_files(
         validate_checksum: Whether to validate checksums after downloading.
         checksums: Dictionary mapping URLs to their expected checksums.
     """
-    for url in urls:
+    # Overall progress bar for multiple files
+    # We use position=0 so it stays at the top, while individual file progress 
+    # bars (which are not given a position explicitly) will print below it.
+    for url in tqdm(urls, desc="Overall Progress", unit="file", position=0):
         expected = None
         if checksums and isinstance(checksums, dict):
             expected = checksums.get(url)
