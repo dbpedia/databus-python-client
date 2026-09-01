@@ -12,6 +12,8 @@ from typing import Dict, List, Optional, Tuple, Union
 
 import requests
 
+from databusclient.api.utils import get_http_session
+
 _debug = False
 
 
@@ -176,14 +178,18 @@ def _get_file_stats(distribution_str: str) -> Tuple[Optional[str], Optional[int]
     return sha256sum, content_length
 
 
-def _load_file_stats(url: str) -> Tuple[str, int]:
+def _load_file_stats(
+    url: str, session: requests.Session | None = None, timeout: int = 30
+) -> Tuple[str, int]:
     """Download the file at ``url`` and compute its SHA-256 and length.
 
     This is used as a fallback when the caller did not supply checksum/size
     information in the CLI or metadata file.
     """
+    if session is None:
+        session = get_http_session()
 
-    resp = requests.get(url, timeout=30)
+    resp = session.get(url, timeout=timeout)
     if resp.status_code >= 400:
         raise requests.exceptions.RequestException(response=resp)
 
@@ -461,10 +467,13 @@ def deploy(
     dataid: Dict[str, Union[List[Dict[str, Union[bool, str, int, float, List]]], str]],
     api_key: str,
     verify_parts: bool = False,
-    log_level: DeployLogLevel = DeployLogLevel.debug,
+    log_level: DeployLogLevel = DeployLogLevel.info,
     debug: bool = False,
+    session: requests.Session | None = None,
+    timeout: int = 30,
 ) -> None:
-    """Deploys a dataset to the databus. The endpoint is inferred from the DataID identifier.
+    """Deploy a Databus Dataset (JSON-LD structure) to the Databus.
+
     Parameters
     ----------
     dataid: Dict[str, Union[List[Dict[str, Union[bool, str, int, float, List]]], str]]
@@ -477,7 +486,13 @@ def deploy(
         log level of the deploy output
     debug: bool
         controls whether output shold be printed to the console (stdout)
+    session: requests.Session
+        optional HTTP session with retry strategy
+    timeout: int
+        HTTP request timeout in seconds
     """
+    if session is None:
+        session = get_http_session()
 
     headers = {"X-API-KEY": f"{api_key}", "Content-Type": "application/json"}
     data = json.dumps(dataid)
@@ -491,7 +506,7 @@ def deploy(
         base
         + f"/api/publish?verify-parts={str(verify_parts).lower()}&log-level={log_level.name}"
     )
-    resp = requests.post(api_uri, data=data, headers=headers, timeout=30)
+    resp = session.post(api_uri, data=data, headers=headers, timeout=timeout)
 
     if debug or _debug:
         try:

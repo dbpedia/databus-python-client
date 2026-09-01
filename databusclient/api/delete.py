@@ -14,6 +14,7 @@ import requests
 from databusclient.api.utils import (
     fetch_databus_jsonld,
     get_databus_id_parts_from_file_url,
+    get_http_session,
 )
 
 
@@ -122,6 +123,8 @@ def _delete_resource(
     force: bool = False,
     queue: DeleteQueue = None,
     manifest_context=None,
+    session: requests.Session | None = None,
+    timeout: int = 30,
 ):
     """Delete a single Databus resource (version, artifact, group).
 
@@ -134,6 +137,8 @@ def _delete_resource(
         dry_run: If True, do not perform the deletion but only print what would be deleted.
         force: If True, skip confirmation prompt and proceed with deletion.
         queue: If queue is provided, add the URI to the queue instead of deleting immediately.
+        session: Optional HTTP session to use for requests.
+        timeout: Request timeout in seconds.
     """
 
     # Confirm the deletion request, skip the request or cancel deletion process
@@ -158,9 +163,12 @@ def _delete_resource(
         queue.add_uri(databusURI)
         return
 
+    if session is None:
+        session = get_http_session()
+
     print(f"[DELETE] {databusURI}")
     headers = {"accept": "*/*", "X-API-KEY": databus_key}
-    response = requests.delete(databusURI, headers=headers, timeout=30)
+    response = session.delete(databusURI, headers=headers, timeout=timeout)
 
     if response.status_code in (200, 204):
         print(f"Successfully deleted: {databusURI}")
