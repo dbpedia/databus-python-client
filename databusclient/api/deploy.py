@@ -467,7 +467,7 @@ def deploy(
     dataid: Dict[str, Union[List[Dict[str, Union[bool, str, int, float, List]]], str]],
     api_key: str,
     verify_parts: bool = False,
-    log_level: DeployLogLevel = DeployLogLevel.info,
+    log_level: DeployLogLevel = DeployLogLevel.debug,
     debug: bool = False,
     session: requests.Session | None = None,
     timeout: int = 30,
@@ -532,6 +532,8 @@ def deploy_from_metadata(
     artifact_version_description: str,
     license_url: str,
     apikey: str,
+    session: requests.Session | None = None,
+    timeout: int = 30,
 ) -> None:
     """
     Deploy a dataset from metadata entries.
@@ -552,6 +554,10 @@ def deploy_from_metadata(
         License URI
     apikey : str
         API key for authentication
+    session : requests.Session
+        Optional HTTP session with retry strategy
+    timeout : int
+        HTTP request timeout in seconds
     """
     distributions = create_distributions_from_metadata(metadata)
 
@@ -565,7 +571,7 @@ def deploy_from_metadata(
     )
 
     print(f"Deploying dataset version: {version_id}")
-    deploy(dataset, apikey)
+    deploy(dataset, apikey, session=session, timeout=timeout)
 
     print(f"Successfully deployed to {version_id}")
     print(f"Deployed {len(metadata)} file(s):")

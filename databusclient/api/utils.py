@@ -22,6 +22,7 @@ def get_http_session(
     retries: int = 3,
     backoff_factor: float = 0.5,
     status_forcelist: Tuple[int, ...] = (429, 500, 502, 503, 504),
+    allowed_methods: Optional[frozenset] = None,
 ) -> requests.Session:
     """Create and configure a requests Session with HTTP retry strategy and exponential backoff.
 
@@ -29,6 +30,7 @@ def get_http_session(
         retries: Total number of retries to allow.
         backoff_factor: Backoff factor to apply between attempts.
         status_forcelist: Set of HTTP status codes to force retry on.
+        allowed_methods: Set of HTTP methods allowed for retry (defaults to None, allowing all methods including POST and DELETE).
 
     Returns:
         Configured requests.Session object.
@@ -38,6 +40,8 @@ def get_http_session(
         total=retries,
         backoff_factor=backoff_factor,
         status_forcelist=status_forcelist,
+        allowed_methods=allowed_methods,
+        backoff_jitter=0.1,
         raise_on_status=False,
     )
     adapter = HTTPAdapter(max_retries=retry_strategy)
