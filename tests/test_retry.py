@@ -24,8 +24,6 @@ def test_get_http_session_custom_retries():
 
     assert http_adapter.max_retries.total == 5
     assert http_adapter.max_retries.backoff_factor == 1.0
-    assert http_adapter.max_retries.backoff_jitter == 0.1
-    assert http_adapter.max_retries.allowed_methods is None
 
 
 def test_fetch_databus_jsonld_with_custom_session():

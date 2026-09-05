@@ -30,20 +30,22 @@ def get_http_session(
         retries: Total number of retries to allow.
         backoff_factor: Backoff factor to apply between attempts.
         status_forcelist: Set of HTTP status codes to force retry on.
-        allowed_methods: Set of HTTP methods allowed for retry (defaults to None, allowing all methods including POST and DELETE).
+        allowed_methods: Set of HTTP methods allowed for retry.
 
     Returns:
         Configured requests.Session object.
     """
     session = requests.Session()
-    retry_strategy = Retry(
-        total=retries,
-        backoff_factor=backoff_factor,
-        status_forcelist=status_forcelist,
-        allowed_methods=allowed_methods,
-        backoff_jitter=0.1,
-        raise_on_status=False,
-    )
+    kwargs = {
+        "total": retries,
+        "backoff_factor": backoff_factor,
+        "status_forcelist": status_forcelist,
+        "raise_on_status": False,
+    }
+    if allowed_methods is not None:
+        kwargs["allowed_methods"] = allowed_methods
+
+    retry_strategy = Retry(**kwargs)
     adapter = HTTPAdapter(max_retries=retry_strategy)
     session.mount("http://", adapter)
     session.mount("https://", adapter)
