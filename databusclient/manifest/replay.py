@@ -79,9 +79,11 @@ def _build_download_kwargs(
         "convert_format": replay_params.get("convert_format"),
         "graph_name": replay_params.get("graph_name"),
         "base_uri": replay_params.get("base_uri"),
+        "graph_mode": replay_params.get("graph_mode"),
         "validate_checksum": bool(replay_params.get("validate_checksum", False)),
         "manifest_context": None,
     }
+
 
 def _build_delete_kwargs(
     replay_params: Dict[str, Any],
@@ -158,6 +160,7 @@ def _replay_delete(
     )
     return {"command": "delete", "executed": True, "dry_run": False}
 
+
 def _reconstruct_distribution_strings(resolved_distributions: list) -> list:
     strings = []
     for part in resolved_distributions:
@@ -175,9 +178,7 @@ def _reconstruct_distribution_strings(resolved_distributions: list) -> list:
         sha256sum = part.get("sha256sum")
         byte_size = part.get("byteSize")
         sha_tuple = (
-            (sha256sum, byte_size)
-            if sha256sum and byte_size is not None
-            else None
+            (sha256sum, byte_size) if sha256sum and byte_size is not None else None
         )
         strings.append(
             api_create_distribution(
@@ -270,6 +271,7 @@ def _replay_deploy(
     dataid = api_create_dataset(**kwargs)
     api_deploy_call(dataid=dataid, api_key=api_key)
     return {"command": "deploy", "executed": True}
+
 
 def replay_manifest(
     manifest_path: str,

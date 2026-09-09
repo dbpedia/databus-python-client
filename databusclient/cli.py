@@ -105,7 +105,7 @@ def deploy(
         raise click.UsageError(
             "Invalid combination: when using WebDAV/Nextcloud mode, please provide --webdav-url, --remote, and --path together."
         )
-    
+
     manifest_context = None
     if manifest_path:
         manifest_context = ManifestContext(command="deploy")
@@ -145,9 +145,7 @@ def deploy(
             )
             if manifest_context:
                 manifest_context.replay_params["deploy_mode"] = "classic"
-                manifest_context.replay_params["resolved_distributions"] = (
-                    dataid["@graph"][-1].get("distribution", [])
-                )
+                manifest_context.replay_params["resolved_distributions"] = dataid["@graph"][-1].get("distribution", [])
             api_deploy.deploy(dataid=dataid, api_key=apikey)
             if manifest_context:
                 for dist in distributions:
@@ -232,6 +230,7 @@ def deploy(
         "  - Upload & deploy: use --webdav-url, --remote, --path, and file arguments"
     )
 
+
 @app.command()
 @click.argument("databusuris", nargs=-1, required=True)
 @click.option(
@@ -289,22 +288,29 @@ def deploy(
         case_sensitive=False,
     ),
     help="Target format for on-the-fly format conversion during download (Layer 2 and Layer 3). "
-         "Accepts full names (ntriples, turtle, rdf-xml, nquads, trig, trix, json-ld, csv, tsv) "
-         "or short aliases (nt, ttl, rdf, xml, nq, jsonld).",
+    "Accepts full names (ntriples, turtle, rdf-xml, nquads, trig, trix, json-ld, csv, tsv) "
+    "or short aliases (nt, ttl, rdf, xml, nq, jsonld).",
 )
 @click.option(
     "--graph-name",
     "graph_name",
     default=None,
     help="Named graph URI for Triple -> Quad conversion (Layer 3). "
-         "Required when converting RDF triple formats to quad formats.",
+    "Required when converting RDF triple formats to quad formats.",
 )
 @click.option(
     "--base-uri",
     "base_uri",
     default=None,
     help="Base URI for CSV -> RDF Triple conversion (Layer 3). "
-         "Required when converting CSV/TSV to RDF triple formats.",
+    "Required when converting CSV/TSV to RDF triple formats.",
+)
+@click.option(
+    "--graph-mode",
+    "graph_mode",
+    type=click.Choice(["download-url"], case_sensitive=False),
+    help="Create graph sidecar metadata files. 'download-url' writes the "
+    "source download URL to <final-file>.graph.",
 )
 @click.option(
     "--manifest",
@@ -328,6 +334,7 @@ def download(
     convert_format,
     graph_name,
     base_uri,
+    graph_mode,
     validate_checksum,
     manifest_path,
 ):
@@ -356,6 +363,7 @@ def download(
             "convert_format": convert_format,
             "graph_name": graph_name,
             "base_uri": base_uri,
+            "graph_mode": graph_mode,
             "all_versions": all_versions,
             "validate_checksum": validate_checksum,
             "authurl": authurl,
@@ -375,6 +383,7 @@ def download(
             convert_format=convert_format,
             graph_name=graph_name,
             base_uri=base_uri,
+            graph_mode=graph_mode,
             validate_checksum=validate_checksum,
             manifest_context=manifest_context,
         )
@@ -402,7 +411,6 @@ def download(
                 )
 
 
-
 @app.command()
 @click.argument("databusuris", nargs=-1, required=True)
 @click.option(
@@ -420,7 +428,7 @@ def download(
     default=None,
     help="Write a JSON-LD manifest of this operation to PATH.",
 )
-def delete(databusuris: List[str], databus_key: str, dry_run: bool, force: bool, manifest_path):
+def delete(databusuris: List[str], databus_key: str, dry_run: bool, force: bool, manifest_path: str):
     """
     Delete a dataset from the databus.
 
@@ -459,6 +467,7 @@ def delete(databusuris: List[str], databus_key: str, dry_run: bool, force: bool,
                     err=True,
                 )
 
+
 @app.group()
 def manifest():
     """
@@ -490,7 +499,7 @@ def manifest():
     "--databus-key",
     default=None,
     help="Databus API key required if manifest auth method is databus_key. "
-         "Also required for delete replay (never stored in the manifest).",
+    "Also required for delete replay (never stored in the manifest).",
 )
 @click.option(
     "--apikey",
@@ -503,7 +512,7 @@ def manifest():
     is_flag=True,
     default=False,
     help="For delete replay: skip the interactive confirmation prompt. "
-         "Required for unattended/scripted replay of a delete operation.",
+    "Required for unattended/scripted replay of a delete operation.",
 )
 @click.option(
     "--dry-run",
@@ -511,8 +520,8 @@ def manifest():
     is_flag=True,
     default=False,
     help="Force a dry-run preview even if the original operation wasn't "
-         "one. If the original delete WAS a dry run, replay already "
-         "previews automatically -- this flag cannot turn that off.",
+    "one. If the original delete WAS a dry run, replay already "
+    "previews automatically -- this flag cannot turn that off.",
 )
 def manifest_replay(manifest_path, localdir, databus, vault_token, databus_key, force, dry_run, apikey):
     """
@@ -556,6 +565,7 @@ def manifest_replay(manifest_path, localdir, databus, vault_token, databus_key, 
     except Exception as e:
         raise click.ClickException(str(e))
 
+
 @manifest.command("summary")
 @click.argument("manifest_path", type=click.Path(exists=True, dir_okay=False))
 def manifest_summary(manifest_path):
@@ -570,6 +580,7 @@ def manifest_summary(manifest_path):
         click.echo(format_summary(manifest))
     except ManifestReplayError as e:
         raise click.ClickException(str(e))
+
 
 @app.group()
 def workflow():
@@ -644,6 +655,7 @@ def workflow_run(workflow_path, manifest_path):
 
     if workflow_error is not None:
         raise click.ClickException(str(workflow_error))
+
 
 if __name__ == "__main__":
     app()

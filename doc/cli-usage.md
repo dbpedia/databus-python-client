@@ -123,6 +123,19 @@ databusclient download https://databus.dbpedia.org/dbpedia/some-tabular-dataset/
 databusclient download https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals/2022.12.01/mappingbased-literals_lang=az.nq --format csv
 ```
 
+**Download with Graph Sidecars**: write a `.graph` metadata file next to each successfully downloaded final output.
+```bash
+databusclient download https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals/2022.12.01/mappingbased-literals_lang=az.ttl.bz2 --graph-mode download-url
+```
+
+This produces:
+```text
+mappingbased-literals_lang=az.ttl.bz2
+mappingbased-literals_lang=az.ttl.bz2.graph
+```
+
+The `.graph` file contains the dataset's original download URL as UTF-8 text for downstream loaders such as the DBpedia [Virtuoso SPARQL Endpoint Quickstart](https://github.com/dbpedia/virtuoso-sparql-endpoint-quickstart), which uses these files in its loading subprocesses. If conversion options such as `--format` or `--compression` are used, the sidecar is written next to the final converted output path.
+
 <a id="cli-deploy"></a>
 ### Deploy
 
@@ -392,6 +405,7 @@ steps:
     command: download
     uri: https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals/2022.12.01/mappingbased-literals_lang=az.ttl.bz2
     localdir: ./data
+    graph_mode: download-url
 
   - name: publish_dataset
     command: deploy
@@ -464,4 +478,3 @@ Full working example files are available under [`examples/workflows/`](examples/
 ```bash
 databusclient workflow run doc/examples/workflows/download-deploy.yml
 ```
-

@@ -41,6 +41,8 @@ COMPRESSION_MODULES = {
     "xz": lzma,
 }
 
+GRAPH_MODES = {"download-url"}
+
 
 def _get_download_directory(url: str, localDir: str | None) -> str:
     """Return the local Databus-layout directory for a file URL."""
@@ -53,6 +55,43 @@ def _get_download_directory(url: str, localDir: str | None) -> str:
         return os.path.join(base_dir, account, group, artifact, version)
 
     return base_dir
+
+
+def _validate_graph_mode(graph_mode: str | None) -> None:
+    if graph_mode is not None and graph_mode not in GRAPH_MODES:
+        raise ValueError(
+            f"Unsupported graph mode: {graph_mode}. "
+            f"Supported graph modes: {sorted(GRAPH_MODES)}"
+        )
+
+
+def _write_graph_sidecars(
+    final_file_paths: list[str],
+    source_url: str,
+    graph_mode: str | None,
+) -> None:
+    """Write optional graph sidecars for final dataset outputs.
+
+    Existing downloads may be reused or transformed by the caller, but once a
+    final output is considered successfully produced in graph mode, its sidecar
+    must exist and point back to the source download URL.
+    """
+    if graph_mode is None:
+        return
+
+    if graph_mode == "download-url":
+        for final_file_path in final_file_paths:
+            with open(f"{final_file_path}.graph", "w", encoding="utf-8") as f:
+                f.write(source_url)
+
+
+def _collect_files(directory: str) -> list[str]:
+    return sorted(
+        os.path.join(root, filename)
+        for root, _dirs, filenames in os.walk(directory)
+        for filename in filenames
+        if not filename.endswith(".graph")
+    )
 
 
 def _detect_compression_format(filename: str) -> Optional[str]:
@@ -342,9 +381,7 @@ def _resolve_checksums_for_urls(file_urls: List[str], databus_key: str | None) -
     versions_map: dict = {}
     for file_url in file_urls:
         try:
-            host, accountId, groupId, artifactId, versionId, fileId = (
-                get_databus_id_parts_from_file_url(file_url)
-            )
+            host, accountId, groupId, artifactId, versionId, fileId = get_databus_id_parts_from_file_url(file_url)
         except Exception:
             continue
         if versionId is None:
@@ -379,6 +416,7 @@ def _download_file(
     convert_format=None,
     graph_name=None,
     base_uri=None,
+    graph_mode=None,
     validate_checksum: bool = False,
     expected_checksum: str | None = None,
     manifest_context=None,
@@ -397,9 +435,12 @@ def _download_file(
         convert_format: Target RDF/tabular format for on-the-fly conversion.
         graph_name: Named graph URI for Triple -> Quad conversion (Layer 3).
         base_uri: Base URI for CSV -> Triple conversion (Layer 3).
+        graph_mode: Optional graph sidecar mode. Currently supports 'download-url'.
         validate_checksum: Whether to validate checksums after downloading.
         expected_checksum: The expected checksum of the file.
     """
+    _validate_graph_mode(graph_mode)
+    source_url = url
     local_dir_was_given = localDir is not None
     localDir = _get_download_directory(url, localDir)
     if not local_dir_was_given:
@@ -582,6 +623,7 @@ def _download_file(
     needs_format_conversion = convert_format is not None
 
     if not should_convert_compression and not needs_format_conversion:
+        _write_graph_sidecars([filename], source_url, graph_mode)
         if manifest_context is not None:
             manifest_context.record_file(
                 url=url,
@@ -602,9 +644,7 @@ def _download_file(
                 # Source file is uncompressed — compress it directly to
                 # the target compression format.
                 target_filepath = filename + COMPRESSION_EXTENSIONS[compression]
-                print(
-                    f"Compressing {file} -> {os.path.basename(target_filepath)}..."
-                )
+                print(f"Compressing {file} -> {os.path.basename(target_filepath)}...")
                 with open(filename, "rb") as sf:
                     with COMPRESSION_MODULES[compression].open(
                         target_filepath, "wb"
@@ -626,6 +666,7 @@ def _download_file(
                     source_fmt,
                     compression,
                 )
+            _write_graph_sidecars([target_filepath], source_url, graph_mode)
             if manifest_context is not None:
                 manifest_context.record_file(
                     url=url,
@@ -649,10 +690,12 @@ def _download_file(
                         file, source_fmt, compression
                     )
                     target_filepath = os.path.join(localDir, target_filename)
-                    _convert_compression_format(
-                        filename, target_filepath, source_fmt, compression
-                    )
+                    _convert_compression_format(filename, target_filepath, source_fmt, compression)
+                    final_paths = [target_filepath]
+                else:
+                    final_paths = [filename]
                 # No format conversion needed, no further work.
+                _write_graph_sidecars(final_paths, source_url, graph_mode)
                 if manifest_context is not None:
                     manifest_context.record_file(
                         url=url,
@@ -700,9 +743,7 @@ def _download_file(
             get_format_class(source_format_for_mapping)
             if source_format_for_mapping else None
         )
-        is_quad_to_triple = (
-            source_class_for_mapping == "quads" and target_class == "triples"
-        )
+        is_quad_to_triple = (source_class_for_mapping == "quads" and target_class == "triples")
 
         if is_quad_to_triple:
             # Output directory name = original filename with compression and
@@ -720,6 +761,8 @@ def _download_file(
                 graph_name=graph_name,
                 base_uri=base_uri,
             )
+            final_paths = _collect_files(output_dir)
+            _write_graph_sidecars(final_paths, source_url, graph_mode)
 
             # Delete the original downloaded (possibly compressed) file —
             # the split output directory replaces it.
@@ -787,6 +830,10 @@ def _download_file(
                     shutil.copyfileobj(sf, tf)
 
             os.remove(converted_uncompressed_path)
+            final_paths = [recompressed_path]
+        else:
+            final_paths = [converted_uncompressed_path]
+        _write_graph_sidecars(final_paths, source_url, graph_mode)
     finally:
         for temp_path in temp_paths:
             if os.path.exists(temp_path):
@@ -803,6 +850,7 @@ def _download_file(
             downloaded_at=datetime.now(timezone.utc).isoformat(),
         )
 
+
 def _download_files(
     urls: List[str],
     localDir: str,
@@ -814,6 +862,7 @@ def _download_files(
     convert_format: str = None,
     graph_name: str = None,
     base_uri: str = None,
+    graph_mode: str = None,
     manifest_context=None,
     validate_checksum: bool = False,
     checksums: dict | None = None,
@@ -831,6 +880,7 @@ def _download_files(
         convert_format: Target RDF/tabular format for on-the-fly conversion.
         graph_name: Named graph URI for Triple -> Quad conversion (Layer 3).
         base_uri: Base URI for CSV -> Triple conversion (Layer 3).
+        graph_mode: Optional graph sidecar mode. Currently supports 'download-url'.
         validate_checksum: Whether to validate checksums after downloading.
         checksums: Dictionary mapping URLs to their expected checksums.
     """
@@ -849,10 +899,12 @@ def _download_files(
             convert_format=convert_format,
             graph_name=graph_name,
             base_uri=base_uri,
+            graph_mode=graph_mode,
             validate_checksum=validate_checksum,
             expected_checksum=expected,
             manifest_context=manifest_context,
         )
+
 
 def _get_sparql_query_of_collection(uri: str, databus_key: str | None = None) -> str:
     """Get SPARQL query of collection members from databus collection URI.
@@ -999,6 +1051,7 @@ def _download_collection(
     convert_format: str = None,
     graph_name: str = None,
     base_uri: str = None,
+    graph_mode: str = None,
     manifest_context=None,
     validate_checksum: bool = False,
 ) -> None:
@@ -1016,6 +1069,7 @@ def _download_collection(
         convert_format: Target RDF/tabular format for on-the-fly conversion.
         graph_name: Named graph URI for Triple -> Quad conversion (Layer 3).
         base_uri: Base URI for CSV -> Triple conversion (Layer 3).
+        graph_mode: Optional graph sidecar mode. Currently supports 'download-url'.
         validate_checksum: Whether to validate checksums after downloading.
     """
     query = _get_sparql_query_of_collection(uri, databus_key=databus_key)
@@ -1039,6 +1093,7 @@ def _download_collection(
         convert_format=convert_format,
         graph_name=graph_name,
         base_uri=base_uri,
+        graph_mode=graph_mode,
         manifest_context=manifest_context,
         validate_checksum=validate_checksum,
         checksums=checksums if checksums else None,
@@ -1056,6 +1111,7 @@ def _download_version(
     convert_format: str = None,
     graph_name: str = None,
     base_uri: str = None,
+    graph_mode: str = None,
     manifest_context=None,
     validate_checksum: bool = False,
 ) -> None:
@@ -1072,6 +1128,7 @@ def _download_version(
         convert_format: Target RDF/tabular format for on-the-fly conversion.
         graph_name: Named graph URI for Triple -> Quad conversion (Layer 3).
         base_uri: Base URI for CSV -> Triple conversion (Layer 3).
+        graph_mode: Optional graph sidecar mode. Currently supports 'download-url'.
         validate_checksum: Whether to validate checksums after downloading.
     """
     json_str = fetch_databus_jsonld(uri, databus_key=databus_key)
@@ -1094,6 +1151,7 @@ def _download_version(
         convert_format=convert_format,
         graph_name=graph_name,
         base_uri=base_uri,
+        graph_mode=graph_mode,
         manifest_context=manifest_context,
         validate_checksum=validate_checksum,
         checksums=checksums,
@@ -1112,6 +1170,7 @@ def _download_artifact(
     convert_format: str = None,
     graph_name: str = None,
     base_uri: str = None,
+    graph_mode: str = None,
     manifest_context=None,
     validate_checksum: bool = False,
 ) -> None:
@@ -1129,6 +1188,7 @@ def _download_artifact(
         convert_format: Target RDF/tabular format for on-the-fly conversion.
         graph_name: Named graph URI for Triple -> Quad conversion (Layer 3).
         base_uri: Base URI for CSV -> Triple conversion (Layer 3).
+        graph_mode: Optional graph sidecar mode. Currently supports 'download-url'.
         validate_checksum: Whether to validate checksums after downloading.
     """
     json_str = fetch_databus_jsonld(uri, databus_key=databus_key)
@@ -1157,6 +1217,7 @@ def _download_artifact(
             convert_format=convert_format,
             graph_name=graph_name,
             base_uri=base_uri,
+            graph_mode=graph_mode,
             manifest_context=manifest_context,
             validate_checksum=validate_checksum,
             checksums=checksums,
@@ -1236,6 +1297,7 @@ def _download_group(
     convert_format: str = None,
     graph_name: str = None,
     base_uri: str = None,
+    graph_mode: str = None,
     manifest_context=None,
     validate_checksum: bool = False,
 ) -> None:
@@ -1253,6 +1315,7 @@ def _download_group(
         convert_format: Target RDF/tabular format for on-the-fly conversion.
         graph_name: Named graph URI for Triple -> Quad conversion (Layer 3).
         base_uri: Base URI for CSV -> Triple conversion (Layer 3).
+        graph_mode: Optional graph sidecar mode. Currently supports 'download-url'.
         validate_checksum: Whether to validate checksums after downloading.
     """
     json_str = fetch_databus_jsonld(uri, databus_key=databus_key)
@@ -1271,6 +1334,7 @@ def _download_group(
             convert_format=convert_format,
             graph_name=graph_name,
             base_uri=base_uri,
+            graph_mode=graph_mode,
             manifest_context=manifest_context,
             validate_checksum=validate_checksum,
         )
@@ -1323,6 +1387,7 @@ def download(
     convert_format=None,
     graph_name=None,
     base_uri=None,
+    graph_mode=None,
     validate_checksum: bool = False,
     manifest_context=None,
 ) -> None:
@@ -1343,12 +1408,12 @@ def download(
         convert_format: Target RDF/tabular format for on-the-fly conversion.
         graph_name: Named graph URI for Triple -> Quad conversion (Layer 3).
         base_uri: Base URI for CSV -> Triple conversion (Layer 3).
+        graph_mode: Optional graph sidecar mode. Currently supports 'download-url'.
         validate_checksum: Whether to validate checksums after downloading.
     """
+    _validate_graph_mode(graph_mode)
     for databusURI in databusURIs:
-        host, account, group, artifact, version, file = (
-            get_databus_id_parts_from_file_url(databusURI)
-        )
+        host, account, group, artifact, version, file = get_databus_id_parts_from_file_url(databusURI)
 
         # Determine endpoint per-URI if not explicitly provided
         uri_endpoint = endpoint
@@ -1374,6 +1439,7 @@ def download(
                     convert_format,
                     graph_name=graph_name,
                     base_uri=base_uri,
+                    graph_mode=graph_mode,
                     manifest_context=manifest_context,
                     validate_checksum=validate_checksum,
                 )
@@ -1398,6 +1464,7 @@ def download(
                     convert_format=convert_format,
                     graph_name=graph_name,
                     base_uri=base_uri,
+                    graph_mode=graph_mode,
                     manifest_context=manifest_context,
                     validate_checksum=validate_checksum,
                     expected_checksum=expected,
@@ -1415,6 +1482,7 @@ def download(
                     convert_format=convert_format,
                     graph_name=graph_name,
                     base_uri=base_uri,
+                    graph_mode=graph_mode,
                     manifest_context=manifest_context,
                     validate_checksum=validate_checksum,
                 )
@@ -1434,6 +1502,7 @@ def download(
                     convert_format=convert_format,
                     graph_name=graph_name,
                     base_uri=base_uri,
+                    graph_mode=graph_mode,
                     manifest_context=manifest_context,
                     validate_checksum=validate_checksum,
                 )
@@ -1453,6 +1522,7 @@ def download(
                     convert_format=convert_format,
                     graph_name=graph_name,
                     base_uri=base_uri,
+                    graph_mode=graph_mode,
                     manifest_context=manifest_context,
                     validate_checksum=validate_checksum,
                 )
@@ -1494,6 +1564,7 @@ def download(
                 convert_format=convert_format,
                 graph_name=graph_name,
                 base_uri=base_uri,
+                graph_mode=graph_mode,
                 manifest_context=manifest_context,
                 validate_checksum=validate_checksum,
                 checksums=checksums if checksums else None,

@@ -80,6 +80,7 @@ class DownloadStep:
             convert_format=resolved.get("format"),
             graph_name=resolved.get("graph_name"),
             base_uri=resolved.get("base_uri"),
+            graph_mode=resolved.get("graph_mode"),
             validate_checksum=resolved.get("validate_checksum", False),
             manifest_context=capture_context,
         )
@@ -105,6 +106,7 @@ class DownloadStep:
             os.path.join(root, filename)
             for root, _dirs, filenames in os.walk(local_dir)
             for filename in filenames
+            if not filename.endswith(".graph") # skip .graph files, which are not part of the actual download
         )
 
 

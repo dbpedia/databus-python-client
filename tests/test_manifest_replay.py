@@ -2,9 +2,11 @@ import json
 import pytest
 from databusclient.manifest.replay import ManifestReplayError, replay_manifest
 
+
 def _write_manifest(path, payload):
     with open(path, "w", encoding="utf-8") as f:
         json.dump(payload, f)
+
 
 def test_replay_download_calls_api_download(tmp_path, monkeypatch):
     captured = {}
@@ -25,6 +27,7 @@ def test_replay_download_calls_api_download(tmp_path, monkeypatch):
             "convert_format": "turtle",
             "graph_name": None,
             "base_uri": None,
+            "graph_mode": "download-url",
             "validate_checksum": True,
             "authurl": "https://auth.dbpedia.org/realms/dbpedia/protocol/openid-connect/token",
             "clientid": "vault-token-exchange",
@@ -41,8 +44,49 @@ def test_replay_download_calls_api_download(tmp_path, monkeypatch):
     assert captured["endpoint"] == "https://databus.dbpedia.org/sparql"
     assert captured["compression"] == "gz"
     assert captured["convert_format"] == "turtle"
+    assert captured["graph_mode"] == "download-url"
     assert captured["validate_checksum"] is True
     assert captured["manifest_context"] is None
+
+
+def test_replay_download_with_graph_mode_recreates_sidecar(tmp_path, monkeypatch):
+    url = "https://example.org/acct/group/art/2024.01.01/data.ttl"
+
+    class FakeHeadResp:
+        status_code = 200
+        headers = {}
+
+    class FakeGetResp:
+        status_code = 200
+        headers = {"content-length": "4"}
+
+        def iter_content(self, block_size):
+            yield b"data"
+
+        def raise_for_status(self):
+            return None
+
+    monkeypatch.setattr("requests.head", lambda *a, **k: FakeHeadResp())
+    monkeypatch.setattr("requests.get", lambda *a, **k: FakeGetResp())
+
+    manifest = {
+        "@type": "dbus:OperationManifest",
+        "dbus:command": "download",
+        "dbus:replayParams": {
+            "databusURIs": [url],
+            "graph_mode": "download-url",
+        },
+    }
+
+    path = tmp_path / "run.jsonld"
+    _write_manifest(path, manifest)
+
+    result = replay_manifest(str(path), overrides={"localDir": str(tmp_path)})
+
+    final_file = tmp_path / "acct" / "group" / "art" / "2024.01.01" / "data.ttl"
+    assert result["command"] == "download"
+    assert final_file.exists()
+    assert final_file.with_name("data.ttl.graph").read_text(encoding="utf-8") == url
 
 
 def test_replay_missing_command_raises(tmp_path):
@@ -132,6 +176,7 @@ def test_replay_overrides_are_applied(tmp_path, monkeypatch):
     assert captured["endpoint"] == "https://databus.dbpedia.org/sparql"
     assert captured["localDir"] == "./replay-data"
     assert captured["databus_key"] == "dummy-key"
+
 
 def test_replay_delete_confirmed_calls_api_delete(tmp_path, monkeypatch):
     captured = {}
@@ -310,6 +355,7 @@ def test_replay_delete_requires_databus_key(tmp_path):
     with pytest.raises(ManifestReplayError, match="--databus-key"):
         replay_manifest(str(path), overrides={})
 
+
 def test_replay_deploy_classic_mode(tmp_path, monkeypatch):
     captured = {}
 
@@ -329,7 +375,9 @@ def test_replay_deploy_classic_mode(tmp_path, monkeypatch):
         "dbus:command": "deploy",
         "dbus:replayParams": {
             "version_id": "https://databus.dbpedia.org/acct/grp/art/1.0",
-            "title": "T", "abstract": "A", "description": "D",
+            "title": "T",
+            "abstract": "A",
+            "description": "D",
             "license_url": "https://license.example.org",
             "deploy_mode": "classic",
             "resolved_distributions": [
@@ -372,7 +420,9 @@ def test_replay_deploy_metadata_mode(tmp_path, monkeypatch):
         "dbus:command": "deploy",
         "dbus:replayParams": {
             "version_id": "https://databus.dbpedia.org/acct/grp/art/1.0",
-            "title": "T", "abstract": "A", "description": "D",
+            "title": "T",
+            "abstract": "A",
+            "description": "D",
             "license_url": "https://license.example.org",
             "deploy_mode": "metadata",
             "resolved_metadata": [
@@ -399,7 +449,9 @@ def test_replay_deploy_webdav_mode_raises(tmp_path):
         "dbus:command": "deploy",
         "dbus:replayParams": {
             "version_id": "https://databus.dbpedia.org/acct/grp/art/1.0",
-            "title": "T", "abstract": "A", "description": "D",
+            "title": "T",
+            "abstract": "A",
+            "description": "D",
             "license_url": "https://license.example.org",
             "deploy_mode": "webdav",
         },
@@ -417,7 +469,9 @@ def test_replay_deploy_requires_apikey(tmp_path):
         "dbus:command": "deploy",
         "dbus:replayParams": {
             "version_id": "https://databus.dbpedia.org/acct/grp/art/1.0",
-            "title": "T", "abstract": "A", "description": "D",
+            "title": "T",
+            "abstract": "A",
+            "description": "D",
             "license_url": "https://license.example.org",
             "deploy_mode": "classic",
             "resolved_distributions": [],
@@ -437,7 +491,9 @@ def test_replay_deploy_missing_deploy_mode_raises(tmp_path):
         "dbus:command": "deploy",
         "dbus:replayParams": {
             "version_id": "https://databus.dbpedia.org/acct/grp/art/1.0",
-            "title": "T", "abstract": "A", "description": "D",
+            "title": "T",
+            "abstract": "A",
+            "description": "D",
             "license_url": "https://license.example.org",
         },
     }
@@ -446,6 +502,7 @@ def test_replay_deploy_missing_deploy_mode_raises(tmp_path):
 
     with pytest.raises(ManifestReplayError, match="predate"):
         replay_manifest(str(path), overrides={"api_key": "dummy-key"})
+
 
 def test_replay_workflow_manifest_gives_clean_not_implemented_error(tmp_path):
     """Workflow manifests have no replayParams (workflows don't call
