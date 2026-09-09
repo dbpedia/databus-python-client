@@ -128,3 +128,38 @@ def test_empty_cvs():
     }
 
     assert dataset == correct_dataset
+
+
+def test_abstract_length_validation():
+    long_abstract = "a" * 205
+    with pytest.raises(BadArgumentException, match="exceeds maximum allowed length of 200 characters"):
+        create_dataset(
+            version_id="https://databus.dbpedia.org/user/group/artifact/1.0.0",
+            artifact_version_title="Test Title",
+            artifact_version_abstract=long_abstract,
+            artifact_version_description="Test description",
+            license_url="https://dalicc.net/licenses/cc-by-4.0",
+            distributions=[],
+        )
+
+
+def test_version_id_uri_validation():
+    invalid_uris = [
+        "databus.dbpedia.org/user/group/artifact/1.0.0",  # missing scheme
+        "https://databus.dbpedia.org/user/group/artifact",  # missing version part
+        "https://databus.dbpedia.org/user//artifact/1.0.0",  # empty group part
+        "https://databus.dbpedia.org/user/group/artifact/1.0.0/",  # trailing slash
+        "https://databus.dbpedia.org/user/gr oup/artifact/1.0.0",  # component containing space
+    ]
+    for invalid_uri in invalid_uris:
+        with pytest.raises(BadArgumentException):
+            create_dataset(
+                version_id=invalid_uri,
+                artifact_version_title="Test Title",
+                artifact_version_abstract="Valid abstract",
+                artifact_version_description="Test description",
+                license_url="https://dalicc.net/licenses/cc-by-4.0",
+                distributions=[],
+            )
+
+

@@ -4,9 +4,17 @@ Contains small parsing helpers and HTTP helpers that are shared by
 `download`, `deploy` and `delete` modules.
 """
 
-from typing import Optional, Tuple
 import hashlib
+import re
+from typing import Optional, Tuple
+from urllib.parse import urlparse
 import requests
+
+# Regex for Databus identifier components (account, group, artifact, version)
+_DATABUS_ID_RE = re.compile(r"^[a-zA-Z0-9_.-]+$")
+# Regex for authority (host:port)
+_DATABUS_AUTHORITY_RE = re.compile(r"^[a-zA-Z0-9.-]+(?::[0-9]+)?$")
+
 
 
 def get_databus_id_parts_from_file_url(
@@ -71,3 +79,45 @@ def compute_sha256_and_length(filepath):
             sha256.update(chunk)
             total_length += len(chunk)
     return sha256.hexdigest(), total_length
+
+
+def validate_databus_version_uri(uri: str) -> None:
+    """Validate a Databus version URI format.
+
+    Expects format: http(s)://<AUTHORITY>/<ACCOUNT>/<GROUP>/<ARTIFACT>/<VERSION>
+
+    Raises:
+        ValueError: If URI scheme, authority, trailing slashes, or path components are invalid.
+    """
+    if not uri or not isinstance(uri, str):
+        raise ValueError("Databus version_id must be a non-empty string.")
+
+    if not (uri.startswith("http://") or uri.startswith("https://")):
+        raise ValueError(
+            f"Invalid version_id URI scheme: '{uri}'. Must start with 'http://' or 'https://'."
+        )
+
+    parsed = urlparse(uri)
+    if not parsed.netloc or not _DATABUS_AUTHORITY_RE.match(parsed.netloc):
+        raise ValueError(
+            f"Invalid authority in version_id URI: '{parsed.netloc or uri}'."
+        )
+
+    # Preserve slash delimiters: path must start with '/' followed by account/group/artifact/version
+    # Any trailing slash, double slash, or extra segment creates empty or extra parts.
+    path_segments = parsed.path.split("/")[1:]
+
+    if len(path_segments) != 4:
+        raise ValueError(
+            f"Invalid version_id format: '{uri}'. Expected format: <BASE>/<ACCOUNT>/<GROUP>/<ARTIFACT>/<VERSION>"
+        )
+
+    component_names = ["ACCOUNT", "GROUP", "ARTIFACT", "VERSION"]
+    for name, seg in zip(component_names, path_segments):
+        if not seg or not _DATABUS_ID_RE.match(seg):
+            raise ValueError(
+                f"Invalid Databus {name} component '{seg}' in version_id: '{uri}'. "
+                "Must be non-empty and contain only alphanumeric characters, underscores, hyphens, or dots."
+            )
+
+

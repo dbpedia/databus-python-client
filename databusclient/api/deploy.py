@@ -12,6 +12,8 @@ from typing import Dict, List, Optional, Tuple, Union
 
 import requests
 
+from databusclient.api.utils import validate_databus_version_uri
+
 _debug = False
 
 
@@ -352,13 +354,19 @@ def create_dataset(
         OPTIONAL! Metadata for the Group: Description. NOTE: Is only used if all group metadata is set
     """
 
+    if len(artifact_version_abstract.strip()) > 200:
+        raise BadArgumentException(
+            f"Artifact & version abstract exceeds maximum allowed length of 200 characters "
+            f"(got {len(artifact_version_abstract.strip())})."
+        )
+
+    try:
+        validate_databus_version_uri(version_id)
+    except ValueError as e:
+        raise BadArgumentException(str(e)) from e
+
     _versionId = str(version_id).strip("/")
     parts = _versionId.rsplit("/", 4)
-    if len(parts) < 5:
-        raise BadArgumentException(
-            f"Invalid version_id format: '{version_id}'. "
-            f"Expected format: <BASE>/<ACCOUNT>/<GROUP>/<ARTIFACT>/<VERSION>"
-        )
     _, _account_name, _group_name, _artifact_name, version = parts
 
     # could be build from stuff above,
