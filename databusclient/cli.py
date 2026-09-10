@@ -8,6 +8,7 @@ import click
 import databusclient.api.deploy as api_deploy
 from databusclient.api.delete import delete as api_delete
 from databusclient.api.download import download as api_download, DownloadAuthError
+from databusclient.api.utils import get_http_session
 from databusclient.manifest.context import ManifestContext
 from databusclient.manifest.writer import ManifestWriter
 from databusclient.manifest.replay import ManifestReplayError, replay_manifest, load_manifest
@@ -74,6 +75,20 @@ def app():
 )
 @click.option("--remote", help="rclone remote name (e.g., 'nextcloud')")
 @click.option("--path", help="Remote path on Nextcloud (e.g., 'datasets/mydataset')")
+@click.option(
+    "--retries",
+    default=3,
+    show_default=True,
+    type=int,
+    help="Maximum number of HTTP retries for network requests",
+)
+@click.option(
+    "--request-timeout",
+    default=30,
+    show_default=True,
+    type=int,
+    help="Timeout in seconds for HTTP network requests",
+)
 @click.argument("distributions", nargs=-1)
 def deploy(
     version_id,
@@ -86,6 +101,8 @@ def deploy(
     webdav_url,
     remote,
     path,
+    retries: int,
+    request_timeout: int,
     distributions: List[str],
     manifest_path,
 ):
@@ -95,6 +112,8 @@ def deploy(
     - Metadata-based deploy (--metadata <file>)\n
     - Upload & deploy via Nextcloud (--webdav-url, --remote, --path)
     """
+
+    session = api_deploy.get_http_session(retries=retries)
 
     # Sanity checks for conflicting options
     if metadata_file and any([distributions, webdav_url, remote, path]):
@@ -146,7 +165,9 @@ def deploy(
             if manifest_context:
                 manifest_context.replay_params["deploy_mode"] = "classic"
                 manifest_context.replay_params["resolved_distributions"] = dataid["@graph"][-1].get("distribution", [])
-            api_deploy.deploy(dataid=dataid, api_key=apikey)
+            api_deploy.deploy(
+                dataid=dataid, api_key=apikey, session=session, timeout=request_timeout
+            )
             if manifest_context:
                 for dist in distributions:
                     url = str(dist).split("|")[0]
@@ -169,7 +190,15 @@ def deploy(
                 manifest_context.replay_params["deploy_mode"] = "metadata"
                 manifest_context.replay_params["resolved_metadata"] = metadata
             api_deploy.deploy_from_metadata(
-                metadata, version_id, title, abstract, description, license_url, apikey
+                metadata,
+                version_id,
+                title,
+                abstract,
+                description,
+                license_url,
+                apikey,
+                session=session,
+                timeout=request_timeout,
             )
             if manifest_context:
                 for entry in metadata:
@@ -205,7 +234,15 @@ def deploy(
         try:
             metadata = webdav.upload_to_webdav(distributions, remote, path, webdav_url)
             api_deploy.deploy_from_metadata(
-                metadata, version_id, title, abstract, description, license_url, apikey
+                metadata,
+                version_id,
+                title,
+                abstract,
+                description,
+                license_url,
+                apikey,
+                session=session,
+                timeout=request_timeout,
             )
             if manifest_context:
                 for entry in metadata:
@@ -420,15 +457,34 @@ def download(
     "--dry-run", is_flag=True, help="Perform a dry run without actual deletion"
 )
 @click.option(
-    "--force", is_flag=True, help="Force deletion without confirmation prompt"
-)
-@click.option(
     "--manifest",
     "manifest_path",
     default=None,
     help="Write a JSON-LD manifest of this operation to PATH.",
 )
-def delete(databusuris: List[str], databus_key: str, dry_run: bool, force: bool, manifest_path: str):
+@click.option(
+    "--retries",
+    default=3,
+    show_default=True,
+    type=int,
+    help="Maximum number of HTTP retries for network requests",
+)
+@click.option(
+    "--request-timeout",
+    default=30,
+    show_default=True,
+    type=int,
+    help="Timeout in seconds for HTTP network requests",
+)
+def delete(
+    databusuris: List[str],
+    databus_key: str,
+    dry_run: bool,
+    force: bool,
+    manifest_path: str,
+    retries: int,
+    request_timeout: int,
+):
     """
     Delete a dataset from the databus.
 
@@ -444,6 +500,7 @@ def delete(databusuris: List[str], databus_key: str, dry_run: bool, force: bool,
             "dry_run": dry_run,
         })
 
+    session = get_http_session(retries=retries)
     try:
         api_delete(
             databusURIs=databusuris,
@@ -451,6 +508,8 @@ def delete(databusuris: List[str], databus_key: str, dry_run: bool, force: bool,
             dry_run=dry_run,
             force=force,
             manifest_context=manifest_context,
+            session=session,
+            timeout=request_timeout,
         )
     except Exception as exc:
         if manifest_context:
