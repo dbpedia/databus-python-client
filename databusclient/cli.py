@@ -164,17 +164,10 @@ def deploy(
             )
             if manifest_context:
                 manifest_context.replay_params["deploy_mode"] = "classic"
-<<<<<<< HEAD
                 manifest_context.replay_params["resolved_distributions"] = dataid["@graph"][-1].get("distribution", [])
-            api_deploy.deploy(dataid=dataid, api_key=apikey)
-=======
-                manifest_context.replay_params["resolved_distributions"] = (
-                    dataid["@graph"][-1].get("distribution", [])
-                )
             api_deploy.deploy(
                 dataid=dataid, api_key=apikey, session=session, timeout=request_timeout
             )
->>>>>>> 45f5ceb (feat: add configurable HTTP retry strategy with exponential backoff)
             if manifest_context:
                 for dist in distributions:
                     url = str(dist).split("|")[0]
