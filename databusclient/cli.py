@@ -321,6 +321,13 @@ def deploy(
 @click.option(
     "--validate-checksum", is_flag=True, help="Validate checksums of downloaded files"
 )
+@click.option(
+    "--resume",
+    "-c",
+    is_flag=True,
+    default=False,
+    help="Resume partially downloaded files using HTTP Range requests.",
+)
 def download(
     databusuris: List[str],
     localdir,
@@ -337,6 +344,7 @@ def download(
     graph_mode,
     validate_checksum,
     manifest_path,
+    resume,
 ):
     """
     Download datasets from databus, optionally using vault access if vault options are provided.
@@ -368,6 +376,7 @@ def download(
             "validate_checksum": validate_checksum,
             "authurl": authurl,
             "clientid": clientid,
+            "resume": resume,
         })
     try:
         api_download(
@@ -386,6 +395,7 @@ def download(
             graph_mode=graph_mode,
             validate_checksum=validate_checksum,
             manifest_context=manifest_context,
+            resume=resume,
         )
     except DownloadAuthError as e:
         if manifest_context:

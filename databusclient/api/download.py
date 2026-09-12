@@ -420,6 +420,7 @@ def _download_file(
     validate_checksum: bool = False,
     expected_checksum: str | None = None,
     manifest_context=None,
+    resume: bool = False,
 ) -> None:
     """Download a file from the internet with a progress bar using tqdm.
 
@@ -438,6 +439,8 @@ def _download_file(
         graph_mode: Optional graph sidecar mode. Currently supports 'download-url'.
         validate_checksum: Whether to validate checksums after downloading.
         expected_checksum: The expected checksum of the file.
+        manifest_context: ManifestContext instance to record download metadata.
+        resume: Whether to resume partially downloaded files via HTTP Range headers.
     """
     _validate_graph_mode(graph_mode)
     source_url = url
@@ -452,6 +455,11 @@ def _download_file(
     dirpath = os.path.dirname(filename)
     if dirpath:
         os.makedirs(dirpath, exist_ok=True)  # Create the necessary directories
+
+    # Check for existing partial file if resume requested
+    existing_bytes = 0
+    if resume and os.path.isfile(filename):
+        existing_bytes = os.path.getsize(filename)
 
     # --- 1. Get redirect URL by requesting HEAD ---
     headers = {}
@@ -496,97 +504,149 @@ def _download_file(
             headers = {"X-API-KEY": databus_key}
             response = requests.head(url, headers=headers, timeout=30)
 
-    # --- 2. Try direct GET to redirected URL ---
-    headers["Accept-Encoding"] = (
-        "identity"  # disable gzip to get correct content-length
-    )
-    response = requests.get(
-        url, headers=headers, stream=True, allow_redirects=True, timeout=30
-    )
-    www = response.headers.get(
-        "WWW-Authenticate", ""
-    )  # Check if authentication is required
+    file_already_complete = False
+    if (
+        existing_bytes > 0
+        and response.status_code == 200
+        and response.headers.get("content-length")
+    ):
+        try:
+            remote_total = int(response.headers.get("content-length"))
+            if remote_total > 0 and existing_bytes == remote_total:
+                print(
+                    f"File {filename} is already completely downloaded ({existing_bytes} bytes)."
+                )
+                file_already_complete = True
+                total_size_in_bytes = existing_bytes
+            elif remote_total > 0 and existing_bytes > remote_total:
+                print(
+                    f"Existing file {filename} ({existing_bytes} bytes) is larger than remote size ({remote_total} bytes). Restarting download."
+                )
+                existing_bytes = 0
+        except (ValueError, TypeError):
+            pass
 
-    # --- 3. Handle authentication responses ---
-    # 3a. Server requests Bearer auth. Only attempt token exchange for hosts
-    # we explicitly consider Vault-protected (VAULT_REQUIRED_HOSTS). This avoids
-    # sending tokens to unrelated hosts and makes auth behavior predictable.
-    if response.status_code == 401 and "bearer" in www.lower():
-        # If host is not configured for Vault, do not attempt token exchange.
-        if host not in VAULT_REQUIRED_HOSTS:
-            raise DownloadAuthError(
-                "Server requests Bearer authentication but this host is not configured for Vault token exchange."
-                " Try providing a databus API key with --databus-key or contact your administrator."
+    if not file_already_complete:
+        if existing_bytes > 0:
+            headers["Range"] = f"bytes={existing_bytes}-"
+
+        # --- 2. Try direct GET to redirected URL ---
+        headers["Accept-Encoding"] = (
+            "identity"  # disable gzip to get correct content-length
+        )
+        response = requests.get(
+            url, headers=headers, stream=True, allow_redirects=True, timeout=30
+        )
+        www = response.headers.get(
+            "WWW-Authenticate", ""
+        )  # Check if authentication is required
+
+        # --- 3. Handle authentication responses ---
+        # 3a. Server requests Bearer auth. Only attempt token exchange for hosts
+        # we explicitly consider Vault-protected (VAULT_REQUIRED_HOSTS). This avoids
+        # sending tokens to unrelated hosts and makes auth behavior predictable.
+        if response.status_code == 401 and "bearer" in www.lower():
+            # If host is not configured for Vault, do not attempt token exchange.
+            if host not in VAULT_REQUIRED_HOSTS:
+                raise DownloadAuthError(
+                    "Server requests Bearer authentication but this host is not configured for Vault token exchange."
+                    " Try providing a databus API key with --databus-key or contact your administrator."
+                )
+
+            # Host requires Vault; ensure token file provided.
+            if not vault_token_file:
+                raise DownloadAuthError(
+                    f"Vault token required for host '{host}', but no token was provided. Please use --vault-token."
+                )
+
+            # --- 3b. Fetch Vault token and retry ---
+            # Token exchange is potentially sensitive and should only be performed
+            # for known hosts. __get_vault_access__ handles reading the refresh
+            # token and exchanging it; errors are translated to DownloadAuthError
+            # for user-friendly CLI output.
+            vault_token = __get_vault_access__(
+                url, vault_token_file, auth_url, client_id
             )
+            headers["Authorization"] = f"Bearer {vault_token}"
 
-        # Host requires Vault; ensure token file provided.
-        if not vault_token_file:
-            raise DownloadAuthError(
-                f"Vault token required for host '{host}', but no token was provided. Please use --vault-token."
-            )
+            # Retry with token
+            response = requests.get(url, headers=headers, stream=True, timeout=30)
 
-        # --- 3b. Fetch Vault token and retry ---
-        # Token exchange is potentially sensitive and should only be performed
-        # for known hosts. __get_vault_access__ handles reading the refresh
-        # token and exchanging it; errors are translated to DownloadAuthError
-        # for user-friendly CLI output.
-        vault_token = __get_vault_access__(url, vault_token_file, auth_url, client_id)
-        headers["Authorization"] = f"Bearer {vault_token}"
+            # Map common auth failures to friendly messages
+            if response.status_code == 401:
+                raise DownloadAuthError(
+                    "Vault token is invalid or expired. Please generate a new token."
+                )
+            if response.status_code == 403:
+                raise DownloadAuthError(
+                    "Vault token is valid but has insufficient permissions to access this file."
+                )
 
-        # Retry with token
-        response = requests.get(url, headers=headers, stream=True, timeout=30)
-
-        # Map common auth failures to friendly messages
-        if response.status_code == 401:
-            raise DownloadAuthError(
-                "Vault token is invalid or expired. Please generate a new token."
-            )
+        # 3c. Generic forbidden without Bearer challenge
         if response.status_code == 403:
             raise DownloadAuthError(
-                "Vault token is valid but has insufficient permissions to access this file."
+                "Access forbidden: your token or API key does not have permission to download this file."
             )
 
-    # 3c. Generic forbidden without Bearer challenge
-    if response.status_code == 403:
-        raise DownloadAuthError(
-            "Access forbidden: your token or API key does not have permission to download this file."
-        )
+        # 3d. Generic unauthorized without Bearer
+        if response.status_code == 401:
+            raise DownloadAuthError(
+                "Unauthorized: access denied. Check your --databus-key or --vault-token settings."
+            )
 
-    # 3d. Generic unauthorized without Bearer
-    if response.status_code == 401:
-        raise DownloadAuthError(
-            "Unauthorized: access denied. Check your --databus-key or --vault-token settings."
-        )
-
-    try:
-        response.raise_for_status()  # Raise if still failing
-    except requests.exceptions.HTTPError as e:
-        if response.status_code == 404:
-            print(f"WARNING: Skipping file {url} because it was not found (404).")
-            if manifest_context is not None:
-                manifest_context.record_file(
-                    url=url,
-                    status="failed",
-                    error_message="404 Not Found",
+        try:
+            if response.status_code == 416 and existing_bytes > 0:
+                print(
+                    f"Server returned 416 Range Not Satisfiable for {url}. File {filename} may already be completely downloaded."
                 )
-            return
+                total_size_in_bytes = existing_bytes
+                file_already_complete = True
+            else:
+                response.raise_for_status()  # Raise if still failing
+        except requests.exceptions.HTTPError as e:
+            if response.status_code == 404:
+                print(f"WARNING: Skipping file {url} because it was not found (404).")
+                if manifest_context is not None:
+                    manifest_context.record_file(
+                        url=url,
+                        status="failed",
+                        error_message="404 Not Found",
+                    )
+                return
+            else:
+                raise e
+
+    if not file_already_complete:
+        # --- 4. Download with progress bar ---
+        is_partial = response.status_code == 206
+        file_mode = "ab" if (is_partial and existing_bytes > 0) else "wb"
+        content_len = int(response.headers.get("content-length", 0))
+
+        if is_partial and existing_bytes > 0:
+            total_size_in_bytes = existing_bytes + content_len
+            initial_bytes = existing_bytes
         else:
-            raise e
+            total_size_in_bytes = content_len
+            initial_bytes = 0
 
-    # --- 4. Download with progress bar ---
-    total_size_in_bytes = int(response.headers.get("content-length", 0))
-    block_size = 1024  # 1 KiB
+        block_size = 1024  # 1 KiB
 
-    progress_bar = tqdm(total=total_size_in_bytes, unit="iB", unit_scale=True)
-    with open(filename, "wb") as f:
-        for data in response.iter_content(block_size):
-            progress_bar.update(len(data))
-            f.write(data)
-    progress_bar.close()
+        progress_bar = tqdm(
+            total=total_size_in_bytes,
+            initial=initial_bytes,
+            unit="iB",
+            unit_scale=True,
+        )
+        with open(filename, file_mode) as f:
+            for data in response.iter_content(block_size):
+                progress_bar.update(len(data))
+                f.write(data)
+        progress_bar.close()
 
-    # --- 5. Verify download size ---
-    if total_size_in_bytes != 0 and progress_bar.n != total_size_in_bytes:
-        raise IOError("Downloaded size does not match Content-Length header")
+        # --- 5. Verify download size ---
+        final_size = os.path.getsize(filename)
+        if total_size_in_bytes != 0 and final_size != total_size_in_bytes:
+            raise IOError("Downloaded size does not match Content-Length header")
 
     # --- 6. Validate checksum on original downloaded file (BEFORE conversion) ---
     actual_checksum = None
@@ -866,6 +926,7 @@ def _download_files(
     manifest_context=None,
     validate_checksum: bool = False,
     checksums: dict | None = None,
+    resume: bool = False,
 ) -> None:
     """Download multiple files from the databus.
 
@@ -883,6 +944,7 @@ def _download_files(
         graph_mode: Optional graph sidecar mode. Currently supports 'download-url'.
         validate_checksum: Whether to validate checksums after downloading.
         checksums: Dictionary mapping URLs to their expected checksums.
+        resume: Whether to resume partially downloaded files via HTTP Range headers.
     """
     for url in urls:
         expected = None
@@ -903,6 +965,7 @@ def _download_files(
             validate_checksum=validate_checksum,
             expected_checksum=expected,
             manifest_context=manifest_context,
+            resume=resume,
         )
 
 
@@ -1054,6 +1117,7 @@ def _download_collection(
     graph_mode: str = None,
     manifest_context=None,
     validate_checksum: bool = False,
+    resume: bool = False,
 ) -> None:
     """Download all files in a databus collection.
 
@@ -1071,6 +1135,7 @@ def _download_collection(
         base_uri: Base URI for CSV -> Triple conversion (Layer 3).
         graph_mode: Optional graph sidecar mode. Currently supports 'download-url'.
         validate_checksum: Whether to validate checksums after downloading.
+        resume: Whether to resume partially downloaded files via HTTP Range headers.
     """
     query = _get_sparql_query_of_collection(uri, databus_key=databus_key)
     file_urls = _get_file_download_urls_from_sparql_query(
@@ -1097,6 +1162,7 @@ def _download_collection(
         manifest_context=manifest_context,
         validate_checksum=validate_checksum,
         checksums=checksums if checksums else None,
+        resume=resume,
     )
 
 
@@ -1114,6 +1180,7 @@ def _download_version(
     graph_mode: str = None,
     manifest_context=None,
     validate_checksum: bool = False,
+    resume: bool = False,
 ) -> None:
     """Download all files in a databus artifact version.
 
@@ -1130,6 +1197,7 @@ def _download_version(
         base_uri: Base URI for CSV -> Triple conversion (Layer 3).
         graph_mode: Optional graph sidecar mode. Currently supports 'download-url'.
         validate_checksum: Whether to validate checksums after downloading.
+        resume: Whether to resume partially downloaded files via HTTP Range headers.
     """
     json_str = fetch_databus_jsonld(uri, databus_key=databus_key)
     file_urls = _get_file_download_urls_from_artifact_jsonld(json_str)
@@ -1155,6 +1223,7 @@ def _download_version(
         manifest_context=manifest_context,
         validate_checksum=validate_checksum,
         checksums=checksums,
+        resume=resume,
     )
 
 
@@ -1173,6 +1242,7 @@ def _download_artifact(
     graph_mode: str = None,
     manifest_context=None,
     validate_checksum: bool = False,
+    resume: bool = False,
 ) -> None:
     """Download files in a databus artifact.
 
@@ -1190,6 +1260,7 @@ def _download_artifact(
         base_uri: Base URI for CSV -> Triple conversion (Layer 3).
         graph_mode: Optional graph sidecar mode. Currently supports 'download-url'.
         validate_checksum: Whether to validate checksums after downloading.
+        resume: Whether to resume partially downloaded files via HTTP Range headers.
     """
     json_str = fetch_databus_jsonld(uri, databus_key=databus_key)
     versions = _get_databus_versions_of_artifact(json_str, all_versions=all_versions)
@@ -1221,6 +1292,7 @@ def _download_artifact(
             manifest_context=manifest_context,
             validate_checksum=validate_checksum,
             checksums=checksums,
+            resume=resume,
         )
 
 
@@ -1300,6 +1372,7 @@ def _download_group(
     graph_mode: str = None,
     manifest_context=None,
     validate_checksum: bool = False,
+    resume: bool = False,
 ) -> None:
     """Download files in a databus group.
 
@@ -1317,6 +1390,7 @@ def _download_group(
         base_uri: Base URI for CSV -> Triple conversion (Layer 3).
         graph_mode: Optional graph sidecar mode. Currently supports 'download-url'.
         validate_checksum: Whether to validate checksums after downloading.
+        resume: Whether to resume partially downloaded files via HTTP Range headers.
     """
     json_str = fetch_databus_jsonld(uri, databus_key=databus_key)
     artifacts = _get_databus_artifacts_of_group(json_str)
@@ -1337,6 +1411,7 @@ def _download_group(
             graph_mode=graph_mode,
             manifest_context=manifest_context,
             validate_checksum=validate_checksum,
+            resume=resume,
         )
 
 
@@ -1390,6 +1465,7 @@ def download(
     graph_mode=None,
     validate_checksum: bool = False,
     manifest_context=None,
+    resume: bool = False,
 ) -> None:
     """Download datasets from databus.
 
@@ -1410,6 +1486,8 @@ def download(
         base_uri: Base URI for CSV -> Triple conversion (Layer 3).
         graph_mode: Optional graph sidecar mode. Currently supports 'download-url'.
         validate_checksum: Whether to validate checksums after downloading.
+        manifest_context: ManifestContext instance to record download metadata.
+        resume: Whether to resume partially downloaded files via HTTP Range headers.
     """
     _validate_graph_mode(graph_mode)
     for databusURI in databusURIs:
@@ -1442,6 +1520,7 @@ def download(
                     graph_mode=graph_mode,
                     manifest_context=manifest_context,
                     validate_checksum=validate_checksum,
+                    resume=resume,
                 )
             elif file is not None:
                 print(f"Downloading file: {databusURI}")
@@ -1468,6 +1547,7 @@ def download(
                     manifest_context=manifest_context,
                     validate_checksum=validate_checksum,
                     expected_checksum=expected,
+                    resume=resume,
                 )
             elif version is not None:
                 print(f"Downloading version: {databusURI}")
@@ -1485,6 +1565,7 @@ def download(
                     graph_mode=graph_mode,
                     manifest_context=manifest_context,
                     validate_checksum=validate_checksum,
+                    resume=resume,
                 )
             elif artifact is not None:
                 print(
@@ -1505,6 +1586,7 @@ def download(
                     graph_mode=graph_mode,
                     manifest_context=manifest_context,
                     validate_checksum=validate_checksum,
+                    resume=resume,
                 )
             elif group is not None and group != "collections":
                 print(
@@ -1525,6 +1607,7 @@ def download(
                     graph_mode=graph_mode,
                     manifest_context=manifest_context,
                     validate_checksum=validate_checksum,
+                    resume=resume,
                 )
             elif account is not None:
                 print("accountId not supported yet")  # TODO
@@ -1568,4 +1651,5 @@ def download(
                 manifest_context=manifest_context,
                 validate_checksum=validate_checksum,
                 checksums=checksums if checksums else None,
+                resume=resume,
             )
