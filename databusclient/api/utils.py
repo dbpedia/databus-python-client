@@ -4,9 +4,30 @@ Contains small parsing helpers and HTTP helpers that are shared by
 `download`, `deploy` and `delete` modules.
 """
 
-from typing import Optional, Tuple
 import hashlib
+import posixpath
+from typing import Optional, Tuple
+from urllib.parse import unquote, urlparse
+
 import requests
+
+
+def get_filename_from_url(url: str) -> str:
+    """Extract a clean, filesystem-safe filename from a URL.
+
+    Strips query parameters and URL fragments, unquotes percent-encoded
+    characters, and falls back to 'downloaded_file' if the path is empty.
+
+    Args:
+        url: The download URL.
+
+    Returns:
+        The clean filename string.
+    """
+    parsed = urlparse(url)
+    clean_path = parsed.path
+    basename = posixpath.basename(unquote(clean_path))
+    return basename or "downloaded_file"
 
 
 def get_databus_id_parts_from_file_url(
@@ -21,6 +42,9 @@ def get_databus_id_parts_from_file_url(
 ]:
     """Extract databus ID parts from a given databus URI.
 
+    The returned tuple is (host, accountId, groupId, artifactId, versionId, fileId).
+    Missing parts are returned as ``None``. Query strings and fragments are stripped.
+
     Args:
         uri: The full databus URI of the form "http(s)://host/accountId/groupId/artifactId/versionId/fileId".
 
@@ -28,14 +52,9 @@ def get_databus_id_parts_from_file_url(
         A tuple containing (host, accountId, groupId, artifactId, versionId, fileId).
         Each element is a string or None if not present.
     """
-    """Split a Databus URI into its six parts.
-
-    The returned tuple is (host, accountId, groupId, artifactId, versionId, fileId).
-    Missing parts are returned as ``None``.
-    """
-
-    uri = uri.removeprefix("https://").removeprefix("http://")
-    parts = uri.strip("/").split("/")
+    clean_uri = uri.split("?")[0].split("#")[0]
+    clean_uri = clean_uri.removeprefix("https://").removeprefix("http://")
+    parts = clean_uri.strip("/").split("/")
     parts += [None] * (6 - len(parts))  # pad with None if less than 6 parts
     return tuple(parts[:6])  # return only the first 6 parts
 

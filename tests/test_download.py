@@ -213,3 +213,57 @@ def test_converted_output_gets_graph_sidecar_at_final_path(monkeypatch, tmp_path
     assert not (tmp_path / "data.ttl.bz2").exists()
     assert not (tmp_path / "data.ttl.bz2.graph").exists()
     assert (tmp_path / "data.ttl.graph").read_text(encoding="utf-8") == url
+
+
+def test_get_filename_from_url():
+    from databusclient.api.utils import get_filename_from_url
+
+    # Query parameters and fragments
+    assert (
+        get_filename_from_url("https://example.org/path/file.ttl.bz2?token=xyz123&expires=1700")
+        == "file.ttl.bz2"
+    )
+    assert get_filename_from_url("https://example.org/path/file.ttl#fragment") == "file.ttl"
+
+    # Query parameter containing slashes
+    assert (
+        get_filename_from_url("https://example.org/file.ttl?redirect=http://other.org/abc")
+        == "file.ttl"
+    )
+
+    # Percent-encoded characters
+    assert get_filename_from_url("https://example.org/path/my%20data.ttl") == "my data.ttl"
+
+    # Root or empty path fallback
+    assert get_filename_from_url("https://example.org/") == "downloaded_file"
+    assert get_filename_from_url("https://example.org") == "downloaded_file"
+
+
+def test_download_url_with_query_params_and_fragments(monkeypatch, tmp_path):
+    import databusclient.api.download as dl
+
+    url = "https://example.org/data.ttl?token=xyz123&expires=9999#header"
+    content = b"<s> <p> <o> .\n"
+    _mock_download(monkeypatch, {url: content})
+
+    dl._download_file(url, localDir=str(tmp_path))
+
+    # File should be cleanly named 'data.ttl' without query parameters
+    target = tmp_path / "data.ttl"
+    assert target.exists()
+    assert target.read_bytes() == content
+
+
+def test_download_url_with_query_params_and_decompression(monkeypatch, tmp_path):
+    import databusclient.api.download as dl
+
+    url = "https://example.org/data.ttl.bz2?token=secret123&foo=bar"
+    compressed_content = bz2.compress(b"<s> <p> <o> .\n")
+    _mock_download(monkeypatch, {url: compressed_content})
+
+    dl._download_file(url, localDir=str(tmp_path), compression="none")
+
+    # Clean decompression to data.ttl
+    assert (tmp_path / "data.ttl").exists()
+    assert not (tmp_path / "data.ttl.bz2").exists()
+    assert (tmp_path / "data.ttl").read_text(encoding="utf-8") == "<s> <p> <o> .\n"

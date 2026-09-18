@@ -12,6 +12,8 @@ from typing import Dict, List, Optional, Tuple, Union
 
 import requests
 
+from databusclient.api.utils import get_filename_from_url
+
 _debug = False
 
 
@@ -131,11 +133,12 @@ def _get_extensions(distribution_str: str) -> Tuple[str, str, str]:
     format_extension = "file"
     compression = "none"
 
-    # get the last segment of the URL
-    last_segment = str(distribution_str).split("|")[0].split("/")[-1]
+    # get the last segment of the URL (clean filename without query params or fragments)
+    url = str(distribution_str).split("|")[0]
+    last_segment = get_filename_from_url(url)
 
-    # cut of fragments and split by dots
-    dot_splits = last_segment.split("#")[0].rsplit(".", 2)
+    # split by dots
+    dot_splits = last_segment.rsplit(".", 2)
 
     if len(dot_splits) > 1:
         # if only format is given (no compression)

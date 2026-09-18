@@ -128,3 +128,21 @@ def test_empty_cvs():
     }
 
     assert dataset == correct_dataset
+
+
+def test_get_extensions_with_query_parameters():
+    from databusclient.api.deploy import _get_extensions
+
+    # Distribution URL with query parameters
+    ext_part, fmt, comp = _get_extensions(
+        "https://example.org/dataset.ttl.gz?token=123&expires=456"
+    )
+    assert fmt == "ttl"
+    assert comp == "gz"
+    assert ext_part == ".ttl.gz"
+
+    # Distribution URL with fragment and single extension
+    ext_part, fmt, comp = _get_extensions("https://example.org/dataset.nt#distribution")
+    assert fmt == "nt"
+    assert comp == "none"
+    assert ext_part == ".nt"

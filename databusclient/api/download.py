@@ -18,6 +18,7 @@ from databusclient.api.utils import (
     fetch_databus_jsonld,
     get_databus_id_parts_from_file_url,
     compute_sha256_and_length,
+    get_filename_from_url,
 )
 from databusclient.filehandling.format import (
     convert_file,
@@ -446,7 +447,7 @@ def _download_file(
     if not local_dir_was_given:
         print(f"Local directory not given, using {localDir}")
 
-    file = url.split("/")[-1]
+    file = get_filename_from_url(url)
     filename = os.path.join(localDir, file)
     print(f"Download file: {url}")
     dirpath = os.path.dirname(filename)
