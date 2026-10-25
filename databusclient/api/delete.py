@@ -14,6 +14,9 @@ import requests
 from databusclient.api.utils import (
     fetch_databus_jsonld,
     get_databus_id_parts_from_file_url,
+    get_default_headers,
+    set_header,
+    set_header_if_missing,
 )
 
 
@@ -23,16 +26,18 @@ class DeleteQueue:
     Allows adding multiple databus URIs to a queue and executing their deletion in batch.
     """
 
-    def __init__(self, databus_key: str, manifest_context=None):
+    def __init__(self, databus_key: str, manifest_context=None, headers=None):
         """Create a DeleteQueue bound to a given Databus API key.
 
         Args:
             databus_key: API key used to authenticate deletion requests.
             manifest_context: Optional ManifestContext to record deletion
                 outcomes into. Passed through to _delete_list on execute().
+            headers: Optional custom HTTP headers to send with deletion requests.
         """
         self.databus_key = databus_key
         self.manifest_context = manifest_context
+        self.headers = headers
         self.queue: set[str] = set()
 
     def add_uri(self, databusURI: str):
@@ -79,6 +84,7 @@ class DeleteQueue:
             self.databus_key,
             force=True,
             manifest_context=self.manifest_context,
+            headers=self.headers,
         )
 
 
@@ -122,6 +128,7 @@ def _delete_resource(
     force: bool = False,
     queue: DeleteQueue = None,
     manifest_context=None,
+    headers=None,
 ):
     """Delete a single Databus resource (version, artifact, group).
 
@@ -159,8 +166,10 @@ def _delete_resource(
         return
 
     print(f"[DELETE] {databusURI}")
-    headers = {"accept": "*/*", "X-API-KEY": databus_key}
-    response = requests.delete(databusURI, headers=headers, timeout=30)
+    req_headers = get_default_headers(headers)
+    set_header_if_missing(req_headers, "accept", "*/*")
+    set_header(req_headers, "X-API-KEY", databus_key)
+    response = requests.delete(databusURI, headers=req_headers, timeout=30)
 
     if response.status_code in (200, 204):
         print(f"Successfully deleted: {databusURI}")
@@ -179,6 +188,7 @@ def _delete_list(
     force: bool = False,
     queue: DeleteQueue = None,
     manifest_context=None,
+    headers=None,
 ):
     """Delete a list of Databus resources.
 
@@ -191,7 +201,7 @@ def _delete_list(
     """
     for databusURI in databusURIs:
         _delete_resource(
-            databusURI, databus_key, dry_run=dry_run, force=force, queue=queue, manifest_context=manifest_context
+            databusURI, databus_key, dry_run=dry_run, force=force, queue=queue, manifest_context=manifest_context, headers=headers
         )
 
 
@@ -202,6 +212,7 @@ def _delete_artifact(
     force: bool = False,
     queue: DeleteQueue = None,
     manifest_context=None,
+    headers=None,
 ):
     """Delete an artifact and all its versions.
 
@@ -215,7 +226,7 @@ def _delete_artifact(
         force: If True, skip confirmation prompt and proceed with deletion.
         queue: If queue is provided, add the URI to the queue instead of deleting immediately.
     """
-    artifact_body = fetch_databus_jsonld(databusURI, databus_key)
+    artifact_body = fetch_databus_jsonld(databusURI, databus_key, headers=headers)
 
     json_dict = json.loads(artifact_body)
     versions = json_dict.get("databus:hasVersion")
@@ -235,11 +246,19 @@ def _delete_artifact(
         else:
             # Delete all versions
             _delete_list(
-                version_uris, databus_key, dry_run=dry_run, force=force, queue=queue, manifest_context=manifest_context
+                version_uris, databus_key, dry_run=dry_run, force=force, queue=queue, manifest_context=manifest_context, headers=headers
             )
 
     # Finally, delete the artifact itself
-    _delete_resource(databusURI, databus_key, dry_run=dry_run, force=force, queue=queue,manifest_context=manifest_context)
+    _delete_resource(
+        databusURI,
+        databus_key,
+        dry_run=dry_run,
+        force=force,
+        queue=queue,
+        manifest_context=manifest_context,
+        headers=headers,
+    )
 
 
 def _delete_group(
@@ -249,6 +268,7 @@ def _delete_group(
     force: bool = False,
     queue: DeleteQueue = None,
     manifest_context=None,
+    headers=None,
 ):
     """Delete a group and all its artifacts and versions.
 
@@ -262,7 +282,7 @@ def _delete_group(
         force: If True, skip confirmation prompt and proceed with deletion.
         queue: If queue is provided, add the URI to the queue instead of deleting immediately.
     """
-    group_body = fetch_databus_jsonld(databusURI, databus_key)
+    group_body = fetch_databus_jsonld(databusURI, databus_key, headers=headers)
 
     json_dict = json.loads(group_body)
     artifacts = json_dict.get("databus:hasArtifact", [])
@@ -279,14 +299,35 @@ def _delete_group(
     # Delete all artifacts (which deletes their versions)
     for artifact_uri in artifact_uris:
         _delete_artifact(
-            artifact_uri, databus_key, dry_run=dry_run, force=force, queue=queue, manifest_context=manifest_context
+            artifact_uri,
+            databus_key,
+            dry_run=dry_run,
+            force=force,
+            queue=queue,
+            manifest_context=manifest_context,
+            headers=headers,
         )
 
     # Finally, delete the group itself
-    _delete_resource(databusURI, databus_key, dry_run=dry_run, force=force, queue=queue,manifest_context=manifest_context)
+    _delete_resource(
+        databusURI,
+        databus_key,
+        dry_run=dry_run,
+        force=force,
+        queue=queue,
+        manifest_context=manifest_context,
+        headers=headers,
+    )
 
 
-def delete(databusURIs: List[str], databus_key: str, dry_run: bool, force: bool, manifest_context=None):
+def delete(
+    databusURIs: List[str],
+    databus_key: str,
+    dry_run: bool = False,
+    force: bool = False,
+    manifest_context=None,
+    headers=None,
+):
     """Delete a dataset from the databus.
 
     Delete a group, artifact, or version identified by the given databus URI.
@@ -299,7 +340,7 @@ def delete(databusURIs: List[str], databus_key: str, dry_run: bool, force: bool,
         force: If True, skip confirmation prompt and proceed with deletion.
     """
 
-    queue = DeleteQueue(databus_key, manifest_context=manifest_context)
+    queue = DeleteQueue(databus_key, manifest_context=manifest_context, headers=headers)
 
     for databusURI in databusURIs:
         _host, _account, group, artifact, version, file = (
@@ -309,24 +350,36 @@ def delete(databusURIs: List[str], databus_key: str, dry_run: bool, force: bool,
         if group == "collections" and artifact is not None:
             print(f"Deleting collection: {databusURI}")
             _delete_resource(
-                databusURI, databus_key, dry_run=dry_run, force=force, queue=queue, manifest_context=manifest_context
+                databusURI, databus_key, dry_run=dry_run, force=force, queue=queue, manifest_context=manifest_context, headers=headers
             )
         elif file is not None:
             print(f"Deleting file is not supported via API: {databusURI}")
         elif version is not None:
             print(f"Deleting version: {databusURI}")
             _delete_resource(
-                databusURI, databus_key, dry_run=dry_run, force=force, queue=queue, manifest_context=manifest_context
+                databusURI, databus_key, dry_run=dry_run, force=force, queue=queue, manifest_context=manifest_context, headers=headers
             )
         elif artifact is not None:
             print(f"Deleting artifact and all its versions: {databusURI}")
             _delete_artifact(
-                databusURI, databus_key, dry_run=dry_run, force=force, queue=queue, manifest_context=manifest_context
+                databusURI,
+                databus_key,
+                dry_run=dry_run,
+                force=force,
+                queue=queue,
+                manifest_context=manifest_context,
+                headers=headers,
             )
         elif group is not None and group != "collections":
             print(f"Deleting group and all its artifacts and versions: {databusURI}")
             _delete_group(
-                databusURI, databus_key, dry_run=dry_run, force=force, queue=queue, manifest_context=manifest_context
+                databusURI,
+                databus_key,
+                dry_run=dry_run,
+                force=force,
+                queue=queue,
+                manifest_context=manifest_context,
+                headers=headers,
             )
         else:
             print(f"Deleting {databusURI} is not supported.")
