@@ -8,6 +8,7 @@ import click
 import databusclient.api.deploy as api_deploy
 from databusclient.api.delete import delete as api_delete
 from databusclient.api.download import download as api_download, DownloadAuthError
+from databusclient.api.utils import parse_headers
 from databusclient.manifest.context import ManifestContext
 from databusclient.manifest.writer import ManifestWriter
 from databusclient.manifest.replay import ManifestReplayError, replay_manifest, load_manifest
@@ -67,6 +68,13 @@ def app():
     help="WebDAV URL (e.g., https://cloud.example.com/remote.php/webdav)",
 )
 @click.option(
+    "-H",
+    "--header",
+    "headers",
+    multiple=True,
+    help="Custom HTTP header(s) in 'Name: Value' format (e.g. -H 'User-Agent: MyBot/1.0').",
+)
+@click.option(
     "--manifest",
     "manifest_path",
     default=None,
@@ -88,6 +96,7 @@ def deploy(
     path,
     distributions: List[str],
     manifest_path,
+    headers: List[str] = (),
 ):
     """
     Flexible deploy to Databus command supporting three modes:\n
@@ -106,10 +115,15 @@ def deploy(
             "Invalid combination: when using WebDAV/Nextcloud mode, please provide --webdav-url, --remote, and --path together."
         )
 
+    try:
+        parsed_headers = parse_headers(headers) if headers else None
+    except ValueError as e:
+        raise click.BadParameter(str(e), param_hint="--header")
+
     manifest_context = None
     if manifest_path:
         manifest_context = ManifestContext(command="deploy")
-        manifest_context.record_params({
+        params = {
             "version_id": version_id,
             "title": title,
             "abstract": abstract,
@@ -117,7 +131,13 @@ def deploy(
             "license_url": license_url,
             "distributions": list(distributions) if distributions else [],
             "metadata_file": metadata_file,
-        })
+        }
+        if parsed_headers:
+            params["headers"] = {
+                k: ("***" if k.lower() in ("authorization", "x-api-key", "token") else v)
+                for k, v in parsed_headers.items()
+            }
+        manifest_context.record_params(params)
 
     def _write_manifest():
         if manifest_path and manifest_context is not None:
@@ -146,7 +166,7 @@ def deploy(
             if manifest_context:
                 manifest_context.replay_params["deploy_mode"] = "classic"
                 manifest_context.replay_params["resolved_distributions"] = dataid["@graph"][-1].get("distribution", [])
-            api_deploy.deploy(dataid=dataid, api_key=apikey)
+            api_deploy.deploy(dataid=dataid, api_key=apikey, headers=parsed_headers)
             if manifest_context:
                 for dist in distributions:
                     url = str(dist).split("|")[0]
@@ -169,7 +189,14 @@ def deploy(
                 manifest_context.replay_params["deploy_mode"] = "metadata"
                 manifest_context.replay_params["resolved_metadata"] = metadata
             api_deploy.deploy_from_metadata(
-                metadata, version_id, title, abstract, description, license_url, apikey
+                metadata,
+                version_id,
+                title,
+                abstract,
+                description,
+                license_url,
+                apikey,
+                headers=parsed_headers,
             )
             if manifest_context:
                 for entry in metadata:
@@ -205,7 +232,14 @@ def deploy(
         try:
             metadata = webdav.upload_to_webdav(distributions, remote, path, webdav_url)
             api_deploy.deploy_from_metadata(
-                metadata, version_id, title, abstract, description, license_url, apikey
+                metadata,
+                version_id,
+                title,
+                abstract,
+                description,
+                license_url,
+                apikey,
+                headers=parsed_headers,
             )
             if manifest_context:
                 for entry in metadata:
@@ -319,6 +353,13 @@ def deploy(
     help="Write a JSON-LD manifest of this operation to PATH (e.g. --manifest manifest.jsonld).",
 )
 @click.option(
+    "-H",
+    "--header",
+    "headers",
+    multiple=True,
+    help="Custom HTTP header(s) in 'Name: Value' format (e.g. -H 'User-Agent: MyBot/1.0').",
+)
+@click.option(
     "--validate-checksum", is_flag=True, help="Validate checksums of downloaded files"
 )
 def download(
@@ -337,6 +378,7 @@ def download(
     graph_mode,
     validate_checksum,
     manifest_path,
+    headers: List[str] = (),
 ):
     """
     Download datasets from databus, optionally using vault access if vault options are provided.
@@ -349,6 +391,11 @@ def download(
     elif databus_key:
         auth_method = "databus_key"
 
+    try:
+        parsed_headers = parse_headers(headers) if headers else None
+    except ValueError as e:
+        raise click.BadParameter(str(e), param_hint="--header")
+
     manifest_context = None
     if manifest_path:
         manifest_context = ManifestContext(
@@ -357,7 +404,7 @@ def download(
             auth_method=auth_method,
         )
         # Record safe replay params — sensitive fields excluded
-        manifest_context.record_params({
+        safe_params = {
             "databusURIs": list(databusuris),
             "compression": compression,
             "convert_format": convert_format,
@@ -368,7 +415,13 @@ def download(
             "validate_checksum": validate_checksum,
             "authurl": authurl,
             "clientid": clientid,
-        })
+        }
+        if parsed_headers:
+            safe_params["headers"] = {
+                k: ("***" if k.lower() in ("authorization", "x-api-key", "token") else v)
+                for k, v in parsed_headers.items()
+            }
+        manifest_context.record_params(safe_params)
     try:
         api_download(
             localDir=localdir,
@@ -386,6 +439,7 @@ def download(
             graph_mode=graph_mode,
             validate_checksum=validate_checksum,
             manifest_context=manifest_context,
+            headers=parsed_headers,
         )
     except DownloadAuthError as e:
         if manifest_context:
@@ -423,12 +477,26 @@ def download(
     "--force", is_flag=True, help="Force deletion without confirmation prompt"
 )
 @click.option(
+    "-H",
+    "--header",
+    "headers",
+    multiple=True,
+    help="Custom HTTP header(s) in 'Name: Value' format (e.g. -H 'User-Agent: MyBot/1.0').",
+)
+@click.option(
     "--manifest",
     "manifest_path",
     default=None,
     help="Write a JSON-LD manifest of this operation to PATH.",
 )
-def delete(databusuris: List[str], databus_key: str, dry_run: bool, force: bool, manifest_path: str):
+def delete(
+    databusuris: List[str],
+    databus_key: str,
+    dry_run: bool,
+    force: bool,
+    manifest_path: str,
+    headers: List[str] = (),
+):
     """
     Delete a dataset from the databus.
 
@@ -436,13 +504,24 @@ def delete(databusuris: List[str], databus_key: str, dry_run: bool, force: bool,
     Will recursively delete all data associated with the dataset.
     """
 
+    try:
+        parsed_headers = parse_headers(headers) if headers else None
+    except ValueError as e:
+        raise click.BadParameter(str(e), param_hint="--header")
+
     manifest_context = None
     if manifest_path:
         manifest_context = ManifestContext(command="delete")
-        manifest_context.record_params({
+        params = {
             "databusURIs": list(databusuris),
             "dry_run": dry_run,
-        })
+        }
+        if parsed_headers:
+            params["headers"] = {
+                k: ("***" if k.lower() in ("authorization", "x-api-key", "token") else v)
+                for k, v in parsed_headers.items()
+            }
+        manifest_context.record_params(params)
 
     try:
         api_delete(
@@ -451,6 +530,7 @@ def delete(databusuris: List[str], databus_key: str, dry_run: bool, force: bool,
             dry_run=dry_run,
             force=force,
             manifest_context=manifest_context,
+            headers=parsed_headers,
         )
     except Exception as exc:
         if manifest_context:

@@ -40,6 +40,8 @@ databusclient download $DOWNLOADTARGET
   - Required when converting CSV/TSV to RDF triples. Used as the base for constructing subject URIs from CSV row identifiers. Example: `--format ntriples --base-uri https://example.org/data/`.
 - `--validate-checksum`
   - Validates the checksums of downloaded files against the checksums provided by the Databus. If a checksum does not match, an error is raised and the file is deleted.
+- `-H, --header`
+  - Custom HTTP header(s) to send with requests, in `'Name: Value'` format. Can be specified multiple times (e.g. `-H 'User-Agent: MyBot/1.0 (contact@example.org)'`). Required when accessing servers (such as Wikidata/Wikimedia) that enforce specific User-Agent policies. You can also configure the default User-Agent via the `DATABUS_USER_AGENT` environment variable.
 
 **Help and further information on download command:**
 ```bash
@@ -76,6 +78,11 @@ databusclient download https://databus.dbpedia.org/dbpedia/collections/dbpedia-s
 **Download Query**: download of all files returned by a query (SPARQL endpoint must be provided with `--databus`)
 ```bash
 databusclient download 'PREFIX dcat: <http://www.w3.org/ns/dcat#> SELECT ?x WHERE { ?sub dcat:downloadURL ?x . } LIMIT 10' --databus https://databus.dbpedia.org/sparql
+```
+
+**Download with Custom Headers / User-Agent**: send specific headers required by servers (such as Wikidata)
+```bash
+databusclient download https://databus.dbpedia.org/dbpedia/dbpedia-wikidata-kg-dump -H "User-Agent: MyBot/1.0 (contact@example.org)"
 ```
 
 **Download with Compression Conversion**: download files and convert compression format on-the-fly. Source compression is auto-detected from the file extension.
