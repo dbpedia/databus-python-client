@@ -178,9 +178,10 @@ def parse_workflow(path: str) -> Dict[str, Any]:
     seen_names: set = set()
     validated_steps: List[Dict[str, Any]] = []
     for index, step in enumerate(steps):
-        validated = _validate_step(step, index, seen_names)
-        substituted = _substitute_value(validated, validated["name"])
-        validated_steps.append(substituted)
+        step_name = step.get("name", str(index)) if isinstance(step, dict) else str(index)
+        substituted = _substitute_value(step, step_name)
+        validated = _validate_step(substituted, index, seen_names)
+        validated_steps.append(validated)
 
     return {
         "manifest": raw.get("manifest"),
