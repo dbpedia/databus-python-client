@@ -28,12 +28,7 @@ def get_databus_id_parts_from_file_url(
         A tuple containing (host, accountId, groupId, artifactId, versionId, fileId).
         Each element is a string or None if not present.
     """
-    """Split a Databus URI into its six parts.
-
-    The returned tuple is (host, accountId, groupId, artifactId, versionId, fileId).
-    Missing parts are returned as ``None``.
-    """
-
+    
     uri = uri.removeprefix("https://").removeprefix("http://")
     parts = uri.strip("/").split("/")
     parts += [None] * (6 - len(parts))  # pad with None if less than 6 parts
