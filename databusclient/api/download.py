@@ -1404,6 +1404,122 @@ def _get_databus_artifacts_of_group(json_str: str) -> List[str]:
     return result
 
 
+def _get_groups_of_account(
+    account_uri: str,
+    endpoint_url: str,
+    databus_key: str | None = None,
+) -> List[str]:
+    """Query a Databus SPARQL endpoint to find all groups belonging to an account.
+
+    Args:
+        account_uri: The full databus account URI (e.g. 'https://databus.dbpedia.org/dbpedia').
+        endpoint_url: The Databus SPARQL endpoint URL.
+        databus_key: Optional Databus API key for authentication on protected databus.
+
+    Returns:
+        List of group URIs belonging to the account.
+    """
+    clean_account = account_uri.rstrip("/")
+    query_v2 = f"""PREFIX databus: <https://dataid.dbpedia.org/databus#>
+SELECT DISTINCT ?group WHERE {{
+  ?dataset databus:account <{clean_account}> ;
+           databus:group ?group .
+}} ORDER BY ?group"""
+
+    try:
+        result = _query_sparql_endpoint(endpoint_url, query_v2, databus_key=databus_key)
+        bindings = result.get("results", {}).get("bindings", [])
+    except Exception as e:
+        print(f"Warning: SPARQL query for account groups failed: {e}")
+        bindings = []
+
+    if not bindings:
+        query_legacy = f"""PREFIX dataid: <http://dataid.dbpedia.org/ns/core#>
+SELECT DISTINCT ?group WHERE {{
+  ?dataset dataid:account <{clean_account}> ;
+           dataid:group ?group .
+}} ORDER BY ?group"""
+        try:
+            result = _query_sparql_endpoint(endpoint_url, query_legacy, databus_key=databus_key)
+            bindings = result.get("results", {}).get("bindings", [])
+        except Exception:
+            bindings = []
+
+    group_uris: List[str] = []
+    for binding in bindings:
+        group_val = binding.get("group", {}).get("value")
+        if isinstance(group_val, str) and group_val.startswith(f"{clean_account}/"):
+            if group_val not in group_uris:
+                group_uris.append(group_val)
+
+    return group_uris
+
+
+def _download_account(
+    uri: str,
+    endpoint: str,
+    localDir: str,
+    all_versions: bool = False,
+    vault_token_file: str = None,
+    databus_key: str = None,
+    auth_url: str = None,
+    client_id: str = None,
+    compression: str = None,
+    convert_format: str = None,
+    graph_name: str = None,
+    base_uri: str = None,
+    graph_mode: str = None,
+    manifest_context=None,
+    validate_checksum: bool = False,
+) -> None:
+    """Download all groups, artifacts and versions of an account from Databus.
+
+    Args:
+        uri: The full databus account URI.
+        endpoint: The databus SPARQL endpoint URL.
+        localDir: Local directory to download files to. If None, the databus folder structure is created in the current working directory.
+        all_versions: If True, download all versions of each artifact in the account; otherwise, only download the latest version.
+        vault_token_file: Path to Vault refresh token file for protected downloads.
+        databus_key: Databus API key for protected downloads.
+        auth_url: Keycloak token endpoint URL.
+        client_id: Client ID for token exchange.
+        compression: Target compression format for on-the-fly conversion.
+        convert_format: Target RDF/tabular format for on-the-fly conversion.
+        graph_name: Named graph URI for Triple -> Quad conversion (Layer 3).
+        base_uri: Base URI for CSV -> Triple conversion (Layer 3).
+        graph_mode: Optional graph sidecar mode. Currently supports 'download-url'.
+        validate_checksum: Whether to validate checksums after downloading.
+    """
+    clean_account = uri.rstrip("/")
+    group_uris = _get_groups_of_account(clean_account, endpoint, databus_key=databus_key)
+    if not group_uris:
+        print(f"No groups found for account: {clean_account}")
+        return
+
+    print(f"Found {len(group_uris)} group(s) for account {clean_account}:")
+    for g in group_uris:
+        print(f"  - {g}")
+
+    for group_uri in group_uris:
+        print(f"Downloading group: {group_uri}")
+        _download_group(
+            group_uri,
+            localDir,
+            all_versions=all_versions,
+            vault_token_file=vault_token_file,
+            databus_key=databus_key,
+            auth_url=auth_url,
+            client_id=client_id,
+            compression=compression,
+            convert_format=convert_format,
+            graph_name=graph_name,
+            base_uri=base_uri,
+            graph_mode=graph_mode,
+            manifest_context=manifest_context,
+            validate_checksum=validate_checksum,
+        )
+
+
 def download(
     localDir: str,
     endpoint: str,
@@ -1424,7 +1540,7 @@ def download(
 ) -> None:
     """Download datasets from databus.
 
-    Download of files, versions, artifacts, groups or databus collections via their databus URIs or user-defined SPARQL queries that return file download URLs.
+    Download of files, versions, artifacts, groups, accounts or databus collections via their databus URIs or user-defined SPARQL queries that return file download URLs.
 
     Args:
         localDir: Local directory to download datasets to. If None, the databus folder structure is created in the current working directory.
@@ -1565,7 +1681,24 @@ def download(
                     user_agent=user_agent,
                 )
             elif account is not None:
-                print("accountId not supported yet")  # TODO
+                print(f"Downloading account and all its groups: {databusURI}")
+                _download_account(
+                    databusURI,
+                    uri_endpoint,
+                    localDir,
+                    all_versions=all_versions,
+                    vault_token_file=token,
+                    databus_key=databus_key,
+                    auth_url=auth_url,
+                    client_id=client_id,
+                    compression=compression,
+                    convert_format=convert_format,
+                    graph_name=graph_name,
+                    base_uri=base_uri,
+                    graph_mode=graph_mode,
+                    manifest_context=manifest_context,
+                    validate_checksum=validate_checksum,
+                )
             else:
                 print(
                     "dataId not supported yet"
