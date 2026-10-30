@@ -70,6 +70,7 @@ def _build_download_kwargs(
         "token": token,
         "databus_key": databus_key,
         "all_versions": replay_params.get("all_versions"),
+        "version": replay_params.get("version"),
         "auth_url": replay_params.get(
             "authurl",
             "https://auth.dbpedia.org/realms/dbpedia/protocol/openid-connect/token",
