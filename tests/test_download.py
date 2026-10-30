@@ -1,11 +1,14 @@
 """Download Tests"""
 
 import bz2
+import json
 
 import pytest
 from click.testing import CliRunner
-
-from databusclient.api.download import download as api_download
+from databusclient.api.download import _parse_version_key
+from databusclient.api.download import (
+    download as api_download,
+)
 from databusclient.cli import app
 
 # TODO: overall test structure not great, needs refactoring
@@ -29,7 +32,10 @@ TEST_COLLECTION = (
 
 class FakeHeadResp:
     status_code = 200
-    headers = {}
+
+    # headers = {}
+    def __init__(self):
+        self.headers = {}
 
 
 class FakeGetResp:
@@ -68,23 +74,100 @@ def test_with_collection():
     api_download("tmp", DEFAULT_ENDPOINT, [TEST_COLLECTION])
 
 
+@pytest.mark.parametrize(
+    "versions, expected",
+    [
+        (
+            [
+                "https://databus.dbpedia.org/example/2026-09-17",
+                "https://databus.dbpedia.org/example/2026-09-18",
+                "https://databus.dbpedia.org/example/2025-12-31",
+            ],
+            [
+                "https://databus.dbpedia.org/example/2026-09-18",
+                "https://databus.dbpedia.org/example/2026-09-17",
+                "https://databus.dbpedia.org/example/2025-12-31",
+            ],
+        ),
+        (
+            [
+                "https://databus.dbpedia.org/example/2026.09.17",
+                "https://databus.dbpedia.org/example/2026.10.01",
+                "https://databus.dbpedia.org/example/2026.09.05",
+            ],
+            [
+                "https://databus.dbpedia.org/example/2026.10.01",
+                "https://databus.dbpedia.org/example/2026.09.17",
+                "https://databus.dbpedia.org/example/2026.09.05",
+            ],
+        ),
+        (
+            [
+                "https://databus.dbpedia.org/example/2.9",
+                "https://databus.dbpedia.org/example/2.10",
+                "https://databus.dbpedia.org/example/2.1",
+            ],
+            [
+                "https://databus.dbpedia.org/example/2.10",
+                "https://databus.dbpedia.org/example/2.9",
+                "https://databus.dbpedia.org/example/2.1",
+            ],
+        ),
+        (
+            [
+                "https://databus.dbpedia.org/example/2.9.0",
+                "https://databus.dbpedia.org/example/2.10.0",
+                "https://databus.dbpedia.org/example/2.1.0",
+            ],
+            [
+                "https://databus.dbpedia.org/example/2.10.0",
+                "https://databus.dbpedia.org/example/2.9.0",
+                "https://databus.dbpedia.org/example/2.1.0",
+            ],
+        ),
+        (
+            [
+                "https://databus.dbpedia.org/example/v2.9.0",
+                "https://databus.dbpedia.org/example/v2.10.0",
+                "https://databus.dbpedia.org/example/v2.1.0",
+            ],
+            [
+                "https://databus.dbpedia.org/example/v2.10.0",
+                "https://databus.dbpedia.org/example/v2.9.0",
+                "https://databus.dbpedia.org/example/v2.1.0",
+            ],
+        ),
+    ],
+)
+def test_parse_version_key_sorting(versions, expected):
+    assert sorted(versions, key=_parse_version_key, reverse=True) == expected
+
+
 def test_404_records_failed_manifest_entry(monkeypatch):
-    from databusclient.manifest.context import ManifestContext
     import databusclient.api.download as dl
+    from databusclient.manifest.context import ManifestContext
 
     class FakeGetResp:
         status_code = 404
-        headers = {"content-length": "0"}
+
+        # headers = {"content-length": "0"}
+        def __init__(self):
+            self.headers = {"content-length": "0"}
 
         def raise_for_status(self):
             import requests
+
             raise requests.exceptions.HTTPError(response=self)
 
     monkeypatch.setattr("requests.head", lambda *a, **k: FakeHeadResp())
     monkeypatch.setattr("requests.get", lambda *a, **k: FakeGetResp())
 
     ctx = ManifestContext(command="download")
-    dl._download_file("https://databus.dbpedia.org/account/notexisting", localDir=".", manifest_context=ctx)
+    dl._download_file(
+        "https://databus.dbpedia.org/account/notexisting",
+        localDir=".",
+        manifest_context=ctx,
+    )
 
     assert len(ctx.files) == 1
     assert ctx.files[0]["status"] == "failed"
@@ -137,7 +220,10 @@ def test_failed_download_does_not_create_graph_sidecar(monkeypatch, tmp_path):
 
     class FakeGet404Resp:
         status_code = 404
-        headers = {"content-length": "0"}
+
+        # headers = {"content-length": "0"}
+        def __init__(self):
+            self.headers = {"content-length": "0"}
 
         def raise_for_status(self):
             import requests
@@ -168,8 +254,6 @@ def test_invalid_graph_mode_value_is_rejected_by_cli():
 
 
 def test_cli_manifest_records_graph_mode(monkeypatch, tmp_path):
-    import json
-
     captured = {}
 
     def fake_download(**kwargs):
