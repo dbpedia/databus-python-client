@@ -251,6 +251,13 @@ def deploy(
     help="When downloading artifacts, download all versions instead of only the latest",
 )
 @click.option(
+    "--version",
+    "--target-version",
+    "target_version",
+    default=None,
+    help="Target version to download: 'latest' (default), 'all', or a specific version ID (e.g. 2025-10-14).",
+)
+@click.option(
     "--authurl",
     default="https://auth.dbpedia.org/realms/dbpedia/protocol/openid-connect/token",
     show_default=True,
@@ -332,6 +339,7 @@ def download(
     vault_token,
     databus_key,
     all_versions,
+    target_version,
     authurl,
     clientid,
     compression,
@@ -347,6 +355,11 @@ def download(
     Download datasets from databus, optionally using vault access if vault options are provided.
     Supports on-the-fly compression format conversion using the --compression option.
     """
+    if all_versions and not target_version:
+        target_version = "all"
+    elif target_version and target_version.strip().lower() == "all":
+        all_versions = True
+
     # Determine auth method for manifest (never store the token itself)
     auth_method = None
     if vault_token:
@@ -370,6 +383,7 @@ def download(
             "base_uri": base_uri,
             "graph_mode": graph_mode,
             "all_versions": all_versions,
+            "version": target_version,
             "validate_checksum": validate_checksum,
             "user_agent": user_agent,
             "authurl": authurl,
@@ -383,6 +397,7 @@ def download(
             token=vault_token,
             databus_key=databus_key,
             all_versions=all_versions,
+            version=target_version,
             auth_url=authurl,
             client_id=clientid,
             compression=compression,

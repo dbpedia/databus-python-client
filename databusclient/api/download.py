@@ -1184,6 +1184,7 @@ def _download_artifact(
     uri: str,
     localDir: str,
     all_versions: bool = False,
+    version: str | None = None,
     vault_token_file: str = None,
     databus_key: str = None,
     auth_url: str = None,
@@ -1203,6 +1204,7 @@ def _download_artifact(
         uri: The full databus artifact URI.
         localDir: Local directory to download files to. If None, the databus folder structure is created in the current working directory.
         all_versions: If True, download all versions of the artifact; otherwise, only download the latest version.
+        version: Optional version selector ('latest', 'all', or specific version ID/URI).
         vault_token_file: Path to Vault refresh token file for protected downloads.
         databus_key: Databus API key for protected downloads.
         auth_url: Keycloak token endpoint URL.
@@ -1217,7 +1219,9 @@ def _download_artifact(
                     the versioned databus-python-client default.
     """
     json_str = fetch_databus_jsonld(uri, databus_key=databus_key)
-    versions = _get_databus_versions_of_artifact(json_str, all_versions=all_versions)
+    versions = _get_databus_versions_of_artifact(
+        json_str, all_versions=all_versions, version=version
+    )
     if isinstance(versions, str):
         versions = [versions]
     for version_uri in versions:
@@ -1251,17 +1255,21 @@ def _download_artifact(
 
 
 def _get_databus_versions_of_artifact(
-    json_str: str, all_versions: bool
+    json_str: str,
+    all_versions: bool = False,
+    version: str | None = None,
 ) -> str | List[str]:
     """Parse the JSON-LD of a databus artifact to extract URLs of its versions.
 
     Args:
         json_str: JSON-LD string of the databus artifact.
         all_versions: If True, return all version URLs; otherwise, return only the latest version URL.
+        version: Optional version selector: 'latest', 'all', or a specific version ID / URI.
 
     Returns:
-        If all_versions is True: List of all version URLs.
-        If all_versions is False: URL of the latest version.
+        If all_versions is True or version is 'all': List of all version URLs.
+        If version is a specific identifier: URL of the matching version.
+        If all_versions is False and version is None or 'latest': URL of the latest version.
     """
     json_dict = json.loads(json_str)
     versions = json_dict.get("databus:hasVersion")
@@ -1282,6 +1290,29 @@ def _get_databus_versions_of_artifact(
         raise ValueError("No versions found in artifact JSON-LD")
 
     version_urls.sort(reverse=True)  # Sort versions in descending order
+
+    if version is not None:
+        v_clean = version.strip()
+        if v_clean.lower() == "all":
+            return version_urls
+        if v_clean.lower() == "latest":
+            return version_urls if all_versions else version_urls[0]
+
+        if "://" in v_clean:
+            matched = [u for u in version_urls if u.rstrip("/") == v_clean.rstrip("/")]
+        else:
+            target_id = v_clean.rstrip("/")
+            matched = [
+                u
+                for u in version_urls
+                if u.rstrip("/").split("/")[-1] == target_id
+            ]
+        if not matched:
+            available = ", ".join(u.rstrip("/").split("/")[-1] for u in version_urls)
+            raise ValueError(
+                f"Version '{version}' not found for artifact. Available versions: {available}"
+            )
+        return matched[0]
 
     if all_versions:
         return version_urls
@@ -1315,6 +1346,7 @@ def _download_group(
     uri: str,
     localDir: str,
     all_versions: bool = False,
+    version: str | None = None,
     vault_token_file: str = None,
     databus_key: str = None,
     auth_url: str = None,
@@ -1334,6 +1366,7 @@ def _download_group(
         uri: The full databus group URI.
         localDir: Local directory to download files to. If None, the databus folder structure is created in the current working directory.
         all_versions: If True, download all versions of each artifact in the group; otherwise, only download the latest version.
+        version: Optional version selector ('latest', 'all', or specific version ID/URI).
         vault_token_file: Path to Vault refresh token file for protected downloads.
         databus_key: Databus API key for protected downloads.
         auth_url: Keycloak token endpoint URL.
@@ -1351,23 +1384,38 @@ def _download_group(
     artifacts = _get_databus_artifacts_of_group(json_str)
     for artifact_uri in artifacts:
         print(f"Download artifact: {artifact_uri}")
-        _download_artifact(
-            artifact_uri,
-            localDir,
-            all_versions=all_versions,
-            vault_token_file=vault_token_file,
-            databus_key=databus_key,
-            auth_url=auth_url,
-            client_id=client_id,
-            compression=compression,
-            convert_format=convert_format,
-            graph_name=graph_name,
-            base_uri=base_uri,
-            graph_mode=graph_mode,
-            manifest_context=manifest_context,
-            validate_checksum=validate_checksum,
-            user_agent=user_agent,
-        )
+        try:
+            _download_artifact(
+                artifact_uri,
+                localDir,
+                all_versions=all_versions,
+                version=version,
+                vault_token_file=vault_token_file,
+                databus_key=databus_key,
+                auth_url=auth_url,
+                client_id=client_id,
+                compression=compression,
+                convert_format=convert_format,
+                graph_name=graph_name,
+                base_uri=base_uri,
+                graph_mode=graph_mode,
+                manifest_context=manifest_context,
+                validate_checksum=validate_checksum,
+                user_agent=user_agent,
+            )
+        except ValueError as err:
+            # If a specific version was requested and is not found for this artifact, log and continue with others
+            if (
+                version is not None
+                and version.strip().lower() not in ("latest", "all")
+                and (
+                    "not found for artifact" in str(err)
+                    or "No versions found in artifact JSON-LD" in str(err)
+                )
+            ):
+                print(f"Skipping artifact {artifact_uri}: {err}")
+                continue
+            raise
 
 
 def _get_databus_artifacts_of_group(json_str: str) -> List[str]:
@@ -1421,6 +1469,8 @@ def download(
     validate_checksum: bool = False,
     manifest_context=None,
     user_agent: str | None = None,
+    version: str | None = None,
+    target_version: str | None = None,
 ) -> None:
     """Download datasets from databus.
 
@@ -1432,6 +1482,7 @@ def download(
         databusURIs: Databus identifiers to specify datasets to download.
         token: Path to Vault refresh token file for protected downloads.
         databus_key: Databus API key for protected downloads.
+        all_versions: If True, download all versions of artifacts in group/artifact URIs.
         auth_url: Keycloak token endpoint URL. Default is "https://auth.dbpedia.org/realms/dbpedia/protocol/openid-connect/token".
         client_id: Client ID for token exchange. Default is "vault-token-exchange".
         compression: Target compression format for on-the-fly conversion (supported: bz2, gz, xz).
@@ -1441,12 +1492,21 @@ def download(
         base_uri: Base URI for CSV -> Triple conversion (Layer 3).
         graph_mode: Optional graph sidecar mode. Currently supports 'download-url'.
         validate_checksum: Whether to validate checksums after downloading.
+        manifest_context: Optional context for recording operation manifest.
         user_agent: HTTP User-Agent for file HEAD and GET requests. None uses
                     the versioned databus-python-client default.
+        version: Target version selector ('latest', 'all', or specific version ID/URI).
+        target_version: Alias for version.
     """
     _validate_graph_mode(graph_mode)
+    resolved_version = target_version if target_version is not None else version
+    if resolved_version and resolved_version.strip().lower() == "all":
+        all_versions = True
+    elif all_versions and resolved_version is None:
+        resolved_version = "all"
+
     for databusURI in databusURIs:
-        host, account, group, artifact, version, file = get_databus_id_parts_from_file_url(databusURI)
+        host, account, group, artifact, uri_version, file = get_databus_id_parts_from_file_url(databusURI)
 
         # Determine endpoint per-URI if not explicitly provided
         uri_endpoint = endpoint
@@ -1504,7 +1564,7 @@ def download(
                     expected_checksum=expected,
                     user_agent=user_agent,
                 )
-            elif version is not None:
+            elif uri_version is not None:
                 print(f"Downloading version: {databusURI}")
                 _download_version(
                     databusURI,
@@ -1523,13 +1583,19 @@ def download(
                     user_agent=user_agent,
                 )
             elif artifact is not None:
+                v_desc = (
+                    resolved_version
+                    if resolved_version and resolved_version.strip().lower() not in ("latest", "all")
+                    else ("all" if all_versions else "latest")
+                )
                 print(
-                    f"Downloading {'all' if all_versions else 'latest'} version(s) of artifact: {databusURI}"
+                    f"Downloading {v_desc} version(s) of artifact: {databusURI}"
                 )
                 _download_artifact(
                     databusURI,
                     localDir,
-                    all_versions=all_versions,
+                    all_versions=bool(all_versions),
+                    version=resolved_version,
                     vault_token_file=token,
                     databus_key=databus_key,
                     auth_url=auth_url,
@@ -1544,13 +1610,19 @@ def download(
                     user_agent=user_agent,
                 )
             elif group is not None and group != "collections":
+                v_desc = (
+                    resolved_version
+                    if resolved_version and resolved_version.strip().lower() not in ("latest", "all")
+                    else ("all" if all_versions else "latest")
+                )
                 print(
-                    f"Downloading group and all its artifacts and versions: {databusURI}"
+                    f"Downloading group ({v_desc} versions): {databusURI}"
                 )
                 _download_group(
                     databusURI,
                     localDir,
-                    all_versions=all_versions,
+                    all_versions=bool(all_versions),
+                    version=resolved_version,
                     vault_token_file=token,
                     databus_key=databus_key,
                     auth_url=auth_url,
