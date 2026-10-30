@@ -42,6 +42,16 @@ def _build_download_kwargs(
     replay_params: Dict[str, Any],
     overrides: Dict[str, Any],
 ) -> Dict[str, Any]:
+    """Build keyword arguments for api_download from manifest replay parameters.
+
+    Args:
+        manifest: Operation manifest dictionary.
+        replay_params: Parameters recorded during the original operation.
+        overrides: Execution overrides provided at replay time.
+
+    Returns:
+        Keyword argument dictionary ready for api_download.
+    """
     databus_uris = replay_params.get("databusURIs")
     if not isinstance(databus_uris, list) or not databus_uris:
         raise ManifestReplayError(
@@ -63,6 +73,12 @@ def _build_download_kwargs(
 
     endpoint = overrides.get("endpoint", manifest.get("dbus:endpoint"))
 
+    version = replay_params.get("version")
+    if version is not None and not isinstance(version, str):
+        raise ManifestReplayError(
+            "Manifest field dbus:replayParams.version must be a string."
+        )
+
     return {
         "localDir": overrides.get("localDir"),
         "endpoint": endpoint,
@@ -70,7 +86,7 @@ def _build_download_kwargs(
         "token": token,
         "databus_key": databus_key,
         "all_versions": replay_params.get("all_versions"),
-        "version": replay_params.get("version"),
+        "version": version,
         "auth_url": replay_params.get(
             "authurl",
             "https://auth.dbpedia.org/realms/dbpedia/protocol/openid-connect/token",

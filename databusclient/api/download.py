@@ -1311,14 +1311,17 @@ def _get_databus_versions_of_artifact(
         if v_clean.lower() == "all":
             return version_urls
         if v_clean.lower() == "latest":
-            return version_urls[0]
+            return version_urls if all_versions else version_urls[0]
 
-        target_id = v_clean.rstrip("/").split("/")[-1]
-        matched = [
-            u
-            for u in version_urls
-            if u == v_clean or u.rstrip("/").split("/")[-1] == target_id
-        ]
+        if "://" in v_clean:
+            matched = [u for u in version_urls if u.rstrip("/") == v_clean.rstrip("/")]
+        else:
+            target_id = v_clean.rstrip("/")
+            matched = [
+                u
+                for u in version_urls
+                if u.rstrip("/").split("/")[-1] == target_id
+            ]
         if not matched:
             available = ", ".join(u.rstrip("/").split("/")[-1] for u in version_urls)
             raise ValueError(
@@ -1420,7 +1423,10 @@ def _download_group(
             if (
                 version is not None
                 and version.strip().lower() not in ("latest", "all")
-                and "not found for artifact" in str(err)
+                and (
+                    "not found for artifact" in str(err)
+                    or "No versions found in artifact JSON-LD" in str(err)
+                )
             ):
                 print(f"Skipping artifact {artifact_uri}: {err}")
                 continue
@@ -1468,8 +1474,6 @@ def download(
     token=None,
     databus_key=None,
     all_versions=None,
-    version: str | None = None,
-    target_version: str | None = None,
     auth_url="https://auth.dbpedia.org/realms/dbpedia/protocol/openid-connect/token",
     client_id="vault-token-exchange",
     compression=None,
@@ -1480,6 +1484,8 @@ def download(
     validate_checksum: bool = False,
     manifest_context=None,
     user_agent: str | None = None,
+    version: str | None = None,
+    target_version: str | None = None,
 ) -> None:
     """Download datasets from databus.
 
@@ -1492,8 +1498,6 @@ def download(
         token: Path to Vault refresh token file for protected downloads.
         databus_key: Databus API key for protected downloads.
         all_versions: If True, download all versions of artifacts in group/artifact URIs.
-        version: Target version selector ('latest', 'all', or specific version ID/URI).
-        target_version: Alias for version.
         auth_url: Keycloak token endpoint URL. Default is "https://auth.dbpedia.org/realms/dbpedia/protocol/openid-connect/token".
         client_id: Client ID for token exchange. Default is "vault-token-exchange".
         compression: Target compression format for on-the-fly conversion (supported: bz2, gz, xz).
@@ -1503,8 +1507,11 @@ def download(
         base_uri: Base URI for CSV -> Triple conversion (Layer 3).
         graph_mode: Optional graph sidecar mode. Currently supports 'download-url'.
         validate_checksum: Whether to validate checksums after downloading.
+        manifest_context: Optional context for recording operation manifest.
         user_agent: HTTP User-Agent for file HEAD and GET requests. None uses
                     the versioned databus-python-client default.
+        version: Target version selector ('latest', 'all', or specific version ID/URI).
+        target_version: Alias for version.
     """
     _validate_graph_mode(graph_mode)
     resolved_version = target_version if target_version is not None else version
