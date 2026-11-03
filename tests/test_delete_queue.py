@@ -69,6 +69,7 @@ def test_execute_deletes_deepest_first(monkeypatch):
         calls["key"] = databus_key
         calls["force"] = force
         calls["manifest_context"] = manifest_context
+        calls["count"] = calls.get("count", 0) + 1
 
     monkeypatch.setattr(delete, "_delete_list", fake_delete_list)
 
@@ -90,6 +91,7 @@ def test_execute_deletes_deepest_first(monkeypatch):
     assert calls["key"] == "fake-key"
     assert calls["force"] is True
     assert calls["manifest_context"] is marker
+    assert calls.get("count", 0) == 1
 
 
 def test_confirm_y_returns_confirm(monkeypatch):
