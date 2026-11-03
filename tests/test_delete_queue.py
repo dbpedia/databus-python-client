@@ -88,13 +88,13 @@ def test_execute_deletes_deepest_first(monkeypatch):
     assert calls["force"] is True
 
 
-def test_confirm_y_return_confirm(monkeypatch):
+def test_confirm_y_returns_confirm(monkeypatch):
     def fake_input(prompt):
         return "y"
 
     monkeypatch.setattr("builtins.input", fake_input)
 
-    assert _confirm_delete("https://databus.dbpedia.org/acc/gorup") == "confirm"
+    assert _confirm_delete("https://databus.dbpedia.org/acc/group") == "confirm"
 
 
 def test_confirm_messy_yes_returns_confirm(monkeypatch):
@@ -103,7 +103,7 @@ def test_confirm_messy_yes_returns_confirm(monkeypatch):
 
     monkeypatch.setattr("builtins.input", fake_input)
 
-    assert _confirm_delete("https://databus.dbpedia.org/acc/gorup") == "confirm"
+    assert _confirm_delete("https://databus.dbpedia.org/acc/group") == "confirm"
 
 
 def test_confirm_s_returns_skip(monkeypatch):
@@ -112,16 +112,16 @@ def test_confirm_s_returns_skip(monkeypatch):
 
     monkeypatch.setattr("builtins.input", fake_input)
 
-    assert _confirm_delete("https://databus.dbpedia.org/acc/gorup") == "skip"
+    assert _confirm_delete("https://databus.dbpedia.org/acc/group") == "skip"
 
 
-def test_confirm_c_return_cancel(monkeypatch):
+def test_confirm_c_returns_cancel(monkeypatch):
     def fake_input(prompt):
         return "c"
 
     monkeypatch.setattr("builtins.input", fake_input)
 
-    assert _confirm_delete("https://databus.dbpedia.org/acc/gorup") == "cancel"
+    assert _confirm_delete("https://databus.dbpedia.org/acc/group") == "cancel"
 
 
 def test_confirm_invalid_then_valid_asks_again(monkeypatch):
