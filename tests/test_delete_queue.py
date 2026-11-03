@@ -1,4 +1,4 @@
-from databusclient.api.delete import DeleteQueue
+from databusclient.api.delete import DeleteQueue, _confirm_delete
 from databusclient.api import delete
 
 
@@ -86,3 +86,51 @@ def test_execute_deletes_deepest_first(monkeypatch):
     ]
     assert calls["key"] == "fake-key"
     assert calls["force"] is True
+
+
+def test_confirm_y_return_confirm(monkeypatch):
+    def fake_input(prompt):
+        return "y"
+
+    monkeypatch.setattr("builtins.input", fake_input)
+
+    assert _confirm_delete("https://databus.dbpedia.org/acc/gorup") == "confirm"
+
+
+def test_confirm_messy_yes_returns_confirm(monkeypatch):
+    def fake_input(prompt):
+        return " YES "
+
+    monkeypatch.setattr("builtins.input", fake_input)
+
+    assert _confirm_delete("https://databus.dbpedia.org/acc/gorup") == "confirm"
+
+
+def test_confirm_s_returns_skip(monkeypatch):
+    def fake_input(prompt):
+        return "s"
+
+    monkeypatch.setattr("builtins.input", fake_input)
+
+    assert _confirm_delete("https://databus.dbpedia.org/acc/gorup") == "skip"
+
+
+def test_confirm_c_return_cancel(monkeypatch):
+    def fake_input(prompt):
+        return "c"
+
+    monkeypatch.setattr("builtins.input", fake_input)
+
+    assert _confirm_delete("https://databus.dbpedia.org/acc/gorup") == "cancel"
+
+
+def test_confirm_invalid_then_valid_asks_again(monkeypatch):
+    answers = ["maybe", "s"]
+
+    def fake_input(prompt):
+        return answers.pop(0)
+
+    monkeypatch.setattr("builtins.input", fake_input)
+
+    assert _confirm_delete("https://databus.dbpedia.org/acc/group") == "skip"
+    assert answers == []
