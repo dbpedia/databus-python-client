@@ -12,6 +12,7 @@ def test_add_uri_makes_queue_not_empty():
     q = DeleteQueue("fake-key")
     q.add_uri("https://databus.dbpedia.org/acc/group")
     assert q.is_empty() is False
+    assert q.is_not_empty() is True
 
 
 def test_add_uris_adds_all():
@@ -61,15 +62,17 @@ def test_path_depth_ignores_trailing_slash():
 
 def test_execute_deletes_deepest_first(monkeypatch):
     calls = {}
+    marker = object()
 
     def fake_delete_list(databusURIs, databus_key, force=False, manifest_context=None):
         calls["uris"] = databusURIs
         calls["key"] = databus_key
         calls["force"] = force
+        calls["manifest_context"] = manifest_context
 
     monkeypatch.setattr(delete, "_delete_list", fake_delete_list)
 
-    q = DeleteQueue("fake-key")
+    q = DeleteQueue("fake-key", manifest_context=marker)
     q.add_uris(
         [
             "https://databus.dbpedia.org/acc/group",
@@ -86,6 +89,7 @@ def test_execute_deletes_deepest_first(monkeypatch):
     ]
     assert calls["key"] == "fake-key"
     assert calls["force"] is True
+    assert calls["manifest_context"] is marker
 
 
 def test_confirm_y_returns_confirm(monkeypatch):
@@ -134,3 +138,21 @@ def test_confirm_invalid_then_valid_asks_again(monkeypatch):
 
     assert _confirm_delete("https://databus.dbpedia.org/acc/group") == "skip"
     assert answers == []
+
+
+def test_confirm_skip_word_returns_skip(monkeypatch):
+    def fake_input(prompt):
+        return "skip"
+
+    monkeypatch.setattr("builtins.input", fake_input)
+
+    assert _confirm_delete("https://databus.dbpedia.org/acc/group") == "skip"
+
+
+def test_confirm_cancel_word_returns_cancel(monkeypatch):
+    def fake_input(prompt):
+        return "cancel"
+
+    monkeypatch.setattr("builtins.input", fake_input)
+
+    assert _confirm_delete("https://databus.dbpedia.org/acc/group") == "cancel"
