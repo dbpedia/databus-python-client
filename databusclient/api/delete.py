@@ -14,6 +14,7 @@ import requests
 from databusclient.api.utils import (
     fetch_databus_jsonld,
     get_databus_id_parts_from_file_url,
+    get_http_session,
 )
 
 
@@ -23,16 +24,26 @@ class DeleteQueue:
     Allows adding multiple databus URIs to a queue and executing their deletion in batch.
     """
 
-    def __init__(self, databus_key: str, manifest_context=None):
+    def __init__(
+        self,
+        databus_key: str,
+        manifest_context=None,
+        session: requests.Session | None = None,
+        timeout: int = 30,
+    ):
         """Create a DeleteQueue bound to a given Databus API key.
 
         Args:
             databus_key: API key used to authenticate deletion requests.
             manifest_context: Optional ManifestContext to record deletion
                 outcomes into. Passed through to _delete_list on execute().
+            session: Optional HTTP session with retry strategy.
+            timeout: Request timeout in seconds.
         """
         self.databus_key = databus_key
         self.manifest_context = manifest_context
+        self.session = session
+        self.timeout = timeout
         self.queue: set[str] = set()
 
     def add_uri(self, databusURI: str):
@@ -79,6 +90,8 @@ class DeleteQueue:
             self.databus_key,
             force=True,
             manifest_context=self.manifest_context,
+            session=self.session,
+            timeout=self.timeout,
         )
 
 
@@ -122,6 +135,8 @@ def _delete_resource(
     force: bool = False,
     queue: DeleteQueue = None,
     manifest_context=None,
+    session: requests.Session | None = None,
+    timeout: int = 30,
 ):
     """Delete a single Databus resource (version, artifact, group).
 
@@ -134,6 +149,8 @@ def _delete_resource(
         dry_run: If True, do not perform the deletion but only print what would be deleted.
         force: If True, skip confirmation prompt and proceed with deletion.
         queue: If queue is provided, add the URI to the queue instead of deleting immediately.
+        session: Optional HTTP session to use for requests.
+        timeout: Request timeout in seconds.
     """
 
     # Confirm the deletion request, skip the request or cancel deletion process
@@ -158,9 +175,12 @@ def _delete_resource(
         queue.add_uri(databusURI)
         return
 
+    if session is None:
+        session = get_http_session()
+
     print(f"[DELETE] {databusURI}")
     headers = {"accept": "*/*", "X-API-KEY": databus_key}
-    response = requests.delete(databusURI, headers=headers, timeout=30)
+    response = session.delete(databusURI, headers=headers, timeout=timeout)
 
     if response.status_code in (200, 204):
         print(f"Successfully deleted: {databusURI}")
@@ -179,6 +199,8 @@ def _delete_list(
     force: bool = False,
     queue: DeleteQueue = None,
     manifest_context=None,
+    session: requests.Session | None = None,
+    timeout: int = 30,
 ):
     """Delete a list of Databus resources.
 
@@ -188,10 +210,19 @@ def _delete_list(
         dry_run: If True, do not perform the deletion but only print what would be deleted.
         force: If True, skip confirmation prompt and proceed with deletion.
         queue: If queue is provided, add the URIs to the queue instead of deleting immediately.
+        session: Optional HTTP session with retry strategy.
+        timeout: Request timeout in seconds.
     """
     for databusURI in databusURIs:
         _delete_resource(
-            databusURI, databus_key, dry_run=dry_run, force=force, queue=queue, manifest_context=manifest_context
+            databusURI,
+            databus_key,
+            dry_run=dry_run,
+            force=force,
+            queue=queue,
+            manifest_context=manifest_context,
+            session=session,
+            timeout=timeout,
         )
 
 
@@ -202,6 +233,8 @@ def _delete_artifact(
     force: bool = False,
     queue: DeleteQueue = None,
     manifest_context=None,
+    session: requests.Session | None = None,
+    timeout: int = 30,
 ):
     """Delete an artifact and all its versions.
 
@@ -214,8 +247,10 @@ def _delete_artifact(
         dry_run: If True, do not perform the deletion but only print what would be deleted.
         force: If True, skip confirmation prompt and proceed with deletion.
         queue: If queue is provided, add the URI to the queue instead of deleting immediately.
+        session: Optional HTTP session with retry strategy.
+        timeout: Request timeout in seconds.
     """
-    artifact_body = fetch_databus_jsonld(databusURI, databus_key)
+    artifact_body = fetch_databus_jsonld(databusURI, databus_key, session=session, timeout=timeout)
 
     json_dict = json.loads(artifact_body)
     versions = json_dict.get("databus:hasVersion")
@@ -235,11 +270,27 @@ def _delete_artifact(
         else:
             # Delete all versions
             _delete_list(
-                version_uris, databus_key, dry_run=dry_run, force=force, queue=queue, manifest_context=manifest_context
+                version_uris,
+                databus_key,
+                dry_run=dry_run,
+                force=force,
+                queue=queue,
+                manifest_context=manifest_context,
+                session=session,
+                timeout=timeout,
             )
 
     # Finally, delete the artifact itself
-    _delete_resource(databusURI, databus_key, dry_run=dry_run, force=force, queue=queue,manifest_context=manifest_context)
+    _delete_resource(
+        databusURI,
+        databus_key,
+        dry_run=dry_run,
+        force=force,
+        queue=queue,
+        manifest_context=manifest_context,
+        session=session,
+        timeout=timeout,
+    )
 
 
 def _delete_group(
@@ -249,6 +300,8 @@ def _delete_group(
     force: bool = False,
     queue: DeleteQueue = None,
     manifest_context=None,
+    session: requests.Session | None = None,
+    timeout: int = 30,
 ):
     """Delete a group and all its artifacts and versions.
 
@@ -261,8 +314,10 @@ def _delete_group(
         dry_run: If True, do not perform the deletion but only print what would be deleted.
         force: If True, skip confirmation prompt and proceed with deletion.
         queue: If queue is provided, add the URI to the queue instead of deleting immediately.
+        session: Optional HTTP session with retry strategy.
+        timeout: Request timeout in seconds.
     """
-    group_body = fetch_databus_jsonld(databusURI, databus_key)
+    group_body = fetch_databus_jsonld(databusURI, databus_key, session=session, timeout=timeout)
 
     json_dict = json.loads(group_body)
     artifacts = json_dict.get("databus:hasArtifact", [])
@@ -279,14 +334,38 @@ def _delete_group(
     # Delete all artifacts (which deletes their versions)
     for artifact_uri in artifact_uris:
         _delete_artifact(
-            artifact_uri, databus_key, dry_run=dry_run, force=force, queue=queue, manifest_context=manifest_context
+            artifact_uri,
+            databus_key,
+            dry_run=dry_run,
+            force=force,
+            queue=queue,
+            manifest_context=manifest_context,
+            session=session,
+            timeout=timeout,
         )
 
     # Finally, delete the group itself
-    _delete_resource(databusURI, databus_key, dry_run=dry_run, force=force, queue=queue,manifest_context=manifest_context)
+    _delete_resource(
+        databusURI,
+        databus_key,
+        dry_run=dry_run,
+        force=force,
+        queue=queue,
+        manifest_context=manifest_context,
+        session=session,
+        timeout=timeout,
+    )
 
 
-def delete(databusURIs: List[str], databus_key: str, dry_run: bool, force: bool, manifest_context=None):
+def delete(
+    databusURIs: List[str],
+    databus_key: str,
+    dry_run: bool = False,
+    force: bool = False,
+    manifest_context=None,
+    session: requests.Session | None = None,
+    timeout: int = 30,
+):
     """Delete a dataset from the databus.
 
     Delete a group, artifact, or version identified by the given databus URI.
@@ -297,9 +376,15 @@ def delete(databusURIs: List[str], databus_key: str, dry_run: bool, force: bool,
         databus_key: Databus API key to authenticate the deletion requests.
         dry_run: If True, will only print what would be deleted without performing actual deletions.
         force: If True, skip confirmation prompt and proceed with deletion.
+        session: Optional HTTP session with retry strategy.
+        timeout: Request timeout in seconds.
     """
+    if session is None:
+        session = get_http_session()
 
-    queue = DeleteQueue(databus_key, manifest_context=manifest_context)
+    queue = DeleteQueue(
+        databus_key, manifest_context=manifest_context, session=session, timeout=timeout
+    )
 
     for databusURI in databusURIs:
         _host, _account, group, artifact, version, file = (
@@ -309,24 +394,52 @@ def delete(databusURIs: List[str], databus_key: str, dry_run: bool, force: bool,
         if group == "collections" and artifact is not None:
             print(f"Deleting collection: {databusURI}")
             _delete_resource(
-                databusURI, databus_key, dry_run=dry_run, force=force, queue=queue, manifest_context=manifest_context
+                databusURI,
+                databus_key,
+                dry_run=dry_run,
+                force=force,
+                queue=queue,
+                manifest_context=manifest_context,
+                session=session,
+                timeout=timeout,
             )
         elif file is not None:
             print(f"Deleting file is not supported via API: {databusURI}")
         elif version is not None:
             print(f"Deleting version: {databusURI}")
             _delete_resource(
-                databusURI, databus_key, dry_run=dry_run, force=force, queue=queue, manifest_context=manifest_context
+                databusURI,
+                databus_key,
+                dry_run=dry_run,
+                force=force,
+                queue=queue,
+                manifest_context=manifest_context,
+                session=session,
+                timeout=timeout,
             )
         elif artifact is not None:
             print(f"Deleting artifact and all its versions: {databusURI}")
             _delete_artifact(
-                databusURI, databus_key, dry_run=dry_run, force=force, queue=queue, manifest_context=manifest_context
+                databusURI,
+                databus_key,
+                dry_run=dry_run,
+                force=force,
+                queue=queue,
+                manifest_context=manifest_context,
+                session=session,
+                timeout=timeout,
             )
         elif group is not None and group != "collections":
             print(f"Deleting group and all its artifacts and versions: {databusURI}")
             _delete_group(
-                databusURI, databus_key, dry_run=dry_run, force=force, queue=queue, manifest_context=manifest_context
+                databusURI,
+                databus_key,
+                dry_run=dry_run,
+                force=force,
+                queue=queue,
+                manifest_context=manifest_context,
+                session=session,
+                timeout=timeout,
             )
         else:
             print(f"Deleting {databusURI} is not supported.")
