@@ -42,10 +42,10 @@ Before using the client, install it via pip:
 python3 -m pip install databusclient
 ```
 
-Note: this repository prepares version `1.0.0`. If you previously installed `databusclient` via `pip` and observe different CLI behavior, upgrade to the latest release:
+If you previously installed `databusclient` via `pip` and observe different CLI behavior, upgrade to the latest release:
 
 ```bash
-python3 -m pip install --upgrade databusclient==1.0.0
+python3 -m pip install --upgrade databusclient
 ```
 
 You can then use the client in the command line:
