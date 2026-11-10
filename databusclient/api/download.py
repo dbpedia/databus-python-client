@@ -7,7 +7,7 @@ from typing import List, Optional, Tuple
 import re
 import shutil
 import tempfile
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import requests
 from SPARQLWrapper import JSON, SPARQLWrapper
@@ -492,7 +492,7 @@ def _download_file(
         307,
         308,
     ]:
-        url = response.headers.get("Location")
+        url = urljoin(url, response.headers["Location"])
         print("Redirects url: ", url)
         # Re-do HEAD request on redirect URL
         response = requests.head(url, headers=headers, timeout=30)
