@@ -344,6 +344,21 @@ class DownloadAuthError(Exception):
     """Raised when an authorization problem occurs during download."""
 
 
+def format_download_connection_error(error: requests.exceptions.ConnectionError | requests.exceptions.Timeout) -> str:
+    """Return a concise message for a failed download connection."""
+    request = getattr(error, "request", None)
+    request_url = getattr(request, "url", "")
+    host = urlparse(request_url).hostname or "the remote server"
+
+    if isinstance(error, requests.exceptions.Timeout):
+        return f"Could not connect to {host}: the request timed out."
+
+    return (
+        f"Could not connect to {host}. "
+        "Check the server address and your network connection."
+    )
+
+
 def _extract_checksums_from_jsonld(json_str: str) -> dict:
     """
     Parse a JSON-LD string and return a mapping of file URI (and @id) -> checksum.

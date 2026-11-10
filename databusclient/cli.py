@@ -4,10 +4,11 @@ import os
 from typing import List
 
 import click
+import requests
 
 import databusclient.api.deploy as api_deploy
 from databusclient.api.delete import delete as api_delete
-from databusclient.api.download import download as api_download, DownloadAuthError
+from databusclient.api.download import DownloadAuthError, download as api_download, format_download_connection_error
 from databusclient.manifest.context import ManifestContext
 from databusclient.manifest.writer import ManifestWriter
 from databusclient.manifest.replay import ManifestReplayError, replay_manifest, load_manifest
@@ -398,6 +399,10 @@ def download(
         if manifest_context:
             manifest_context.record_operation_error(e)
         raise click.ClickException(str(e))
+    except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
+        if manifest_context:
+            manifest_context.record_operation_error(e)
+        raise click.ClickException(format_download_connection_error(e))
     except ValueError as e:
         if manifest_context:
             manifest_context.record_operation_error(e)
