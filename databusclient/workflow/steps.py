@@ -87,6 +87,11 @@ class DownloadStep:
         )
 
         new_entries = capture_context.files[files_before:]
+        failed_entries = [e for e in new_entries if e.get("status") == "failed"]
+        if failed_entries:
+            raise RuntimeError(
+                f"Step '{name}': download failed for {len(failed_entries)} file(s)."
+            )
         resolved_urls = [e["url"] for e in new_entries if e.get("status") == "success"]
 
         output_files = self._collect_output_files(local_dir)
