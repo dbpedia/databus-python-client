@@ -123,7 +123,7 @@ The command-line interface provides commands for downloading, deploying, and del
 <a id="cli-download"></a>
 ### Download
 
-The `download` command retrieves Databus files, versions, artifacts, groups, collections, or SPARQL query results. It supports authentication, checksum validation, compression conversion, and RDF or tabular format conversion. See the [download docs](doc/cli-usage.md#cli-download).
+The `download` command retrieves Databus files, versions, artifacts, groups, accounts, collections, or SPARQL query results. It supports authentication, checksum validation, compression conversion, and RDF or tabular format conversion. See the [download docs](doc/cli-usage.md#cli-download).
 
 <a id="cli-deploy"></a>
 ### Deploy
