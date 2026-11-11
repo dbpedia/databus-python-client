@@ -469,7 +469,7 @@ def _download_file(
     local_dir_was_given = localDir is not None
     localDir = _get_download_directory(url, localDir)
     if not local_dir_was_given:
-        print(f"Local directory not given, using {localDir}")
+        print(f"local directory not given, using {os.path.relpath(localDir)}")
 
     file = url.split("/")[-1]
     filename = os.path.join(localDir, file)
