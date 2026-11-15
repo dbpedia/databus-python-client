@@ -554,6 +554,12 @@ def _download_file(
     if not file_already_complete:
         if existing_bytes > 0:
             headers["Range"] = f"bytes={existing_bytes}-"
+            etag = response.headers.get("ETag")
+            last_mod = response.headers.get("Last-Modified")
+            if etag:
+                headers["If-Range"] = etag
+            elif last_mod:
+                headers["If-Range"] = last_mod
 
         # --- 2. Try direct GET to redirected URL ---
         headers["Accept-Encoding"] = (
@@ -621,11 +627,36 @@ def _download_file(
 
         try:
             if response.status_code == 416 and existing_bytes > 0:
-                print(
-                    f"Server returned 416 Range Not Satisfiable for {url}. File {filename} may already be completely downloaded."
-                )
-                total_size_in_bytes = existing_bytes
-                file_already_complete = True
+                # Content-Range format for 416: bytes */<total>
+                content_range = response.headers.get("Content-Range", "")
+                cr_match = re.search(r"bytes\s+\*/(\d+)", content_range)
+                if cr_match:
+                    if int(cr_match.group(1)) == existing_bytes:
+                        print(
+                            f"Server returned 416 Range Not Satisfiable for {url}. File {filename} is already completely downloaded."
+                        )
+                        total_size_in_bytes = existing_bytes
+                        file_already_complete = True
+                    else:
+                        print(
+                            f"Server returned 416 Range Not Satisfiable with mismatched size for {url}. Restarting download from scratch."
+                        )
+                        existing_bytes = 0
+                        if os.path.exists(filename):
+                            os.remove(filename)
+                        headers.pop("Range", None)
+                        headers.pop("If-Range", None)
+                        response = requests.get(
+                            url, headers=headers, stream=True, allow_redirects=True, timeout=30
+                        )
+                        response.raise_for_status()
+                else:
+                    # No Content-Range header provided with 416; accept existing file
+                    print(
+                        f"Server returned 416 Range Not Satisfiable for {url}. File {filename} may already be completely downloaded."
+                    )
+                    total_size_in_bytes = existing_bytes
+                    file_already_complete = True
             else:
                 response.raise_for_status()  # Raise if still failing
         except requests.exceptions.HTTPError as e:
@@ -644,13 +675,32 @@ def _download_file(
     if not file_already_complete:
         # --- 4. Download with progress bar ---
         is_partial = response.status_code == 206
-        file_mode = "ab" if (is_partial and existing_bytes > 0) else "wb"
         content_len = int(response.headers.get("content-length", 0))
 
         if is_partial and existing_bytes > 0:
-            total_size_in_bytes = existing_bytes + content_len
-            initial_bytes = existing_bytes
+            content_range = response.headers.get("Content-Range", "")
+            cr_match = re.search(r"bytes\s+(\d+)-(\d+)/((\d+)|\*)", content_range)
+            if cr_match:
+                range_start = int(cr_match.group(1))
+                if range_start == existing_bytes:
+                    total_str = cr_match.group(4)
+                    total_size_in_bytes = int(total_str) if total_str else (existing_bytes + content_len)
+                    file_mode = "ab"
+                    initial_bytes = existing_bytes
+                else:
+                    # Server sent partial content starting at wrong offset; restart from scratch
+                    print(
+                        f"Content-Range start {range_start} does not match local size {existing_bytes}. Restarting download."
+                    )
+                    file_mode = "wb"
+                    total_size_in_bytes = content_len
+                    initial_bytes = 0
+            else:
+                total_size_in_bytes = existing_bytes + content_len
+                file_mode = "ab"
+                initial_bytes = existing_bytes
         else:
+            file_mode = "wb"
             total_size_in_bytes = content_len
             initial_bytes = 0
 

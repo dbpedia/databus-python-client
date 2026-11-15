@@ -82,6 +82,7 @@ class DownloadStep:
             base_uri=resolved.get("base_uri"),
             graph_mode=resolved.get("graph_mode"),
             user_agent=resolved.get("user_agent"),
+            resume=resolved.get("resume", False),
             validate_checksum=resolved.get("validate_checksum", False),
             manifest_context=capture_context,
         )

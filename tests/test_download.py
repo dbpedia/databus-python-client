@@ -425,3 +425,138 @@ def test_cli_resume_flag(monkeypatch, tmp_path):
     )
     assert result_short.exit_code == 0
     assert captured["resume"] is True
+
+
+def test_resume_content_range_mismatch_restarts(monkeypatch, tmp_path):
+    import databusclient.api.download as dl
+
+    url = "https://example.org/file.bin"
+    target_file = tmp_path / "file.bin"
+    target_file.write_bytes(b"corrupt")
+
+    class MockHeadResp:
+        status_code = 200
+        headers = {"content-length": "10"}
+
+    class MockMismatch206GetResp:
+        status_code = 206
+
+        def __init__(self):
+            self.content = b"0123456789"
+            # Server returns range starting at 0 instead of 7
+            self.headers = {
+                "content-length": "10",
+                "Content-Range": "bytes 0-9/10",
+            }
+
+        def iter_content(self, block_size):
+            yield self.content
+
+        def raise_for_status(self):
+            pass
+
+    monkeypatch.setattr("requests.head", lambda *a, **k: MockHeadResp())
+    monkeypatch.setattr("requests.get", lambda *a, **k: MockMismatch206GetResp())
+
+    dl._download_file(url, localDir=str(tmp_path), resume=True)
+
+    # File should have been restarted and overwritten with the full payload
+    assert target_file.read_bytes() == b"0123456789"
+
+
+def test_resume_416_mismatch_restarts(monkeypatch, tmp_path):
+    import requests
+    import databusclient.api.download as dl
+
+    url = "https://example.org/file.bin"
+    target_file = tmp_path / "file.bin"
+    target_file.write_bytes(b"wrong_length_content_12345")
+
+    calls = []
+
+    class MockHeadResp:
+        status_code = 200
+        headers = {}
+
+    class Mock416GetResp:
+        status_code = 416
+        headers = {"Content-Range": "bytes */10"}
+
+        def raise_for_status(self):
+            raise requests.exceptions.HTTPError("416", response=self)
+
+    class MockFullGetResp:
+        status_code = 200
+        headers = {"content-length": "10"}
+
+        def iter_content(self, block_size):
+            yield b"0123456789"
+
+        def raise_for_status(self):
+            pass
+
+    def mock_get(req_url, *args, **kwargs):
+        if not calls:
+            calls.append("416")
+            return Mock416GetResp()
+        calls.append("200")
+        return MockFullGetResp()
+
+    monkeypatch.setattr("requests.head", lambda *a, **k: MockHeadResp())
+    monkeypatch.setattr("requests.get", mock_get)
+
+    dl._download_file(url, localDir=str(tmp_path), resume=True)
+
+    assert calls == ["416", "200"]
+    assert target_file.read_bytes() == b"0123456789"
+
+
+def test_resume_if_range_header_sent(monkeypatch, tmp_path):
+    import databusclient.api.download as dl
+
+    url = "https://example.org/file.bin"
+    target_file = tmp_path / "file.bin"
+    target_file.write_bytes(b"hello ")
+
+    recorded_headers = {}
+
+    class MockHeadResp:
+        status_code = 200
+        headers = {"content-length": "12", "ETag": '"etag-val-123"'}
+
+    class MockPartialGetResp:
+        status_code = 206
+        headers = {"content-length": "6", "Content-Range": "bytes 6-11/12"}
+
+        def iter_content(self, block_size):
+            yield b"world!"
+
+        def raise_for_status(self):
+            pass
+
+    monkeypatch.setattr("requests.head", lambda *a, **k: MockHeadResp())
+
+    def mock_get(req_url, *args, **kwargs):
+        if "headers" in kwargs:
+            recorded_headers.update(kwargs["headers"])
+        return MockPartialGetResp()
+
+    monkeypatch.setattr("requests.get", mock_get)
+
+    dl._download_file(url, localDir=str(tmp_path), resume=True)
+
+    assert recorded_headers.get("Range") == "bytes=6-"
+    assert recorded_headers.get("If-Range") == '"etag-val-123"'
+    assert target_file.read_bytes() == b"hello world!"
+
+
+def test_manifest_replay_forwards_resume():
+    from databusclient.manifest.replay import _build_download_kwargs
+
+    manifest = {"@id": "https://example.org/manifest"}
+    replay_params = {
+        "databusURIs": ["https://databus.dbpedia.org/user/group/artifact/version"],
+        "resume": True,
+    }
+    kwargs = _build_download_kwargs(manifest, replay_params, overrides={})
+    assert kwargs.get("resume") is True
