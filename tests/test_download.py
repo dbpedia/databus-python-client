@@ -434,6 +434,8 @@ def test_resume_content_range_mismatch_restarts(monkeypatch, tmp_path):
     target_file = tmp_path / "file.bin"
     target_file.write_bytes(b"corrupt")
 
+    calls = []
+
     class MockHeadResp:
         status_code = 200
         headers = {"content-length": "10"}
@@ -442,8 +444,7 @@ def test_resume_content_range_mismatch_restarts(monkeypatch, tmp_path):
         status_code = 206
 
         def __init__(self):
-            self.content = b"0123456789"
-            # Server returns range starting at 0 instead of 7
+            self.content = b"partial_content_wrong_offset"
             self.headers = {
                 "content-length": "10",
                 "Content-Range": "bytes 0-9/10",
@@ -455,11 +456,33 @@ def test_resume_content_range_mismatch_restarts(monkeypatch, tmp_path):
         def raise_for_status(self):
             pass
 
+    class MockFull200GetResp:
+        status_code = 200
+
+        def __init__(self):
+            self.content = b"0123456789"
+            self.headers = {"content-length": "10"}
+
+        def iter_content(self, block_size):
+            yield self.content
+
+        def raise_for_status(self):
+            pass
+
+    def mock_get(req_url, *args, **kwargs):
+        headers = kwargs.get("headers", {})
+        if "Range" in headers:
+            calls.append("range")
+            return MockMismatch206GetResp()
+        calls.append("full")
+        return MockFull200GetResp()
+
     monkeypatch.setattr("requests.head", lambda *a, **k: MockHeadResp())
-    monkeypatch.setattr("requests.get", lambda *a, **k: MockMismatch206GetResp())
+    monkeypatch.setattr("requests.get", mock_get)
 
     dl._download_file(url, localDir=str(tmp_path), resume=True)
 
+    assert calls == ["range", "full"]
     # File should have been restarted and overwritten with the full payload
     assert target_file.read_bytes() == b"0123456789"
 
@@ -560,3 +583,69 @@ def test_manifest_replay_forwards_resume():
     }
     kwargs = _build_download_kwargs(manifest, replay_params, overrides={})
     assert kwargs.get("resume") is True
+
+
+def test_resume_chunked_206_unknown_total(monkeypatch, tmp_path):
+    import databusclient.api.download as dl
+
+    url = "https://example.org/file.bin"
+    target_file = tmp_path / "file.bin"
+    target_file.write_bytes(b"hello ")
+
+    class MockHeadResp:
+        status_code = 200
+        headers = {}  # No content-length
+
+    class MockChunked206GetResp:
+        status_code = 206
+
+        def __init__(self):
+            self.content = b"world!"
+            self.headers = {
+                "Content-Range": "bytes 6-11/*",
+            }
+
+        def iter_content(self, block_size):
+            yield self.content
+
+        def raise_for_status(self):
+            pass
+
+    monkeypatch.setattr("requests.head", lambda *a, **k: MockHeadResp())
+    monkeypatch.setattr("requests.get", lambda *a, **k: MockChunked206GetResp())
+
+    dl._download_file(url, localDir=str(tmp_path), resume=True)
+
+    assert target_file.read_bytes() == b"hello world!"
+
+
+def test_head_request_includes_accept_encoding_identity(monkeypatch, tmp_path):
+    import databusclient.api.download as dl
+
+    url = "https://example.org/file.bin"
+    head_headers = {}
+
+    class MockHeadResp:
+        status_code = 200
+        headers = {"content-length": "5"}
+
+    class MockGetResp:
+        status_code = 200
+        headers = {"content-length": "5"}
+
+        def iter_content(self, block_size):
+            yield b"12345"
+
+        def raise_for_status(self):
+            pass
+
+    def mock_head(req_url, *args, **kwargs):
+        head_headers.update(kwargs.get("headers", {}))
+        return MockHeadResp()
+
+    monkeypatch.setattr("requests.head", mock_head)
+    monkeypatch.setattr("requests.get", lambda *a, **k: MockGetResp())
+
+    dl._download_file(url, localDir=str(tmp_path), resume=True)
+
+    assert head_headers.get("Accept-Encoding") == "identity"

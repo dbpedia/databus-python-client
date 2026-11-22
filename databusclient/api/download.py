@@ -487,7 +487,10 @@ def _download_file(
         existing_bytes = os.path.getsize(filename)
 
     # --- 1. Get redirect URL by requesting HEAD ---
-    headers = {"User-Agent": DEFAULT_USER_AGENT if user_agent is None else user_agent}
+    headers = {
+        "User-Agent": DEFAULT_USER_AGENT if user_agent is None else user_agent,
+        "Accept-Encoding": "identity",
+    }
 
     # --- 1a. public databus ---
     response = requests.head(url, headers=headers, timeout=30, allow_redirects=False)
@@ -684,19 +687,33 @@ def _download_file(
                 range_start = int(cr_match.group(1))
                 if range_start == existing_bytes:
                     total_str = cr_match.group(4)
-                    total_size_in_bytes = int(total_str) if total_str else (existing_bytes + content_len)
+                    if total_str and total_str.isdigit():
+                        total_size_in_bytes = int(total_str)
+                    elif content_len > 0:
+                        total_size_in_bytes = existing_bytes + content_len
+                    else:
+                        total_size_in_bytes = 0
                     file_mode = "ab"
                     initial_bytes = existing_bytes
                 else:
-                    # Server sent partial content starting at wrong offset; restart from scratch
+                    # Server sent partial content starting at wrong offset; discard and restart with full GET
                     print(
                         f"Content-Range start {range_start} does not match local size {existing_bytes}. Restarting download."
                     )
+                    headers.pop("Range", None)
+                    headers.pop("If-Range", None)
+                    response = requests.get(
+                        url, headers=headers, stream=True, allow_redirects=True, timeout=30
+                    )
+                    response.raise_for_status()
+                    content_len = int(response.headers.get("content-length", 0))
                     file_mode = "wb"
                     total_size_in_bytes = content_len
                     initial_bytes = 0
             else:
-                total_size_in_bytes = existing_bytes + content_len
+                total_size_in_bytes = (
+                    (existing_bytes + content_len) if content_len > 0 else 0
+                )
                 file_mode = "ab"
                 initial_bytes = existing_bytes
         else:
