@@ -23,6 +23,7 @@ Command-line and Python client for downloading and deploying datasets on DBpedia
 - [Module Usage](#module-usage)
 - [Development & Contributing](#development--contributing)
   - [Versioning](#versioning)
+  - [Publishing a release](#publishing-a-release)
   - [Linting](#linting)
   - [Testing](#testing)
 
@@ -162,9 +163,17 @@ poetry install --with dev
 
 We use semantic versioning (`major.minor.patch`). When making changes, update the version in `pyproject.toml`: increment major for breaking changes, minor for backward-compatible features, and patch for bug fixes. If the version is unchanged and already published, no new Docker image will be built or published.
 
+#### Publishing a release
+
+Every push to `main` runs the [release workflow](.github/workflows/release.yml). It checks Docker Hub, PyPI, and GitHub Releases for the version and builds only where publication is needed.
+
+Docker Hub gets the version and `latest` image tags. The Python build produces one wheel and one source distribution for PyPI and GitHub Releases. When both Python destinations are missing, PyPI publishes first. GitHub creates the version tag, such as `v1.3.2`, at the commit that triggered the run when it creates the release.
+
+If a release run fails partway through, rerun all jobs from that original run to refresh the publication checks for the same commit.
+
 ### Linting
 
-The used linter is [Ruff](https://ruff.rs/). Ruff is configured in pyproject.toml and is enforced in CI (`.github/workflows/ruff.yml`).
+The used linter is [Ruff](https://ruff.rs/). Ruff is configured in pyproject.toml and is enforced in the [CI workflow](.github/workflows/ci.yml).
 
 For development, you can run linting locally with `ruff check .` and optionally auto-format with `ruff format .`.
 

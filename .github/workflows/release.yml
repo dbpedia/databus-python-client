@@ -1,0 +1,207 @@
+name: Publish Docker image, Python package, and GitHub Release
+
+on:
+  push:
+    branches: [main]
+
+permissions: {}
+
+concurrency:
+  group: publish-release-main
+  queue: max
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.destinations.outputs.version }}
+      pypi_exists: ${{ steps.destinations.outputs.pypi_exists }}
+      github_exists: ${{ steps.destinations.outputs.github_exists }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.11"
+      - name: Read the version and check PyPI and GitHub Releases
+        id: destinations
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          import os
+          import re
+          import subprocess
+          import tomllib
+          from urllib.error import HTTPError, URLError
+          from urllib.parse import quote
+          from urllib.request import Request, urlopen
+
+          def release_exists(destination, request):
+              try:
+                  with urlopen(request, timeout=30) as response:
+                      if response.status == 200:
+                          return True
+                      raise SystemExit(f"{destination} release lookup returned HTTP {response.status}.")
+              except HTTPError as error:
+                  if error.code == 404:
+                      return False
+                  raise SystemExit(f"{destination} release lookup returned HTTP {error.code}.")
+              except (URLError, TimeoutError) as error:
+                  raise SystemExit(f"{destination} release lookup failed: {error}")
+
+          with open("pyproject.toml", "rb") as f:
+              package = tomllib.load(f)["tool"]["poetry"]
+
+          version = package["version"]
+          if not re.fullmatch(r"[0-9][A-Za-z0-9_.-]{0,127}", version):
+              raise SystemExit(f"Package version {version!r} cannot be used as a Docker tag.")
+          tag = f"v{version}"
+
+          project = quote(package["name"], safe="")
+          pypi = Request(f"https://pypi.org/pypi/{project}/{quote(version, safe='')}/json")
+          api = os.environ["GITHUB_API_URL"]
+          repo = os.environ["GITHUB_REPOSITORY"]
+          github = Request(
+              f"{api}/repos/{repo}/releases/tags/{quote(tag, safe='')}",
+              headers={"Accept": "application/vnd.github+json"},
+          )
+          github.add_unredirected_header("Authorization", f"Bearer {os.environ['GH_TOKEN']}")
+
+          pypi_exists = release_exists("PyPI", pypi)
+          github_exists = release_exists("GitHub", github)
+          print(f"Version {version}: PyPI release exists={pypi_exists}, GitHub Release exists={github_exists}.")
+
+          if not (pypi_exists and github_exists):
+              existing_tag = subprocess.run(
+                  ["git", "rev-parse", "--verify", "--quiet", f"refs/tags/{tag}"],
+                  capture_output=True,
+              )
+              if existing_tag.returncode == 0:
+                  tagged_commit = subprocess.check_output(
+                      ["git", "rev-parse", "--verify", f"refs/tags/{tag}^{{commit}}"],
+                      text=True,
+                  ).strip()
+                  if tagged_commit != os.environ["GITHUB_SHA"]:
+                      raise SystemExit(f"Tag {tag} already points to {tagged_commit}. Re-run the release from that commit or bump the version.")
+              elif existing_tag.returncode != 1:
+                  existing_tag.check_returncode()
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+              print(f"version={version}", file=output)
+              print(f"pypi_exists={str(pypi_exists).lower()}", file=output)
+              print(f"github_exists={str(github_exists).lower()}", file=output)
+          PY
+
+  publish-to-docker-hub:
+    needs: preflight
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.DBP_DOCKERHUB_CREDENTIAL_USERNAME }}
+          password: ${{ secrets.DBP_DOCKERHUB_CREDENTIAL_TOKEN_PUSHIMAGES }}
+      - name: Check whether the image version is already published
+        id: registry
+        env:
+          VERSION: ${{ needs.preflight.outputs.version }}
+        run: |
+          image="dbpedia/databus-python-client:${VERSION}"
+          error_file=$(mktemp)
+          trap 'rm -f "$error_file"' EXIT
+
+          if docker manifest inspect "$image" > /dev/null 2> "$error_file"; then
+            echo "Version ${VERSION} already exists; skipping publication."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          elif grep -q '^no such manifest:' "$error_file"; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            cat "$error_file" >&2
+            echo "Could not check whether ${image} exists; refusing to publish." >&2
+            exit 1
+          fi
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        if: steps.registry.outputs.publish == 'true'
+        with:
+          persist-credentials: false
+      - name: Build and push Docker image
+        if: steps.registry.outputs.publish == 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          push: true
+          tags: |
+            dbpedia/databus-python-client:latest
+            dbpedia/databus-python-client:${{ needs.preflight.outputs.version }}
+
+  build-python:
+    needs: preflight
+    if: needs.preflight.outputs.pypi_exists == 'false' || needs.preflight.outputs.github_exists == 'false'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+        with:
+          python-version: "3.11"
+      - name: Build and validate distributions
+        run: |
+          python -m pip install build twine
+          python -m build
+          python -m twine check --strict dist/*
+      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: python-distributions
+          path: dist/
+          if-no-files-found: error
+
+  publish-to-pypi:
+    needs: [preflight, build-python]
+    if: needs.preflight.outputs.pypi_exists == 'false'
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/databusclient/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          name: python-distributions
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@7245906fb61fa33a13554f9d5fb856fe61758086 # v1.14.3
+
+  github-release:
+    needs: [preflight, build-python, publish-to-pypi]
+    if: >-
+      ${{ !cancelled() &&
+          needs.build-python.result == 'success' &&
+          needs.preflight.outputs.github_exists == 'false' &&
+          (needs.preflight.outputs.pypi_exists == 'true' || needs.publish-to-pypi.result == 'success') }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
+        with:
+          name: python-distributions
+          path: dist/
+      - name: Create GitHub Release and version tag with distributions
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.preflight.outputs.version }}
+        run: |
+          gh release create "v${VERSION}" dist/* \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --generate-notes
