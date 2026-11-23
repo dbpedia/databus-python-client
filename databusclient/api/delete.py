@@ -265,12 +265,25 @@ def _delete_group(
     group_body = fetch_databus_jsonld(databusURI, databus_key)
 
     json_dict = json.loads(group_body)
-    artifacts = json_dict.get("databus:hasArtifact", [])
+    artifacts = json_dict.get("databus:hasArtifact")
+
+    # The Databus returns a dict when a group has a single artifact and a
+    # list when it has multiple; normalise to a list (see _delete_artifact
+    # and _get_databus_artifacts_of_group for the same convention).
+    if isinstance(artifacts, dict):
+        artifacts = [artifacts]
+    elif isinstance(artifacts, list):
+        pass
+    else:
+        # Missing key, None, or any unexpected type: treat as no artifacts.
+        artifacts = []
 
     artifact_uris = []
     for item in artifacts:
+        if not isinstance(item, dict):
+            continue
         uri = item.get("@id")
-        if not uri:
+        if not isinstance(uri, str) or not uri:
             continue
         _, _, _, _, version, _ = get_databus_id_parts_from_file_url(uri)
         if version is None:
