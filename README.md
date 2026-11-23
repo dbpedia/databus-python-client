@@ -52,7 +52,7 @@ You can then use the client in the command line:
 
 ```bash
 databusclient --help
-databusclient --version
+databusclient --version # version +1.3.0
 databusclient [delete|deploy|download|manifest|workflow] --help
 ```
 
