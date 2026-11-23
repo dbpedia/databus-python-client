@@ -5,9 +5,9 @@ entrypoint so the package can be used as a library or via
 ``python -m databusclient``.
 """
 
+from databusclient.version import __version__
 from databusclient import cli
 from databusclient.api.deploy import create_dataset, create_distribution, deploy
-from databusclient.version import __version__
 
 __all__ = ["__version__", "create_dataset", "deploy", "create_distribution"]
 
