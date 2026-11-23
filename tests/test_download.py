@@ -3,6 +3,7 @@
 import bz2
 
 import pytest
+import requests
 from click.testing import CliRunner
 
 from databusclient.api.download import download as api_download
@@ -194,6 +195,46 @@ def test_cli_manifest_records_graph_mode(monkeypatch, tmp_path):
     assert captured["graph_mode"] == "download-url"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert manifest["dbus:replayParams"]["graph_mode"] == "download-url"
+
+
+def test_cli_reports_redirected_download_timeout_without_traceback(monkeypatch):
+    request = requests.Request(
+        "HEAD", "https://data.dbpedia.org/repo/example/data.ttl"
+    ).prepare()
+
+    def timeout(**_kwargs):
+        raise requests.exceptions.ConnectTimeout(request=request)
+
+    monkeypatch.setattr("databusclient.cli.api_download", timeout)
+
+    result = CliRunner().invoke(
+        app, ["download", "https://databus.dbpedia.org/example/data.ttl"]
+    )
+
+    assert result.exit_code == 1
+    assert (
+        "Error: Could not connect to data.dbpedia.org: "
+        "the request timed out."
+    ) in result.output
+    assert "Traceback" not in result.output
+
+
+def test_cli_reports_connection_failure_without_traceback(monkeypatch):
+    request = requests.Request("GET", "https://files.example.org/data.ttl").prepare()
+
+    def connection_error(**_kwargs):
+        raise requests.exceptions.ConnectionError(request=request)
+
+    monkeypatch.setattr("databusclient.cli.api_download", connection_error)
+
+    result = CliRunner().invoke(
+        app, ["download", "https://databus.dbpedia.org/example/data.ttl"]
+    )
+
+    assert result.exit_code == 1
+    assert "Error: Could not connect to files.example.org." in result.output
+    assert "Check the server address and your network connection." in result.output
+    assert "Traceback" not in result.output
 
 
 def test_converted_output_gets_graph_sidecar_at_final_path(monkeypatch, tmp_path):

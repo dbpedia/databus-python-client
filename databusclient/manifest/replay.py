@@ -80,6 +80,7 @@ def _build_download_kwargs(
         "graph_name": replay_params.get("graph_name"),
         "base_uri": replay_params.get("base_uri"),
         "graph_mode": replay_params.get("graph_mode"),
+        "user_agent": replay_params.get("user_agent"),
         "validate_checksum": bool(replay_params.get("validate_checksum", False)),
         "manifest_context": None,
     }

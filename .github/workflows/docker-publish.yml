@@ -5,6 +5,10 @@ on:
     branches: [ "main" ]
   workflow_dispatch:  # allows manual trigger
 
+concurrency:
+  group: docker-publish
+  cancel-in-progress: false
+
 jobs:
   push_to_registry:
     name: Push Docker image to Docker Hub
@@ -32,7 +36,28 @@ jobs:
           username: ${{ secrets.DBP_DOCKERHUB_CREDENTIAL_USERNAME }}
           password: ${{ secrets.DBP_DOCKERHUB_CREDENTIAL_TOKEN_PUSHIMAGES }}
 
+      - name: Check whether version is already published
+        id: registry
+        env:
+          VERSION: ${{ steps.package.outputs.version }}
+        run: |
+          image="dbpedia/databus-python-client:${VERSION}"
+          error_file=$(mktemp)
+          trap 'rm -f "$error_file"' EXIT
+
+          if docker manifest inspect "$image" > /dev/null 2> "$error_file"; then
+            echo "Version ${VERSION} already exists; skipping publication."
+            echo "publish=false" >> "$GITHUB_OUTPUT"
+          elif grep -q '^no such manifest:' "$error_file"; then
+            echo "publish=true" >> "$GITHUB_OUTPUT"
+          else
+            cat "$error_file" >&2
+            echo "Could not check whether ${image} exists; refusing to publish." >&2
+            exit 1
+          fi
+
       - name: Build and push Docker image
+        if: steps.registry.outputs.publish == 'true'
         uses: docker/build-push-action@v7
         with:
           context: .

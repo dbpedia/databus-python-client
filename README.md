@@ -22,6 +22,7 @@ Command-line and Python client for downloading and deploying datasets on DBpedia
   - [Workflow](#cli-workflow)
 - [Module Usage](#module-usage)
 - [Development & Contributing](#development--contributing)
+  - [Versioning](#versioning)
   - [Linting](#linting)
   - [Testing](#testing)
 
@@ -156,9 +157,13 @@ Install development dependencies yourself or via [Poetry](https://python-poetry.
 poetry install --with dev
 ```
 
+### Versioning
+
+We use semantic versioning (`major.minor.patch`). When making changes, update the version in `pyproject.toml`: increment major for breaking changes, minor for backward-compatible features, and patch for bug fixes. If the version is unchanged and already published, no new Docker image will be built or published.
+
 ### Linting
 
-The used linter is [Ruff](https://ruff.rs/). Ruff is configured in `pyproject.toml` and is enforced in CI (`.github/workflows/ruff.yml`).
+The used linter is [Ruff](https://ruff.rs/). Ruff is configured in pyproject.toml and is enforced in CI (`.github/workflows/ruff.yml`).
 
 For development, you can run linting locally with `ruff check .` and optionally auto-format with `ruff format .`.
 

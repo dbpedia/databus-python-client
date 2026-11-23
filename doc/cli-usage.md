@@ -40,6 +40,8 @@ databusclient download $DOWNLOADTARGET
   - Required when converting CSV/TSV to RDF triples. Used as the base for constructing subject URIs from CSV row identifiers. Example: `--format ntriples --base-uri https://example.org/data/`.
 - `--validate-checksum`
   - Validates the checksums of downloaded files against the checksums provided by the Databus. If a checksum does not match, an error is raised and the file is deleted.
+- `--user-agent`
+  - Overrides the HTTP User-Agent header for file download requests. Default: `databus-python-client/<version> (https://github.com/dbpedia/databus-python-client)`. Example: `--user-agent "DatabusDownloadBot/1.0 (mailto:you@example.org)"`.
 
 **Help and further information on download command:**
 ```bash
@@ -406,6 +408,7 @@ steps:
     uri: https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals/2022.12.01/mappingbased-literals_lang=az.ttl.bz2
     localdir: ./data
     graph_mode: download-url
+    user_agent: "DatabusDownloadBot/1.0 (mailto:you@example.org)"
 
   - name: publish_dataset
     command: deploy
@@ -418,6 +421,8 @@ steps:
     files: ${steps.fetch_dataset.output_urls}
     on_error: fail
 ```
+
+Download steps accept an optional `user_agent` field, equivalent to `download --user-agent`. If omitted, the client default is used.
 
 **Environment variables:** any value written as `${VARIABLE_NAME}` is resolved from the environment when the workflow starts. If the variable is not set, the workflow fails immediately with a clear error before any step runs — credentials should always be passed this way, never written directly in the file.
 
