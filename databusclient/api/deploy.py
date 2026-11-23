@@ -8,9 +8,15 @@ publish them to a Databus instance using the Databus publish API.
 import hashlib
 import json
 from enum import Enum
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 import requests
+
+from databusclient.api.utils import (
+    get_default_headers,
+    set_header,
+    set_header_if_missing,
+)
 
 _debug = False
 
@@ -176,14 +182,17 @@ def _get_file_stats(distribution_str: str) -> Tuple[Optional[str], Optional[int]
     return sha256sum, content_length
 
 
-def _load_file_stats(url: str) -> Tuple[str, int]:
+def _load_file_stats(
+    url: str, headers: Union[Dict[str, Any], Iterable[str], None] = None
+) -> Tuple[str, int]:
     """Download the file at ``url`` and compute its SHA-256 and length.
 
     This is used as a fallback when the caller did not supply checksum/size
     information in the CLI or metadata file.
     """
 
-    resp = requests.get(url, timeout=30)
+    req_headers = get_default_headers(headers)
+    resp = requests.get(url, headers=req_headers, timeout=30)
     if resp.status_code >= 400:
         raise requests.exceptions.RequestException(response=resp)
 
@@ -192,7 +201,10 @@ def _load_file_stats(url: str) -> Tuple[str, int]:
     return sha256sum, content_length
 
 
-def get_file_info(distribution_str: str) -> Tuple[Dict[str, str], str, str, str, int]:
+def get_file_info(
+    distribution_str: str,
+    headers: Union[Dict[str, Any], Iterable[str], None] = None,
+) -> Tuple[Dict[str, str], str, str, str, int]:
     """Return parsed file information for a distribution string.
 
     Returns a tuple `(cvs, format_extension, compression, sha256sum, size)`.
@@ -210,7 +222,7 @@ def get_file_info(distribution_str: str) -> Tuple[Dict[str, str], str, str, str,
 
     if sha256sum is None or content_length is None:
         __url = str(distribution_str).split("|")[0]
-        sha256sum, content_length = _load_file_stats(__url)
+        sha256sum, content_length = _load_file_stats(__url, headers=headers)
 
     return cvs, format_extension, compression, sha256sum, content_length
 
@@ -320,6 +332,7 @@ def create_dataset(
     group_title: str = None,
     group_abstract: str = None,
     group_description: str = None,
+    headers: Union[Dict[str, Any], Iterable[str], None] = None,
 ) -> Dict[str, Union[List[Dict[str, Union[bool, str, int, float, List]]], str]]:
     """
     Creates a Databus Dataset as a python dict from distributions and submitted metadata. WARNING: If file stats (sha256sum, content length)
@@ -376,7 +389,7 @@ def create_dataset(
             compression,
             sha256sum,
             content_length,
-        ) = get_file_info(dst_string)
+        ) = get_file_info(dst_string, headers=headers)
 
         if not cvs and len(distributions) > 1:
             raise BadArgumentException(
@@ -463,6 +476,7 @@ def deploy(
     verify_parts: bool = False,
     log_level: DeployLogLevel = DeployLogLevel.debug,
     debug: bool = False,
+    headers: Union[Dict[str, Any], Iterable[str], None] = None,
 ) -> None:
     """Deploys a dataset to the databus. The endpoint is inferred from the DataID identifier.
     Parameters
@@ -479,7 +493,9 @@ def deploy(
         controls whether output shold be printed to the console (stdout)
     """
 
-    headers = {"X-API-KEY": f"{api_key}", "Content-Type": "application/json"}
+    req_headers = get_default_headers(headers)
+    set_header(req_headers, "X-API-KEY", f"{api_key}")
+    set_header_if_missing(req_headers, "Content-Type", "application/json")
     data = json.dumps(dataid)
 
     try:
@@ -491,7 +507,7 @@ def deploy(
         base
         + f"/api/publish?verify-parts={str(verify_parts).lower()}&log-level={log_level.name}"
     )
-    resp = requests.post(api_uri, data=data, headers=headers, timeout=30)
+    resp = requests.post(api_uri, data=data, headers=req_headers, timeout=30)
 
     if debug or _debug:
         try:
@@ -517,6 +533,7 @@ def deploy_from_metadata(
     artifact_version_description: str,
     license_url: str,
     apikey: str,
+    headers: Union[Dict[str, Any], Iterable[str], None] = None,
 ) -> None:
     """
     Deploy a dataset from metadata entries.
@@ -547,10 +564,11 @@ def deploy_from_metadata(
         artifact_version_description=artifact_version_description,
         license_url=license_url,
         distributions=distributions,
+        headers=headers,
     )
 
     print(f"Deploying dataset version: {version_id}")
-    deploy(dataset, apikey)
+    deploy(dataset, apikey, headers=headers)
 
     print(f"Successfully deployed to {version_id}")
     print(f"Deployed {len(metadata)} file(s):")

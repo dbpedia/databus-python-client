@@ -69,22 +69,25 @@ class DownloadStep:
         capture_context = context.manifest_context or ManifestContext(command="download")
         files_before = len(capture_context.files)
 
-        api_download(
-            localDir=local_dir,
-            endpoint=resolved.get("databus"),
-            databusURIs=uris,
-            token=resolved.get("vault_token"),
-            databus_key=resolved.get("databus_key"),
-            all_versions=resolved.get("all_versions", False),
-            compression=resolved.get("convert_to") or resolved.get("compression"),
-            convert_format=resolved.get("format"),
-            graph_name=resolved.get("graph_name"),
-            base_uri=resolved.get("base_uri"),
-            graph_mode=resolved.get("graph_mode"),
-            user_agent=resolved.get("user_agent"),
-            validate_checksum=resolved.get("validate_checksum", False),
-            manifest_context=capture_context,
-        )
+        dl_kwargs = {
+            "localDir": local_dir,
+            "endpoint": resolved.get("databus"),
+            "databusURIs": uris,
+            "token": resolved.get("vault_token"),
+            "databus_key": resolved.get("databus_key"),
+            "all_versions": resolved.get("all_versions", False),
+            "compression": resolved.get("convert_to") or resolved.get("compression"),
+            "convert_format": resolved.get("format"),
+            "graph_name": resolved.get("graph_name"),
+            "base_uri": resolved.get("base_uri"),
+            "graph_mode": resolved.get("graph_mode"),
+            "user_agent": resolved.get("user_agent"),
+            "validate_checksum": resolved.get("validate_checksum", False),
+            "manifest_context": capture_context,
+        }
+        if resolved.get("headers"):
+            dl_kwargs["headers"] = resolved["headers"]
+        api_download(**dl_kwargs)
 
         new_entries = capture_context.files[files_before:]
         resolved_urls = [e["url"] for e in new_entries if e.get("status") == "success"]
@@ -190,8 +193,12 @@ class DeployStep:
             artifact_version_description=resolved["description"],
             license_url=resolved["license"],
             distributions=files,
+            headers=resolved.get("headers"),
         )
-        api_deploy_call(dataid=dataid, api_key=resolved["api_key"])
+        deploy_kwargs = {"dataid": dataid, "api_key": resolved["api_key"]}
+        if resolved.get("headers"):
+            deploy_kwargs["headers"] = resolved["headers"]
+        api_deploy_call(**deploy_kwargs)
         return files
 
     def _run_webdav_mode(self, resolved: Dict[str, Any], name: str) -> list:
@@ -207,15 +214,27 @@ class DeployStep:
         metadata = webdav.upload_to_webdav(
             local_files, resolved["remote"], resolved["path"], resolved["webdav_url"]
         )
-        deploy_from_metadata(
-            metadata,
-            resolved["version_id"],
-            resolved["title"],
-            resolved["abstract"],
-            resolved["description"],
-            resolved["license"],
-            resolved["api_key"],
-        )
+        if resolved.get("headers"):
+            deploy_from_metadata(
+                metadata,
+                resolved["version_id"],
+                resolved["title"],
+                resolved["abstract"],
+                resolved["description"],
+                resolved["license"],
+                resolved["api_key"],
+                headers=resolved["headers"],
+            )
+        else:
+            deploy_from_metadata(
+                metadata,
+                resolved["version_id"],
+                resolved["title"],
+                resolved["abstract"],
+                resolved["description"],
+                resolved["license"],
+                resolved["api_key"],
+            )
         return [entry.get("url", "") for entry in metadata]
 
 
@@ -242,13 +261,16 @@ class DeleteStep:
         if not api_key:
             raise StepValidationError(f"Step '{name}': delete step requires 'api_key'.")
 
-        api_delete(
-            databusURIs=uris,
-            databus_key=api_key,
-            dry_run=resolved.get("dry_run", False),
-            force=True,
-            manifest_context=context.manifest_context,
-        )
+        delete_kwargs = {
+            "databusURIs": uris,
+            "databus_key": api_key,
+            "dry_run": resolved.get("dry_run", False),
+            "force": True,
+            "manifest_context": context.manifest_context,
+        }
+        if resolved.get("headers"):
+            delete_kwargs["headers"] = resolved["headers"]
+        api_delete(**delete_kwargs)
 
         context.set_output(name, "output_files", [])
 

@@ -80,3 +80,19 @@ deploy(dataset, "mysterious API key")
 ```
 
 The API key can be found or generated in the Databus account settings.
+
+<a id="module-download"></a>
+### Download with Custom Headers
+
+When querying or downloading datasets from servers that require specific HTTP headers (such as Wikidata requiring a custom User-Agent):
+
+```python
+from databusclient import download
+
+download(
+    localDir="./downloads",
+    endpoint=None,
+    databusURIs=["https://databus.dbpedia.org/dbpedia/dbpedia-wikidata-kg-dump"],
+    headers={"User-Agent": "MyBot/1.0 (https://example.org/bot; contact@example.org)"},
+)
+```
