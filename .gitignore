@@ -1,7 +1,11 @@
+# idea:
+.vscode/
+
 # project-specific
 tmp/
 test-download/
-vault-token.dat
+*.dat
+scripts/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -30,6 +34,12 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+
+# Windows-specific: MANIFEST above matches databusclient/manifest/ case-insensitively
+# on Windows, preventing the manifest module from being committed.
+!databusclient/manifest/
+!databusclient/manifest/**
+databusclient/manifest/__pycache__/
 
 # PyInstaller
 #  Usually these files are written by a python script from a template
@@ -163,4 +173,4 @@ cython_debug/
 #  and can be added to the global gitignore or merged into this file.  For a more nuclear
 #  option (not recommended) you can uncomment the following to ignore the entire idea folder.
 .idea/
-
+workflow-output/

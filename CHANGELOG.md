@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Unreleased]
+
+### Added
+- Workflow download steps support an optional `user_agent` field.
+- Download `--user-agent` CLI option and `user_agent` Python API argument to override the header on file HEAD and GET requests, including redirects and authentication retries. Download manifests preserve the override for replay.
+
+### Changed
+- File downloads now identify as `databus-python-client/<version> (https://github.com/dbpedia/databus-python-client)` instead of the Requests library default.
+
 ## [0.15] - 2025-12-31
 
 ### Added

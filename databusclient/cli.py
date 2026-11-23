@@ -4,11 +4,19 @@ import os
 from typing import List
 
 import click
+import requests
 
 import databusclient.api.deploy as api_deploy
 from databusclient.api.delete import delete as api_delete
-from databusclient.api.download import download as api_download, DownloadAuthError
+from databusclient.api.download import DownloadAuthError, download as api_download, format_download_connection_error
+from databusclient.manifest.context import ManifestContext
+from databusclient.manifest.writer import ManifestWriter
+from databusclient.manifest.replay import ManifestReplayError, replay_manifest, load_manifest
+from databusclient.manifest.summary import format_summary
 from databusclient.extensions import webdav
+from databusclient.workflow.parser import WorkflowParseError, parse_workflow
+from databusclient.workflow.engine import WorkflowEngine, WorkflowExecutionError
+from databusclient.workflow.context import StepContext
 
 
 @click.group()
@@ -59,6 +67,12 @@ def app():
     "webdav_url",
     help="WebDAV URL (e.g., https://cloud.example.com/remote.php/webdav)",
 )
+@click.option(
+    "--manifest",
+    "manifest_path",
+    default=None,
+    help="Write a JSON-LD manifest of this operation to PATH.",
+)
 @click.option("--remote", help="rclone remote name (e.g., 'nextcloud')")
 @click.option("--path", help="Remote path on Nextcloud (e.g., 'datasets/mydataset')")
 @click.argument("distributions", nargs=-1)
@@ -74,6 +88,7 @@ def deploy(
     remote,
     path,
     distributions: List[str],
+    manifest_path,
 ):
     """
     Flexible deploy to Databus command supporting three modes:\n
@@ -92,30 +107,85 @@ def deploy(
             "Invalid combination: when using WebDAV/Nextcloud mode, please provide --webdav-url, --remote, and --path together."
         )
 
+    manifest_context = None
+    if manifest_path:
+        manifest_context = ManifestContext(command="deploy")
+        manifest_context.record_params({
+            "version_id": version_id,
+            "title": title,
+            "abstract": abstract,
+            "description": description,
+            "license_url": license_url,
+            "distributions": list(distributions) if distributions else [],
+            "metadata_file": metadata_file,
+        })
+
+    def _write_manifest():
+        if manifest_path and manifest_context is not None:
+            try:
+                actual_path = ManifestWriter.write(manifest_context, manifest_path)
+                click.echo(f"Manifest written to {actual_path}")
+            except (OSError, IOError) as e:
+                click.echo(
+                    f"WARNING: Manifest could not be written to {manifest_path}: {e}",
+                    err=True,
+                )
+
     # === Mode 1: Classic Deploy ===
     if distributions and not (metadata_file or webdav_url or remote or path):
         click.echo("[MODE] Classic deploy with distributions")
         click.echo(f"Deploying dataset version: {version_id}")
-
-        dataid = api_deploy.create_dataset(
-            version_id=version_id,
-            artifact_version_title=title,
-            artifact_version_abstract=abstract,
-            artifact_version_description=description,
-            license_url=license_url,
-            distributions=distributions,
-        )
-        api_deploy.deploy(dataid=dataid, api_key=apikey)
+        try:
+            dataid = api_deploy.create_dataset(
+                version_id=version_id,
+                artifact_version_title=title,
+                artifact_version_abstract=abstract,
+                artifact_version_description=description,
+                license_url=license_url,
+                distributions=distributions,
+            )
+            if manifest_context:
+                manifest_context.replay_params["deploy_mode"] = "classic"
+                manifest_context.replay_params["resolved_distributions"] = dataid["@graph"][-1].get("distribution", [])
+            api_deploy.deploy(dataid=dataid, api_key=apikey)
+            if manifest_context:
+                for dist in distributions:
+                    url = str(dist).split("|")[0]
+                    manifest_context.record_file(url=url, status="success")
+        except Exception as exc:
+            if manifest_context:
+                manifest_context.record_operation_error(exc)
+            raise click.ClickException(str(exc))
+        finally:
+            _write_manifest()
         return
 
     # === Mode 2: Metadata File ===
     if metadata_file:
         click.echo(f"[MODE] Deploy from metadata file: {metadata_file}")
-        with open(metadata_file, "r") as f:
-            metadata = json.load(f)
-        api_deploy.deploy_from_metadata(
-            metadata, version_id, title, abstract, description, license_url, apikey
-        )
+        try:
+            with open(metadata_file, "r", encoding="utf-8-sig") as f:
+                metadata = json.load(f)
+            if manifest_context:
+                manifest_context.replay_params["deploy_mode"] = "metadata"
+                manifest_context.replay_params["resolved_metadata"] = metadata
+            api_deploy.deploy_from_metadata(
+                metadata, version_id, title, abstract, description, license_url, apikey
+            )
+            if manifest_context:
+                for entry in metadata:
+                    manifest_context.record_file(
+                        url=entry.get("url", ""),
+                        status="success",
+                        sha256=entry.get("checksum"),
+                        size_bytes=entry.get("size"),
+                    )
+        except Exception as exc:
+            if manifest_context:
+                manifest_context.record_operation_error(exc)
+            raise click.ClickException(str(exc))
+        finally:
+            _write_manifest()
         return
 
     # === Mode 3: Upload & Deploy (Nextcloud) ===
@@ -124,20 +194,34 @@ def deploy(
             raise click.UsageError(
                 "Please provide files to upload when using WebDAV/Nextcloud mode."
             )
-
-        # Check that all given paths exist and are files or directories.
         invalid = [f for f in distributions if not os.path.exists(f)]
         if invalid:
             raise click.UsageError(
                 f"The following input files or folders do not exist: {', '.join(invalid)}"
             )
-
         click.echo("[MODE] Upload & Deploy to DBpedia Databus via Nextcloud")
         click.echo(f"→ Uploading to: {remote}:{path}")
-        metadata = webdav.upload_to_webdav(distributions, remote, path, webdav_url)
-        api_deploy.deploy_from_metadata(
-            metadata, version_id, title, abstract, description, license_url, apikey
-        )
+        if manifest_context:
+            manifest_context.replay_params["deploy_mode"] = "webdav"
+        try:
+            metadata = webdav.upload_to_webdav(distributions, remote, path, webdav_url)
+            api_deploy.deploy_from_metadata(
+                metadata, version_id, title, abstract, description, license_url, apikey
+            )
+            if manifest_context:
+                for entry in metadata:
+                    manifest_context.record_file(
+                        url=entry.get("url", ""),
+                        status="success",
+                        sha256=entry.get("checksum"),
+                        size_bytes=entry.get("size"),
+                    )
+        except Exception as exc:
+            if manifest_context:
+                manifest_context.record_operation_error(exc)
+            raise click.ClickException(str(exc))
+        finally:
+            _write_manifest()
         return
 
     raise click.UsageError(
@@ -152,7 +236,7 @@ def deploy(
 @click.argument("databusuris", nargs=-1, required=True)
 @click.option(
     "--localdir",
-    help="Local databus folder (if not given, databus folder structure is created in current working directory)",
+    help="Base directory for the local Databus folder structure (if not given, current working directory is used)",
 )
 @click.option(
     "--databus",
@@ -180,17 +264,67 @@ def deploy(
     help="Client ID for token exchange",
 )
 @click.option(
-    "--convert-to",
-    type=click.Choice(["bz2", "gz", "xz"], case_sensitive=False),
-    help="Target compression format for on-the-fly conversion during download (supported: bz2, gz, xz)",
+    "--compression",
+    "compression",
+    type=click.Choice(["bz2", "gz", "xz", "none"], case_sensitive=False),
+    help="Target compression format for on-the-fly conversion during download. "
+         "Source compression is detected automatically from the file extension. "
+         "Use 'none' to decompress files without recompressing.",
 )
 @click.option(
-    "--convert-from",
-    type=click.Choice(["bz2", "gz", "xz"], case_sensitive=False),
-    help="Source compression format to convert from (optional filter). Only files with this compression will be converted.",
+    "--format",
+    "convert_format",
+    type=click.Choice(
+        [
+            "ntriples", "nt",
+            "turtle", "ttl",
+            "rdf-xml", "rdf", "xml",
+            "nquads", "nq",
+            "trig",
+            "trix",
+            "json-ld", "jsonld",
+            "csv",
+            "tsv",
+        ],
+        case_sensitive=False,
+    ),
+    help="Target format for on-the-fly format conversion during download (Layer 2 and Layer 3). "
+    "Accepts full names (ntriples, turtle, rdf-xml, nquads, trig, trix, json-ld, csv, tsv) "
+    "or short aliases (nt, ttl, rdf, xml, nq, jsonld).",
+)
+@click.option(
+    "--graph-name",
+    "graph_name",
+    default=None,
+    help="Named graph URI for Triple -> Quad conversion (Layer 3). "
+    "Required when converting RDF triple formats to quad formats.",
+)
+@click.option(
+    "--base-uri",
+    "base_uri",
+    default=None,
+    help="Base URI for CSV -> RDF Triple conversion (Layer 3). "
+    "Required when converting CSV/TSV to RDF triple formats.",
+)
+@click.option(
+    "--graph-mode",
+    "graph_mode",
+    type=click.Choice(["download-url"], case_sensitive=False),
+    help="Create graph sidecar metadata files. 'download-url' writes the "
+    "source download URL to <final-file>.graph.",
+)
+@click.option(
+    "--manifest",
+    "manifest_path",
+    default=None,
+    help="Write a JSON-LD manifest of this operation to PATH (e.g. --manifest manifest.jsonld).",
 )
 @click.option(
     "--validate-checksum", is_flag=True, help="Validate checksums of downloaded files"
+)
+@click.option(
+    "--user-agent",
+    help="Override the HTTP User-Agent header for file download requests.",
 )
 def download(
     databusuris: List[str],
@@ -201,14 +335,47 @@ def download(
     all_versions,
     authurl,
     clientid,
-    convert_to,
-    convert_from,
+    compression,
+    convert_format,
+    graph_name,
+    base_uri,
+    graph_mode,
     validate_checksum,
+    manifest_path,
+    user_agent,
 ):
     """
     Download datasets from databus, optionally using vault access if vault options are provided.
-    Supports on-the-fly compression format conversion using --convert-to and --convert-from options.
+    Supports on-the-fly compression format conversion using the --compression option.
     """
+    # Determine auth method for manifest (never store the token itself)
+    auth_method = None
+    if vault_token:
+        auth_method = "vault_token"
+    elif databus_key:
+        auth_method = "databus_key"
+
+    manifest_context = None
+    if manifest_path:
+        manifest_context = ManifestContext(
+            command="download",
+            endpoint=databus,
+            auth_method=auth_method,
+        )
+        # Record safe replay params — sensitive fields excluded
+        manifest_context.record_params({
+            "databusURIs": list(databusuris),
+            "compression": compression,
+            "convert_format": convert_format,
+            "graph_name": graph_name,
+            "base_uri": base_uri,
+            "graph_mode": graph_mode,
+            "all_versions": all_versions,
+            "validate_checksum": validate_checksum,
+            "user_agent": user_agent,
+            "authurl": authurl,
+            "clientid": clientid,
+        })
     try:
         api_download(
             localDir=localdir,
@@ -219,12 +386,41 @@ def download(
             all_versions=all_versions,
             auth_url=authurl,
             client_id=clientid,
-            convert_to=convert_to,
-            convert_from=convert_from,
+            compression=compression,
+            convert_format=convert_format,
+            graph_name=graph_name,
+            base_uri=base_uri,
+            graph_mode=graph_mode,
             validate_checksum=validate_checksum,
+            user_agent=user_agent,
+            manifest_context=manifest_context,
         )
     except DownloadAuthError as e:
+        if manifest_context:
+            manifest_context.record_operation_error(e)
         raise click.ClickException(str(e))
+    except (requests.exceptions.ConnectionError, requests.exceptions.Timeout) as e:
+        if manifest_context:
+            manifest_context.record_operation_error(e)
+        raise click.ClickException(format_download_connection_error(e))
+    except ValueError as e:
+        if manifest_context:
+            manifest_context.record_operation_error(e)
+        raise click.ClickException(str(e))
+    except Exception as e:
+        if manifest_context:
+            manifest_context.record_operation_error(e)
+        raise
+    finally:
+        if manifest_path and manifest_context is not None:
+            try:
+                actual_path = ManifestWriter.write(manifest_context, manifest_path)
+                click.echo(f"Manifest written to {actual_path}")
+            except (OSError, IOError) as e:
+                click.echo(
+                    f"WARNING: Manifest could not be written to {manifest_path}: {e}",
+                    err=True,
+                )
 
 
 @app.command()
@@ -238,7 +434,13 @@ def download(
 @click.option(
     "--force", is_flag=True, help="Force deletion without confirmation prompt"
 )
-def delete(databusuris: List[str], databus_key: str, dry_run: bool, force: bool):
+@click.option(
+    "--manifest",
+    "manifest_path",
+    default=None,
+    help="Write a JSON-LD manifest of this operation to PATH.",
+)
+def delete(databusuris: List[str], databus_key: str, dry_run: bool, force: bool, manifest_path: str):
     """
     Delete a dataset from the databus.
 
@@ -246,12 +448,225 @@ def delete(databusuris: List[str], databus_key: str, dry_run: bool, force: bool)
     Will recursively delete all data associated with the dataset.
     """
 
-    api_delete(
-        databusURIs=databusuris,
-        databus_key=databus_key,
-        dry_run=dry_run,
-        force=force,
-    )
+    manifest_context = None
+    if manifest_path:
+        manifest_context = ManifestContext(command="delete")
+        manifest_context.record_params({
+            "databusURIs": list(databusuris),
+            "dry_run": dry_run,
+        })
+
+    try:
+        api_delete(
+            databusURIs=databusuris,
+            databus_key=databus_key,
+            dry_run=dry_run,
+            force=force,
+            manifest_context=manifest_context,
+        )
+    except Exception as exc:
+        if manifest_context:
+            manifest_context.record_operation_error(exc)
+        raise
+    finally:
+        if manifest_path and manifest_context is not None:
+            try:
+                actual_path = ManifestWriter.write(manifest_context, manifest_path)
+                click.echo(f"Manifest written to {actual_path}")
+            except (OSError, IOError) as e:
+                click.echo(
+                    f"WARNING: Manifest could not be written to {manifest_path}: {e}",
+                    err=True,
+                )
+
+
+@app.group()
+def manifest():
+    """
+    Manifest utilities.
+
+    Includes replay of previously recorded operations from JSON-LD manifests.
+    """
+    pass
+
+
+@manifest.command("replay")
+@click.argument("manifest_path", type=click.Path(exists=True, dir_okay=False))
+@click.option(
+    "--localdir",
+    default=None,
+    help="Override local output directory for download replay.",
+)
+@click.option(
+    "--databus",
+    default=None,
+    help="Override Databus endpoint for replay (example: https://databus.dbpedia.org/sparql).",
+)
+@click.option(
+    "--vault-token",
+    default=None,
+    help="Vault token file path required if manifest auth method is vault_token.",
+)
+@click.option(
+    "--databus-key",
+    default=None,
+    help="Databus API key required if manifest auth method is databus_key. "
+    "Also required for delete replay (never stored in the manifest).",
+)
+@click.option(
+    "--apikey",
+    "apikey",
+    default=None,
+    help="Databus API key required for deploy replay (never stored in the manifest).",
+)
+@click.option(
+    "--force",
+    is_flag=True,
+    default=False,
+    help="For delete replay: skip the interactive confirmation prompt. "
+    "Required for unattended/scripted replay of a delete operation.",
+)
+@click.option(
+    "--dry-run",
+    "dry_run",
+    is_flag=True,
+    default=False,
+    help="Force a dry-run preview even if the original operation wasn't "
+    "one. If the original delete WAS a dry run, replay already "
+    "previews automatically -- this flag cannot turn that off.",
+)
+def manifest_replay(manifest_path, localdir, databus, vault_token, databus_key, force, dry_run, apikey):
+    """
+    Replay a previously recorded manifest operation.
+
+    Currently supports replay of download, delete, and deploy manifests.
+    For delete manifests, an interactive confirmation is required by
+    default -- use --force to skip it for scripted/unattended use, or
+    --dry-run to preview without prompting or deleting. Deploy replay
+    supports classic and metadata-file modes only (not WebDAV).
+    """
+    overrides = {
+        "localDir": localdir,
+        "endpoint": databus,
+        "token": vault_token,
+        "databus_key": databus_key,
+        "api_key": apikey,
+    }
+    # Keep only explicitly provided text overrides
+    overrides = {k: v for k, v in overrides.items() if v is not None}
+    # Flags are always explicit values (False is a real, meaningful default)
+    overrides["force"] = force
+    overrides["dry_run"] = dry_run
+
+    try:
+        replay_info = replay_manifest(manifest_path, overrides=overrides)
+        if replay_info["command"] == "delete" and not replay_info.get("executed", True):
+            if replay_info.get("dry_run"):
+                click.echo("Delete replay: dry run only, nothing was deleted.")
+            else:
+                click.echo("Delete replay cancelled — nothing was deleted.")
+        else:
+            click.echo(f"Replayed command: {replay_info['command']}")
+        click.echo(f"Source manifest: {manifest_path}")
+    except ManifestReplayError as e:
+        raise click.ClickException(str(e))
+    except DownloadAuthError as e:
+        raise click.ClickException(str(e))
+    except ValueError as e:
+        raise click.ClickException(str(e))
+    except Exception as e:
+        raise click.ClickException(str(e))
+
+
+@manifest.command("summary")
+@click.argument("manifest_path", type=click.Path(exists=True, dir_okay=False))
+def manifest_summary(manifest_path):
+    """
+    Print a readable summary of a recorded manifest operation.
+
+    Reads the existing summary data already stored in the manifest --
+    no new data is collected and no new file is written.
+    """
+    try:
+        manifest = load_manifest(manifest_path)
+        click.echo(format_summary(manifest))
+    except ManifestReplayError as e:
+        raise click.ClickException(str(e))
+
+
+@app.group()
+def workflow():
+    """
+    Workflow utilities.
+
+    Run multi-step download/deploy/delete pipelines defined in YAML.
+    """
+    pass
+
+
+@workflow.command("run")
+@click.argument("workflow_path", type=click.Path(exists=True, dir_okay=False))
+@click.option(
+    "--manifest",
+    "manifest_path",
+    default=None,
+    help="Write a unified JSON-LD manifest of the entire workflow run to PATH.",
+)
+def workflow_run(workflow_path, manifest_path):
+    """
+    Run a declarative workflow pipeline from a YAML file.
+
+    Executes each step in order, chaining outputs between steps via
+    ${steps.name.output_files}-style references, and applying each
+    step's on_error behavior (fail/continue/retry). Prints a console
+    summary after every run. Use --manifest to also write a unified
+    JSON-LD manifest covering every step.
+    """
+    try:
+        parsed = parse_workflow(workflow_path)
+    except WorkflowParseError as e:
+        raise click.ClickException(str(e))
+
+    # CLI flag takes priority; falls back to the YAML file's own
+    # top-level 'manifest:' key if --manifest was not given on the
+    # command line.
+    if manifest_path is None:
+        manifest_path = parsed.get("manifest")
+
+    # A workflow-level manifest is always built internally (for the
+    # automatic console summary), even when no manifest path is set.
+    # It's only written to disk when a path is provided (via --manifest
+    # or the YAML file's own 'manifest:' key).
+    manifest_ctx = ManifestContext(command="workflow")
+
+    step_context = StepContext()
+    engine = WorkflowEngine(context=step_context, manifest_context=manifest_ctx)
+
+    workflow_error = None
+    try:
+        engine.run(parsed["steps"])
+    except WorkflowExecutionError as e:
+        workflow_error = e
+    finally:
+        click.echo("Workflow complete." if workflow_error is None else "Workflow failed.")
+        for result in engine.results:
+            click.echo(f"  {result.name}: {result.status}")
+
+        click.echo("")
+        click.echo(format_summary(ManifestWriter.build_manifest_dict(manifest_ctx)))
+
+        if manifest_path:
+            try:
+                actual_path = ManifestWriter.write(manifest_ctx, manifest_path)
+                click.echo(f"\nManifest written to {actual_path}")
+            except (OSError, IOError) as e:
+                click.echo(
+                    f"WARNING: Manifest could not be written to {manifest_path}: {e}",
+                    err=True,
+                )
+
+    if workflow_error is not None:
+        raise click.ClickException(str(workflow_error))
 
 
 if __name__ == "__main__":

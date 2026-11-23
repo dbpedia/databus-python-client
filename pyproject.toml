@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "databusclient"
-version = "0.15"
+version = "1.2.2"
 description = "A simple client for submitting, downloading, and deleting data on the DBpedia Databus"
 authors = ["DBpedia Association"]
 license = "Apache-2.0 License"
@@ -13,6 +13,7 @@ requests = "^2.28.1"
 tqdm = "^4.42.1"
 SPARQLWrapper = "^2.0.0"
 rdflib = "^7.2.1"
+pyyaml = "^6.0.3"
 
 [tool.poetry.group.dev.dependencies]
 black = "^22.6.0"
@@ -26,6 +27,14 @@ databusclient = "databusclient.cli:app"
 target-version = "py311"
 src = ["databusclient", "tests"]
 
+
+
 [build-system]
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.pytest.ini_options]
+filterwarnings = [
+    "ignore::DeprecationWarning:rdflib",
+    "ignore::UserWarning:rdflib",
+]

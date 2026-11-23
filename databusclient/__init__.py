@@ -7,9 +7,9 @@ entrypoint so the package can be used as a library or via
 
 from databusclient import cli
 from databusclient.api.deploy import create_dataset, create_distribution, deploy
+from databusclient.version import __version__
 
-__version__ = "0.15"
-__all__ = ["create_dataset", "deploy", "create_distribution"]
+__all__ = ["__version__", "create_dataset", "deploy", "create_distribution"]
 
 
 def run():

@@ -5,16 +5,29 @@ import gzip
 import lzma
 from typing import List, Optional, Tuple
 import re
+import shutil
+import tempfile
 from urllib.parse import urlparse
 
 import requests
 from SPARQLWrapper import JSON, SPARQLWrapper
 from tqdm import tqdm
+from datetime import datetime, timezone
+
+from databusclient.version import __version__
 
 from databusclient.api.utils import (
     fetch_databus_jsonld,
     get_databus_id_parts_from_file_url,
     compute_sha256_and_length,
+)
+from databusclient.filehandling.format import (
+    convert_file,
+    get_converted_filename,
+    normalize_format,
+    get_format_class,
+    detect_format_from_filename,
+    FORMAT_TO_EXTENSION,
 )
 
 # Compression format mappings
@@ -29,6 +42,63 @@ COMPRESSION_MODULES = {
     "gz": gzip,
     "xz": lzma,
 }
+
+DEFAULT_USER_AGENT = (
+    f"databus-python-client/{__version__} "
+    "(https://github.com/dbpedia/databus-python-client)"
+)
+
+GRAPH_MODES = {"download-url"}
+
+
+def _get_download_directory(url: str, localDir: str | None) -> str:
+    """Return the local Databus-layout directory for a file URL."""
+    _host, account, group, artifact, version, file = get_databus_id_parts_from_file_url(
+        url
+    )
+    base_dir = localDir if localDir is not None else os.getcwd()
+
+    if all([account, group, artifact, version, file]):
+        return os.path.join(base_dir, account, group, artifact, version)
+
+    return base_dir
+
+
+def _validate_graph_mode(graph_mode: str | None) -> None:
+    if graph_mode is not None and graph_mode not in GRAPH_MODES:
+        raise ValueError(
+            f"Unsupported graph mode: {graph_mode}. "
+            f"Supported graph modes: {sorted(GRAPH_MODES)}"
+        )
+
+
+def _write_graph_sidecars(
+    final_file_paths: list[str],
+    source_url: str,
+    graph_mode: str | None,
+) -> None:
+    """Write optional graph sidecars for final dataset outputs.
+
+    Existing downloads may be reused or transformed by the caller, but once a
+    final output is considered successfully produced in graph mode, its sidecar
+    must exist and point back to the source download URL.
+    """
+    if graph_mode is None:
+        return
+
+    if graph_mode == "download-url":
+        for final_file_path in final_file_paths:
+            with open(f"{final_file_path}.graph", "w", encoding="utf-8") as f:
+                f.write(source_url)
+
+
+def _collect_files(directory: str) -> list[str]:
+    return sorted(
+        os.path.join(root, filename)
+        for root, _dirs, filenames in os.walk(directory)
+        for filename in filenames
+        if not filename.endswith(".graph")
+    )
 
 
 def _detect_compression_format(filename: str) -> Optional[str]:
@@ -47,34 +117,44 @@ def _detect_compression_format(filename: str) -> Optional[str]:
     return None
 
 
-def _should_convert_file(
-    filename: str, convert_to: Optional[str], convert_from: Optional[str]
+def _should_convert_compression(
+    filename: str, compression: Optional[str]
 ) -> Tuple[bool, Optional[str]]:
-    """Determine if a file should be converted and what the source format is.
+    """Determine if a file should have its compression format converted or compressed.
+
+    Source compression is detected automatically from the file extension.
+    If compression='none', compressed files are decompressed and saved without
+    any compression. If the file is already uncompressed and compression='none',
+    nothing is done.
+    If the file is uncompressed and a target compression is specified,
+    it will be compressed to the target format (source_format returned as None).
 
     Args:
         filename: Name of the file.
-        convert_to: Target compression format ('bz2', 'gz', 'xz').
-        convert_from: Optional source compression format filter.
+        compression: Target compression format ('bz2', 'gz', 'xz', 'none') or None.
 
     Returns:
         Tuple of (should_convert: bool, source_format: Optional[str]).
+        source_format is None when the input file is uncompressed.
     """
-    if not convert_to:
+    if not compression:
         return False, None
 
     source_format = _detect_compression_format(filename)
 
-    # If file is not compressed, don't convert
+    # 'none' means decompress — only meaningful if file is compressed
+    if compression.lower() == "none":
+        if source_format is None:
+            # Already uncompressed, nothing to do
+            return False, None
+        return True, source_format
+
+    # If file is not compressed, compress it to the target format
     if source_format is None:
-        return False, None
+        return True, None
 
     # If source and target are the same, skip conversion
-    if source_format == convert_to:
-        return False, None
-
-    # If convert_from is specified, only convert matching formats
-    if convert_from and source_format != convert_from:
+    if source_format == compression:
         return False, None
 
     return True, source_format
@@ -88,12 +168,21 @@ def _get_converted_filename(
     Args:
         filename: Original filename.
         source_format: Source compression format ('bz2', 'gz', 'xz').
-        target_format: Target compression format ('bz2', 'gz', 'xz').
+        target_format: Target compression format ('bz2', 'gz', 'xz') or 'none'
+                       to decompress without recompressing.
 
     Returns:
-        New filename with updated extension.
+        New filename with updated extension. If target_format is 'none',
+        the compression extension is stripped and nothing is added.
     """
     source_ext = COMPRESSION_EXTENSIONS[source_format]
+
+    # 'none' means decompress — strip compression extension, add nothing
+    if target_format.lower() == "none":
+        if filename.lower().endswith(source_ext):
+            return filename[: -len(source_ext)]
+        return filename
+
     target_ext = COMPRESSION_EXTENSIONS[target_format]
 
     # Handle case-insensitive extension matching
@@ -105,36 +194,57 @@ def _get_converted_filename(
 def _convert_compression_format(
     source_file: str, target_file: str, source_format: str, target_format: str
 ) -> None:
-    """Convert a compressed file from one format to another.
+    """Convert or decompress a compressed file.
+
+    Handles two cases:
+    - target_format is 'none': decompress source_file to target_file without recompressing.
+    - target_format is a compression format: decompress then recompress to target format.
 
     Args:
         source_file: Path to source compressed file.
-        target_file: Path to target compressed file.
+        target_file: Path to target file.
         source_format: Source compression format ('bz2', 'gz', 'xz').
-        target_format: Target compression format ('bz2', 'gz', 'xz').
+        target_format: Target compression format ('bz2', 'gz', 'xz') or 'none' to decompress only.
 
     Raises:
-        ValueError: If source_format or target_format is not supported.
-        RuntimeError: If compression conversion fails.
+        ValueError: If source_format is not supported.
+        RuntimeError: If the operation fails.
     """
-    # Validate compression formats
     if source_format not in COMPRESSION_MODULES:
         raise ValueError(
-            f"Unsupported source compression format: {source_format}. Supported formats: {list(COMPRESSION_MODULES.keys())}"
-        )
-    if target_format not in COMPRESSION_MODULES:
-        raise ValueError(
-            f"Unsupported target compression format: {target_format}. Supported formats: {list(COMPRESSION_MODULES.keys())}"
+            f"Unsupported source compression format: {source_format}. "
+            f"Supported formats: {list(COMPRESSION_MODULES.keys())}"
         )
 
     source_module = COMPRESSION_MODULES[source_format]
+
+    # Decompression-only path: target_format == 'none'
+    if target_format.lower() == "none":
+        print(f"Decompressing {os.path.basename(source_file)} -> {os.path.basename(target_file)}")
+        try:
+            with source_module.open(source_file, "rb") as sf:
+                with open(target_file, "wb") as tf:
+                    shutil.copyfileobj(sf, tf)
+            os.remove(source_file)
+            print(f"Decompression complete: {os.path.basename(target_file)}")
+        except Exception as e:
+            if os.path.exists(target_file):
+                os.remove(target_file)
+            raise RuntimeError(f"Decompression failed: {e}")
+        return
+
+    if target_format not in COMPRESSION_MODULES:
+        raise ValueError(
+            f"Unsupported target compression format: {target_format}. "
+            f"Supported formats: {list(COMPRESSION_MODULES.keys())}"
+        )
+
     target_module = COMPRESSION_MODULES[target_format]
 
     print(
         f"Converting {source_format} → {target_format}: {os.path.basename(source_file)}"
     )
 
-    # Decompress and recompress with progress indication
     chunk_size = 8192
 
     try:
@@ -234,6 +344,21 @@ class DownloadAuthError(Exception):
     """Raised when an authorization problem occurs during download."""
 
 
+def format_download_connection_error(error: requests.exceptions.ConnectionError | requests.exceptions.Timeout) -> str:
+    """Return a concise message for a failed download connection."""
+    request = getattr(error, "request", None)
+    request_url = getattr(request, "url", "")
+    host = urlparse(request_url).hostname or "the remote server"
+
+    if isinstance(error, requests.exceptions.Timeout):
+        return f"Could not connect to {host}: the request timed out."
+
+    return (
+        f"Could not connect to {host}. "
+        "Check the server address and your network connection."
+    )
+
+
 def _extract_checksums_from_jsonld(json_str: str) -> dict:
     """
     Parse a JSON-LD string and return a mapping of file URI (and @id) -> checksum.
@@ -278,9 +403,7 @@ def _resolve_checksums_for_urls(file_urls: List[str], databus_key: str | None) -
     versions_map: dict = {}
     for file_url in file_urls:
         try:
-            host, accountId, groupId, artifactId, versionId, fileId = (
-                get_databus_id_parts_from_file_url(file_url)
-            )
+            host, accountId, groupId, artifactId, versionId, fileId = get_databus_id_parts_from_file_url(file_url)
         except Exception:
             continue
         if versionId is None:
@@ -311,10 +434,15 @@ def _download_file(
     databus_key=None,
     auth_url=None,
     client_id=None,
-    convert_to=None,
-    convert_from=None,
+    compression=None,
+    convert_format=None,
+    graph_name=None,
+    base_uri=None,
+    graph_mode=None,
     validate_checksum: bool = False,
     expected_checksum: str | None = None,
+    manifest_context=None,
+    user_agent: str | None = None,
 ) -> None:
     """Download a file from the internet with a progress bar using tqdm.
 
@@ -325,22 +453,22 @@ def _download_file(
         databus_key: Databus API key for protected downloads.
         auth_url: Keycloak token endpoint URL.
         client_id: Client ID for token exchange.
-        convert_to: Target compression format for on-the-fly conversion.
-        convert_from: Optional source compression format filter.
+        compression: Target compression format for on-the-fly conversion.
+                     Source compression is auto-detected from the file extension.
+        convert_format: Target RDF/tabular format for on-the-fly conversion.
+        graph_name: Named graph URI for Triple -> Quad conversion (Layer 3).
+        base_uri: Base URI for CSV -> Triple conversion (Layer 3).
+        graph_mode: Optional graph sidecar mode. Currently supports 'download-url'.
         validate_checksum: Whether to validate checksums after downloading.
+        user_agent: HTTP User-Agent for file HEAD and GET requests. None uses
+                    the versioned databus-python-client default.
         expected_checksum: The expected checksum of the file.
     """
-    if localDir is None:
-        _host, account, group, artifact, version, file = (
-            get_databus_id_parts_from_file_url(url)
-        )
-        localDir = os.path.join(
-            os.getcwd(),
-            account,
-            group,
-            artifact,
-            version if version is not None else "latest",
-        )
+    _validate_graph_mode(graph_mode)
+    source_url = url
+    local_dir_was_given = localDir is not None
+    localDir = _get_download_directory(url, localDir)
+    if not local_dir_was_given:
         print(f"Local directory not given, using {localDir}")
 
     file = url.split("/")[-1]
@@ -349,11 +477,12 @@ def _download_file(
     dirpath = os.path.dirname(filename)
     if dirpath:
         os.makedirs(dirpath, exist_ok=True)  # Create the necessary directories
+
     # --- 1. Get redirect URL by requesting HEAD ---
-    headers = {}
+    headers = {"User-Agent": DEFAULT_USER_AGENT if user_agent is None else user_agent}
 
     # --- 1a. public databus ---
-    response = requests.head(url, timeout=30, allow_redirects=False)
+    response = requests.head(url, headers=headers, timeout=30, allow_redirects=False)
 
     # Check for redirect and update URL if necessary
     if response.headers.get("Location") and response.status_code in [
@@ -366,7 +495,7 @@ def _download_file(
         url = response.headers.get("Location")
         print("Redirects url: ", url)
         # Re-do HEAD request on redirect URL
-        response = requests.head(url, timeout=30)
+        response = requests.head(url, headers=headers, timeout=30)
 
     # Extract hostname from final URL (after redirect) to check if vault token needed.
     # This is the actual download location that may require authentication.
@@ -389,7 +518,7 @@ def _download_file(
                 raise DownloadAuthError(
                     "Databus API key not given for protected download"
                 )
-            headers = {"X-API-KEY": databus_key}
+            headers["X-API-KEY"] = databus_key
             response = requests.head(url, headers=headers, timeout=30)
 
     # --- 2. Try direct GET to redirected URL ---
@@ -459,6 +588,12 @@ def _download_file(
     except requests.exceptions.HTTPError as e:
         if response.status_code == 404:
             print(f"WARNING: Skipping file {url} because it was not found (404).")
+            if manifest_context is not None:
+                manifest_context.record_file(
+                    url=url,
+                    status="failed",
+                    error_message="404 Not Found",
+                )
             return
         else:
             raise e
@@ -479,39 +614,265 @@ def _download_file(
         raise IOError("Downloaded size does not match Content-Length header")
 
     # --- 6. Validate checksum on original downloaded file (BEFORE conversion) ---
+    actual_checksum = None
     if validate_checksum:
-        # reuse compute_sha256_and_length from webdav extension
         try:
-            actual, _ = compute_sha256_and_length(filename)
+            actual_checksum, _ = compute_sha256_and_length(filename)
         except (OSError, IOError) as e:
             print(f"WARNING: error computing checksum for {filename}: {e}")
-            actual = None
+            actual_checksum = None
 
         if expected_checksum is None:
             print(
                 f"WARNING: no expected checksum available for {filename}; skipping validation"
             )
-        elif actual is None:
+        elif actual_checksum is None:
             print(
                 f"WARNING: could not compute checksum for {filename}; skipping validation"
             )
         else:
-            if actual.lower() != expected_checksum.lower():
+            if actual_checksum.lower() != expected_checksum.lower():
                 try:
-                    os.remove(filename)  # delete corrupted file
+                    os.remove(filename)
                 except OSError:
                     pass
                 raise IOError(
-                    f"Checksum mismatch for {filename}: expected {expected_checksum}, got {actual}"
+                    f"Checksum mismatch for {filename}: expected {expected_checksum}, got {actual_checksum}"
                 )
 
-    # --- 7. Convert compression format if requested (AFTER validation) ---
-    should_convert, source_format = _should_convert_file(file, convert_to, convert_from)
-    if should_convert and source_format:
-        target_filename = _get_converted_filename(file, source_format, convert_to)
-        target_filepath = os.path.join(localDir, target_filename)
-        _convert_compression_format(
-            filename, target_filepath, source_format, convert_to
+    # --- 7. Unified compression/format conversion pass ---
+    source_compression = _detect_compression_format(file)
+    should_convert_compression, source_fmt = _should_convert_compression(
+        file, compression
+    )
+    needs_format_conversion = convert_format is not None
+
+    if not should_convert_compression and not needs_format_conversion:
+        _write_graph_sidecars([filename], source_url, graph_mode)
+        if manifest_context is not None:
+            manifest_context.record_file(
+                url=url,
+                status="success",
+                sha256=actual_checksum or expected_checksum,
+                size_bytes=total_size_in_bytes if total_size_in_bytes else None,
+                downloaded_at=datetime.now(timezone.utc).isoformat(),
+            )
+        return
+
+    temp_paths: list[str] = []
+    try:
+        # Compression-only path: convert directly from the downloaded file.
+        # _convert_compression_format deletes the source after success,
+        # so the original downloaded file is removed automatically.
+        if should_convert_compression and not needs_format_conversion:
+            if source_fmt is None:
+                # Source file is uncompressed — compress it directly to
+                # the target compression format.
+                target_filepath = filename + COMPRESSION_EXTENSIONS[compression]
+                print(f"Compressing {file} -> {os.path.basename(target_filepath)}...")
+                with open(filename, "rb") as sf:
+                    with COMPRESSION_MODULES[compression].open(
+                        target_filepath, "wb"
+                    ) as tf:
+                        shutil.copyfileobj(sf, tf)
+                os.remove(filename)
+                print(f"Compression complete: {os.path.basename(target_filepath)}")
+            elif compression.lower() == "none":
+                # Decompress — strip compression extension, save plain file.
+                target_filename = _get_converted_filename(file, source_fmt, "none")
+                target_filepath = os.path.join(localDir, target_filename)
+                _convert_compression_format(filename, target_filepath, source_fmt, "none")
+            else:
+                target_filename = _get_converted_filename(file, source_fmt, compression)
+                target_filepath = os.path.join(localDir, target_filename)
+                _convert_compression_format(
+                    filename,
+                    target_filepath,
+                    source_fmt,
+                    compression,
+                )
+            _write_graph_sidecars([target_filepath], source_url, graph_mode)
+            if manifest_context is not None:
+                manifest_context.record_file(
+                    url=url,
+                    status="success",
+                    sha256=actual_checksum or expected_checksum,
+                    size_bytes=total_size_in_bytes if total_size_in_bytes else None,
+                    downloaded_at=datetime.now(timezone.utc).isoformat(),
+                )
+            return
+
+        # Early exit: if format conversion is requested but input format
+        # already matches target format, skip decompression and conversion
+        # entirely — no work needed for the format part.
+        if needs_format_conversion and source_compression is not None:
+            detected_input_format = detect_format_from_filename(file)
+            normalized_target = normalize_format(convert_format)
+            if detected_input_format == normalized_target:
+                # Format is already correct. Only handle compression if needed.
+                if should_convert_compression and compression:
+                    target_filename = _get_converted_filename(
+                        file, source_fmt, compression
+                    )
+                    target_filepath = os.path.join(localDir, target_filename)
+                    _convert_compression_format(filename, target_filepath, source_fmt, compression)
+                    final_paths = [target_filepath]
+                else:
+                    final_paths = [filename]
+                # No format conversion needed, no further work.
+                _write_graph_sidecars(final_paths, source_url, graph_mode)
+                if manifest_context is not None:
+                    manifest_context.record_file(
+                        url=url,
+                        status="success",
+                        sha256=actual_checksum or expected_checksum,
+                        size_bytes=total_size_in_bytes if total_size_in_bytes else None,
+                        downloaded_at=datetime.now(timezone.utc).isoformat(),
+                    )
+                return
+
+        # Determine input for format conversion.
+        # If source is compressed, decompress once to a safe temporary file.
+        conversion_input_path = filename
+        if source_compression is not None:
+            source_ext = COMPRESSION_EXTENSIONS[source_compression]
+            stripped_name = file
+            if stripped_name.lower().endswith(source_ext):
+                stripped_name = stripped_name[: -len(source_ext)]
+            _, format_ext = os.path.splitext(stripped_name)
+
+            with tempfile.NamedTemporaryFile(
+                delete=False,
+                suffix=format_ext,
+                dir=localDir,
+            ) as temp_decompressed:
+                temp_decompressed_path = temp_decompressed.name
+            temp_paths.append(temp_decompressed_path)
+
+            print(f"Decompressing {file}...")
+            with COMPRESSION_MODULES[source_compression].open(filename, "rb") as sf:
+                with open(temp_decompressed_path, "wb") as tf:
+                    shutil.copyfileobj(sf, tf)
+
+            conversion_input_path = temp_decompressed_path
+
+        # Determine whether this is a Quad -> Triple (Layer 3) conversion.
+        # This direction produces multiple output files (one per named
+        # graph) written into a subdirectory, rather than a single file —
+        # so it is handled separately from the standard single-file path
+        # below (no recompression, no single-file delete-and-replace).
+        normalized_convert_format = normalize_format(convert_format)
+        target_class = get_format_class(normalized_convert_format)
+        source_format_for_mapping = detect_format_from_filename(conversion_input_path)
+        source_class_for_mapping = (
+            get_format_class(source_format_for_mapping)
+            if source_format_for_mapping else None
+        )
+        is_quad_to_triple = (source_class_for_mapping == "quads" and target_class == "triples")
+
+        if is_quad_to_triple:
+            # Output directory name = original filename with compression and
+            # format extensions stripped (e.g. "data.nq.gz" -> "data").
+            output_stem = get_converted_filename(file, convert_format)
+            target_ext = FORMAT_TO_EXTENSION.get(normalized_convert_format, "")
+            if target_ext and output_stem.lower().endswith(target_ext):
+                output_stem = output_stem[: -len(target_ext)]
+            output_dir = os.path.join(localDir, output_stem)
+
+            convert_file(
+                conversion_input_path,
+                output_dir,
+                convert_format,
+                graph_name=graph_name,
+                base_uri=base_uri,
+            )
+            final_paths = _collect_files(output_dir)
+            _write_graph_sidecars(final_paths, source_url, graph_mode)
+
+            # Delete the original downloaded (possibly compressed) file —
+            # the split output directory replaces it.
+            if os.path.exists(filename):
+                os.remove(filename)
+                print(f"Removed original file: {os.path.basename(filename)}")
+            if manifest_context is not None:
+                manifest_context.record_file(
+                    url=url,
+                    status="success",
+                    sha256=actual_checksum or expected_checksum,
+                    size_bytes=total_size_in_bytes if total_size_in_bytes else None,
+                    downloaded_at=datetime.now(timezone.utc).isoformat(),
+                )
+            return
+
+        # Standard single-output-file path (Layer 2, and the remaining
+        # Layer 3 directions: Triple<->Quad, Triple<->TSD, Quad->TSD).
+        converted_basename = get_converted_filename(file, convert_format)
+        converted_uncompressed_path = os.path.join(localDir, converted_basename)
+        convert_file(
+            conversion_input_path,
+            converted_uncompressed_path,
+            convert_format,
+            graph_name=graph_name,
+            base_uri=base_uri,
+        )
+
+        # Delete the original downloaded file after successful format conversion,
+        # unless the converted output is the same file (same format, same path).
+        if os.path.abspath(filename) != os.path.abspath(converted_uncompressed_path):
+            if os.path.exists(filename):
+                os.remove(filename)
+                print(f"Removed original file: {os.path.basename(filename)}")
+
+        # Recompress converted output when needed.
+        # Three cases:
+        # 1. Source was compressed + --compression given -> use target compression
+        # 2. Source was compressed, no --compression given -> recompress with original
+        # 3. Source was NOT compressed + --compression given -> compress the output
+        # 4. Source was NOT compressed, no --compression given -> no compression
+        if source_compression is not None:
+            if should_convert_compression and compression:
+                # 'none' means no recompression after format conversion
+                final_compression = None if compression.lower() == "none" else compression
+            else:
+                final_compression = source_compression
+        elif compression and compression.lower() != "none":
+            # Source was uncompressed but user explicitly requested --compression
+            final_compression = compression
+        else:
+            final_compression = None
+
+        if final_compression is not None:
+            recompressed_path = (
+                converted_uncompressed_path + COMPRESSION_EXTENSIONS[final_compression]
+            )
+            print(
+                f"Recompressing {os.path.basename(converted_uncompressed_path)} -> {os.path.basename(recompressed_path)}..."
+            )
+            with open(converted_uncompressed_path, "rb") as sf:
+                with COMPRESSION_MODULES[final_compression].open(
+                    recompressed_path, "wb"
+                ) as tf:
+                    shutil.copyfileobj(sf, tf)
+
+            os.remove(converted_uncompressed_path)
+            final_paths = [recompressed_path]
+        else:
+            final_paths = [converted_uncompressed_path]
+        _write_graph_sidecars(final_paths, source_url, graph_mode)
+    finally:
+        for temp_path in temp_paths:
+            if os.path.exists(temp_path):
+                os.remove(temp_path)
+
+    # Record file to manifest only after all conversion completes successfully.
+    # This ensures the manifest reflects the actual final output, not just the download.
+    if manifest_context is not None:
+        manifest_context.record_file(
+            url=url,
+            status="success",
+            sha256=actual_checksum or expected_checksum,
+            size_bytes=total_size_in_bytes if total_size_in_bytes else None,
+            downloaded_at=datetime.now(timezone.utc).isoformat(),
         )
 
 
@@ -522,10 +883,15 @@ def _download_files(
     databus_key: str = None,
     auth_url: str = None,
     client_id: str = None,
-    convert_to: str = None,
-    convert_from: str = None,
+    compression: str = None,
+    convert_format: str = None,
+    graph_name: str = None,
+    base_uri: str = None,
+    graph_mode: str = None,
+    manifest_context=None,
     validate_checksum: bool = False,
     checksums: dict | None = None,
+    user_agent: str | None = None,
 ) -> None:
     """Download multiple files from the databus.
 
@@ -536,9 +902,14 @@ def _download_files(
         databus_key: Databus API key for protected downloads.
         auth_url: Keycloak token endpoint URL.
         client_id: Client ID for token exchange.
-        convert_to: Target compression format for on-the-fly conversion.
-        convert_from: Optional source compression format filter.
+        compression: Target compression format for on-the-fly conversion.
+        convert_format: Target RDF/tabular format for on-the-fly conversion.
+        graph_name: Named graph URI for Triple -> Quad conversion (Layer 3).
+        base_uri: Base URI for CSV -> Triple conversion (Layer 3).
+        graph_mode: Optional graph sidecar mode. Currently supports 'download-url'.
         validate_checksum: Whether to validate checksums after downloading.
+        user_agent: HTTP User-Agent for file HEAD and GET requests. None uses
+                    the versioned databus-python-client default.
         checksums: Dictionary mapping URLs to their expected checksums.
     """
     for url in urls:
@@ -552,10 +923,15 @@ def _download_files(
             databus_key=databus_key,
             auth_url=auth_url,
             client_id=client_id,
-            convert_to=convert_to,
-            convert_from=convert_from,
+            compression=compression,
+            convert_format=convert_format,
+            graph_name=graph_name,
+            base_uri=base_uri,
+            graph_mode=graph_mode,
             validate_checksum=validate_checksum,
             expected_checksum=expected,
+            manifest_context=manifest_context,
+            user_agent=user_agent,
         )
 
 
@@ -700,9 +1076,14 @@ def _download_collection(
     databus_key: str = None,
     auth_url: str = None,
     client_id: str = None,
-    convert_to: str = None,
-    convert_from: str = None,
+    compression: str = None,
+    convert_format: str = None,
+    graph_name: str = None,
+    base_uri: str = None,
+    graph_mode: str = None,
+    manifest_context=None,
     validate_checksum: bool = False,
+    user_agent: str | None = None,
 ) -> None:
     """Download all files in a databus collection.
 
@@ -714,9 +1095,14 @@ def _download_collection(
         databus_key: Databus API key for protected downloads.
         auth_url: Keycloak token endpoint URL.
         client_id: Client ID for token exchange.
-        convert_to: Target compression format for on-the-fly conversion.
-        convert_from: Optional source compression format filter.
+        compression: Target compression format for on-the-fly conversion.
+        convert_format: Target RDF/tabular format for on-the-fly conversion.
+        graph_name: Named graph URI for Triple -> Quad conversion (Layer 3).
+        base_uri: Base URI for CSV -> Triple conversion (Layer 3).
+        graph_mode: Optional graph sidecar mode. Currently supports 'download-url'.
         validate_checksum: Whether to validate checksums after downloading.
+        user_agent: HTTP User-Agent for file HEAD and GET requests. None uses
+                    the versioned databus-python-client default.
     """
     query = _get_sparql_query_of_collection(uri, databus_key=databus_key)
     file_urls = _get_file_download_urls_from_sparql_query(
@@ -735,10 +1121,15 @@ def _download_collection(
         databus_key=databus_key,
         auth_url=auth_url,
         client_id=client_id,
-        convert_to=convert_to,
-        convert_from=convert_from,
+        compression=compression,
+        convert_format=convert_format,
+        graph_name=graph_name,
+        base_uri=base_uri,
+        graph_mode=graph_mode,
+        manifest_context=manifest_context,
         validate_checksum=validate_checksum,
         checksums=checksums if checksums else None,
+        user_agent=user_agent,
     )
 
 
@@ -749,9 +1140,14 @@ def _download_version(
     databus_key: str = None,
     auth_url: str = None,
     client_id: str = None,
-    convert_to: str = None,
-    convert_from: str = None,
+    compression: str = None,
+    convert_format: str = None,
+    graph_name: str = None,
+    base_uri: str = None,
+    graph_mode: str = None,
+    manifest_context=None,
     validate_checksum: bool = False,
+    user_agent: str | None = None,
 ) -> None:
     """Download all files in a databus artifact version.
 
@@ -762,9 +1158,14 @@ def _download_version(
         databus_key: Databus API key for protected downloads.
         auth_url: Keycloak token endpoint URL.
         client_id: Client ID for token exchange.
-        convert_to: Target compression format for on-the-fly conversion.
-        convert_from: Optional source compression format filter.
+        compression: Target compression format for on-the-fly conversion.
+        convert_format: Target RDF/tabular format for on-the-fly conversion.
+        graph_name: Named graph URI for Triple -> Quad conversion (Layer 3).
+        base_uri: Base URI for CSV -> Triple conversion (Layer 3).
+        graph_mode: Optional graph sidecar mode. Currently supports 'download-url'.
         validate_checksum: Whether to validate checksums after downloading.
+        user_agent: HTTP User-Agent for file HEAD and GET requests. None uses
+                    the versioned databus-python-client default.
     """
     json_str = fetch_databus_jsonld(uri, databus_key=databus_key)
     file_urls = _get_file_download_urls_from_artifact_jsonld(json_str)
@@ -782,10 +1183,15 @@ def _download_version(
         databus_key=databus_key,
         auth_url=auth_url,
         client_id=client_id,
-        convert_to=convert_to,
-        convert_from=convert_from,
+        compression=compression,
+        convert_format=convert_format,
+        graph_name=graph_name,
+        base_uri=base_uri,
+        graph_mode=graph_mode,
+        manifest_context=manifest_context,
         validate_checksum=validate_checksum,
         checksums=checksums,
+        user_agent=user_agent,
     )
 
 
@@ -797,9 +1203,14 @@ def _download_artifact(
     databus_key: str = None,
     auth_url: str = None,
     client_id: str = None,
-    convert_to: str = None,
-    convert_from: str = None,
+    compression: str = None,
+    convert_format: str = None,
+    graph_name: str = None,
+    base_uri: str = None,
+    graph_mode: str = None,
+    manifest_context=None,
     validate_checksum: bool = False,
+    user_agent: str | None = None,
 ) -> None:
     """Download files in a databus artifact.
 
@@ -811,9 +1222,14 @@ def _download_artifact(
         databus_key: Databus API key for protected downloads.
         auth_url: Keycloak token endpoint URL.
         client_id: Client ID for token exchange.
-        convert_to: Target compression format for on-the-fly conversion.
-        convert_from: Optional source compression format filter.
+        compression: Target compression format for on-the-fly conversion.
+        convert_format: Target RDF/tabular format for on-the-fly conversion.
+        graph_name: Named graph URI for Triple -> Quad conversion (Layer 3).
+        base_uri: Base URI for CSV -> Triple conversion (Layer 3).
+        graph_mode: Optional graph sidecar mode. Currently supports 'download-url'.
         validate_checksum: Whether to validate checksums after downloading.
+        user_agent: HTTP User-Agent for file HEAD and GET requests. None uses
+                    the versioned databus-python-client default.
     """
     json_str = fetch_databus_jsonld(uri, databus_key=databus_key)
     versions = _get_databus_versions_of_artifact(json_str, all_versions=all_versions)
@@ -837,10 +1253,15 @@ def _download_artifact(
             databus_key=databus_key,
             auth_url=auth_url,
             client_id=client_id,
-            convert_to=convert_to,
-            convert_from=convert_from,
+            compression=compression,
+            convert_format=convert_format,
+            graph_name=graph_name,
+            base_uri=base_uri,
+            graph_mode=graph_mode,
+            manifest_context=manifest_context,
             validate_checksum=validate_checksum,
             checksums=checksums,
+            user_agent=user_agent,
         )
 
 
@@ -913,9 +1334,14 @@ def _download_group(
     databus_key: str = None,
     auth_url: str = None,
     client_id: str = None,
-    convert_to: str = None,
-    convert_from: str = None,
+    compression: str = None,
+    convert_format: str = None,
+    graph_name: str = None,
+    base_uri: str = None,
+    graph_mode: str = None,
+    manifest_context=None,
     validate_checksum: bool = False,
+    user_agent: str | None = None,
 ) -> None:
     """Download files in a databus group.
 
@@ -927,9 +1353,14 @@ def _download_group(
         databus_key: Databus API key for protected downloads.
         auth_url: Keycloak token endpoint URL.
         client_id: Client ID for token exchange.
-        convert_to: Target compression format for on-the-fly conversion.
-        convert_from: Optional source compression format filter.
+        compression: Target compression format for on-the-fly conversion.
+        convert_format: Target RDF/tabular format for on-the-fly conversion.
+        graph_name: Named graph URI for Triple -> Quad conversion (Layer 3).
+        base_uri: Base URI for CSV -> Triple conversion (Layer 3).
+        graph_mode: Optional graph sidecar mode. Currently supports 'download-url'.
         validate_checksum: Whether to validate checksums after downloading.
+        user_agent: HTTP User-Agent for file HEAD and GET requests. None uses
+                    the versioned databus-python-client default.
     """
     json_str = fetch_databus_jsonld(uri, databus_key=databus_key)
     artifacts = _get_databus_artifacts_of_group(json_str)
@@ -943,9 +1374,14 @@ def _download_group(
             databus_key=databus_key,
             auth_url=auth_url,
             client_id=client_id,
-            convert_to=convert_to,
-            convert_from=convert_from,
+            compression=compression,
+            convert_format=convert_format,
+            graph_name=graph_name,
+            base_uri=base_uri,
+            graph_mode=graph_mode,
+            manifest_context=manifest_context,
             validate_checksum=validate_checksum,
+            user_agent=user_agent,
         )
 
 
@@ -992,9 +1428,14 @@ def download(
     all_versions=None,
     auth_url="https://auth.dbpedia.org/realms/dbpedia/protocol/openid-connect/token",
     client_id="vault-token-exchange",
-    convert_to=None,
-    convert_from=None,
+    compression=None,
+    convert_format=None,
+    graph_name=None,
+    base_uri=None,
+    graph_mode=None,
     validate_checksum: bool = False,
+    manifest_context=None,
+    user_agent: str | None = None,
 ) -> None:
     """Download datasets from databus.
 
@@ -1008,14 +1449,19 @@ def download(
         databus_key: Databus API key for protected downloads.
         auth_url: Keycloak token endpoint URL. Default is "https://auth.dbpedia.org/realms/dbpedia/protocol/openid-connect/token".
         client_id: Client ID for token exchange. Default is "vault-token-exchange".
-        convert_to: Target compression format for on-the-fly conversion (supported: bz2, gz, xz).
-        convert_from: Optional source compression format filter.
+        compression: Target compression format for on-the-fly conversion (supported: bz2, gz, xz).
+                    Source compression is auto-detected from the file extension.
+        convert_format: Target RDF/tabular format for on-the-fly conversion.
+        graph_name: Named graph URI for Triple -> Quad conversion (Layer 3).
+        base_uri: Base URI for CSV -> Triple conversion (Layer 3).
+        graph_mode: Optional graph sidecar mode. Currently supports 'download-url'.
         validate_checksum: Whether to validate checksums after downloading.
+        user_agent: HTTP User-Agent for file HEAD and GET requests. None uses
+                    the versioned databus-python-client default.
     """
+    _validate_graph_mode(graph_mode)
     for databusURI in databusURIs:
-        host, account, group, artifact, version, file = (
-            get_databus_id_parts_from_file_url(databusURI)
-        )
+        host, account, group, artifact, version, file = get_databus_id_parts_from_file_url(databusURI)
 
         # Determine endpoint per-URI if not explicitly provided
         uri_endpoint = endpoint
@@ -1037,9 +1483,14 @@ def download(
                     databus_key,
                     auth_url,
                     client_id,
-                    convert_to,
-                    convert_from,
+                    compression,
+                    convert_format,
+                    graph_name=graph_name,
+                    base_uri=base_uri,
+                    graph_mode=graph_mode,
+                    manifest_context=manifest_context,
                     validate_checksum=validate_checksum,
+                    user_agent=user_agent,
                 )
             elif file is not None:
                 print(f"Downloading file: {databusURI}")
@@ -1058,10 +1509,15 @@ def download(
                     databus_key=databus_key,
                     auth_url=auth_url,
                     client_id=client_id,
-                    convert_to=convert_to,
-                    convert_from=convert_from,
+                    compression=compression,
+                    convert_format=convert_format,
+                    graph_name=graph_name,
+                    base_uri=base_uri,
+                    graph_mode=graph_mode,
+                    manifest_context=manifest_context,
                     validate_checksum=validate_checksum,
                     expected_checksum=expected,
+                    user_agent=user_agent,
                 )
             elif version is not None:
                 print(f"Downloading version: {databusURI}")
@@ -1072,9 +1528,14 @@ def download(
                     databus_key=databus_key,
                     auth_url=auth_url,
                     client_id=client_id,
-                    convert_to=convert_to,
-                    convert_from=convert_from,
+                    compression=compression,
+                    convert_format=convert_format,
+                    graph_name=graph_name,
+                    base_uri=base_uri,
+                    graph_mode=graph_mode,
+                    manifest_context=manifest_context,
                     validate_checksum=validate_checksum,
+                    user_agent=user_agent,
                 )
             elif artifact is not None:
                 print(
@@ -1088,9 +1549,14 @@ def download(
                     databus_key=databus_key,
                     auth_url=auth_url,
                     client_id=client_id,
-                    convert_to=convert_to,
-                    convert_from=convert_from,
+                    compression=compression,
+                    convert_format=convert_format,
+                    graph_name=graph_name,
+                    base_uri=base_uri,
+                    graph_mode=graph_mode,
+                    manifest_context=manifest_context,
                     validate_checksum=validate_checksum,
+                    user_agent=user_agent,
                 )
             elif group is not None and group != "collections":
                 print(
@@ -1104,9 +1570,14 @@ def download(
                     databus_key=databus_key,
                     auth_url=auth_url,
                     client_id=client_id,
-                    convert_to=convert_to,
-                    convert_from=convert_from,
+                    compression=compression,
+                    convert_format=convert_format,
+                    graph_name=graph_name,
+                    base_uri=base_uri,
+                    graph_mode=graph_mode,
+                    manifest_context=manifest_context,
                     validate_checksum=validate_checksum,
+                    user_agent=user_agent,
                 )
             elif account is not None:
                 print("accountId not supported yet")  # TODO
@@ -1142,8 +1613,13 @@ def download(
                 databus_key=databus_key,
                 auth_url=auth_url,
                 client_id=client_id,
-                convert_to=convert_to,
-                convert_from=convert_from,
+                compression=compression,
+                convert_format=convert_format,
+                graph_name=graph_name,
+                base_uri=base_uri,
+                graph_mode=graph_mode,
+                manifest_context=manifest_context,
                 validate_checksum=validate_checksum,
                 checksums=checksums if checksums else None,
+                user_agent=user_agent,
             )

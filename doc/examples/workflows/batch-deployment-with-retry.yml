@@ -1,0 +1,42 @@
+manifest: ./manifests/batch-deploy.jsonld
+steps:
+  - name: fetch_source
+    command: download
+    uri: https://databus.dbpedia.org/DhanashreeP/test-group/workflow-source-data/1.0
+    localdir: ./workflow-output/batch
+
+  - name: deploy_batch_1
+    command: deploy
+    version_id: https://databus.dbpedia.org/DhanashreeP/test-group/batch-demo-1/1.0
+    title: "Batch Deploy Demo 1"
+    abstract: "Batch deployment with retry example"
+    description: "First of several deploys in a batch, demonstrating retry on transient failure"
+    license: https://creativecommons.org/licenses/by-sa/3.0/
+    api_key: ${DATABUS_API_KEY}
+    files: ${steps.fetch_source.output_urls}
+    on_error: retry
+    retry:
+      max_attempts: 3
+      delay_seconds: 5
+
+  - name: deploy_batch_2
+    command: deploy
+    version_id: https://databus.dbpedia.org/DhanashreeP/test-group/batch-demo-2/1.0
+    title: "Batch Deploy Demo 2"
+    abstract: "Batch deployment with retry example"
+    description: "Second of several deploys in a batch, demonstrating retry on transient failure"
+    license: https://creativecommons.org/licenses/by-sa/3.0/
+    api_key: ${DATABUS_API_KEY}
+    files: ${steps.fetch_source.output_urls}
+    on_error: retry
+    retry:
+      max_attempts: 3
+      delay_seconds: 5
+    
+  - name: cleanup_batch
+    command: delete
+    uris:
+      - https://databus.dbpedia.org/DhanashreeP/test-group/batch-demo-1/1.0
+      - https://databus.dbpedia.org/DhanashreeP/test-group/batch-demo-2/1.0
+    api_key: ${DATABUS_API_KEY}
+    on_error: continue

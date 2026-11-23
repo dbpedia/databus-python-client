@@ -36,13 +36,16 @@ def test_vault_host_no_token_raises():
     vault_host = next(iter(VAULT_REQUIRED_HOSTS))
     url = f"https://{vault_host}/some/protected/file.ttl"
 
-    with pytest.raises(DownloadAuthError) as exc:
-        dl._download_file(url, localDir=".", vault_token_file=None)
+    resp_head = make_response(status=401, headers={})
+
+    with patch("requests.head", return_value=resp_head):
+        with pytest.raises(DownloadAuthError) as exc:
+            dl._download_file(url, localDir=".", vault_token_file=None)
 
     assert "Vault token required" in str(exc.value)
 
 
-def test_non_vault_host_no_token_allows_download(monkeypatch):
+def test_non_vault_host_no_token_allows_download(tmp_path):
     url = "https://example.com/public/file.txt"
 
     resp_head = make_response(status=200, headers={})
@@ -53,7 +56,63 @@ def test_non_vault_host_no_token_allows_download(monkeypatch):
         patch("requests.get", return_value=resp_get),
     ):
         # should not raise
-        dl._download_file(url, localDir=".", vault_token_file=None)
+        dl._download_file(url, localDir=str(tmp_path), vault_token_file=None)
+
+    assert (tmp_path / "file.txt").exists()
+
+
+def test_download_file_uses_databus_layout_under_localdir(tmp_path):
+    url = "https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals/2022.12.01/mappingbased-literals_lang=az.ttl.bz2"
+
+    resp_head = make_response(status=200, headers={})
+    resp_get = make_response(
+        status=200, headers={"content-length": "4"}, content=b"data"
+    )
+
+    with (
+        patch("requests.head", return_value=resp_head),
+        patch("requests.get", return_value=resp_get),
+    ):
+        dl._download_file(url, localDir=str(tmp_path), vault_token_file=None)
+
+    expected = (
+        tmp_path
+        / "dbpedia"
+        / "mappings"
+        / "mappingbased-literals"
+        / "2022.12.01"
+        / "mappingbased-literals_lang=az.ttl.bz2"
+    )
+    assert expected.read_bytes() == b"data"
+    assert not (tmp_path / "mappingbased-literals_lang=az.ttl.bz2").exists()
+
+
+def test_download_file_uses_databus_layout_under_cwd_when_localdir_missing(
+    tmp_path, monkeypatch
+):
+    url = "https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals/2022.12.01/mappingbased-literals_lang=az.ttl.bz2"
+
+    monkeypatch.chdir(tmp_path)
+    resp_head = make_response(status=200, headers={})
+    resp_get = make_response(
+        status=200, headers={"content-length": "4"}, content=b"data"
+    )
+
+    with (
+        patch("requests.head", return_value=resp_head),
+        patch("requests.get", return_value=resp_get),
+    ):
+        dl._download_file(url, localDir=None, vault_token_file=None)
+
+    expected = (
+        tmp_path
+        / "dbpedia"
+        / "mappings"
+        / "mappingbased-literals"
+        / "2022.12.01"
+        / "mappingbased-literals_lang=az.ttl.bz2"
+    )
+    assert expected.read_bytes() == b"data"
 
 
 def test_401_after_token_exchange_reports_invalid_token(monkeypatch):

@@ -1,0 +1,6 @@
+@'
+id,name,country
+1,Leipzig,Germany
+2,Berlin,Germany
+3,Paris,France
+'@ | Out-File -FilePath tests\resources\base.csv -Encoding ascii

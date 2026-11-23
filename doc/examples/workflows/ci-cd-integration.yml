@@ -1,0 +1,24 @@
+manifest: ./manifests/ci-run.jsonld
+steps:
+  - name: fetch_build_data
+    command: download
+    uri: https://databus.dbpedia.org/DhanashreeP/test-group/workflow-source-data/1.0
+    localdir: ./workflow-output/ci
+
+  - name: publish_build_artifact
+    command: deploy
+    version_id: https://databus.dbpedia.org/DhanashreeP/test-group/ci-demo/1.0
+    title: "CI/CD Integration Demo"
+    abstract: "Example of a workflow suitable for GitHub Actions"
+    description: "No prompts, no interactive input -- safe to run in an unattended CI job"
+    license: https://creativecommons.org/licenses/by-sa/3.0/
+    api_key: ${DATABUS_API_KEY}
+    files: ${steps.fetch_build_data.output_urls}
+    on_error: fail
+
+  - name: cleanup_ci_artifact
+    command: delete
+    uris:
+      - https://databus.dbpedia.org/DhanashreeP/test-group/ci-demo/1.0
+    api_key: ${DATABUS_API_KEY}
+    on_error: continue

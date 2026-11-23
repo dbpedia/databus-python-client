@@ -8,7 +8,7 @@ import tempfile
 import pytest
 from databusclient.api.download import (
     _detect_compression_format,
-    _should_convert_file,
+    _should_convert_compression,
     _get_converted_filename,
     _convert_compression_format,
 )
@@ -23,37 +23,42 @@ def test_detect_compression_format():
     assert _detect_compression_format("FILE.TXT.GZ") == "gz"  # case insensitive
 
 
-def test_should_convert_file():
-    """Test file conversion decision logic"""
+def test_should_convert_compression():
+    """Test file compression conversion decision logic.
+
+    With --compression, source format is auto-detected from the file extension.
+    All compressed files are converted to the target format regardless of their
+    source compression format (no convert_from filter).
+    """
     # No conversion target specified
-    should_convert, source = _should_convert_file("file.txt.bz2", None, None)
+    should_convert, source = _should_convert_compression("file.txt.bz2", None)
     assert should_convert is False
     assert source is None
 
-    # Uncompressed file
-    should_convert, source = _should_convert_file("file.txt", "gz", None)
+    # Uncompressed file with compression target — should now compress it
+    should_convert, source = _should_convert_compression("file.txt", "gz")
+    assert should_convert is True
+    assert source is None  # source is None when input is uncompressed
+
+    # Same source and target — skip (no-op)
+    should_convert, source = _should_convert_compression("file.txt.gz", "gz")
     assert should_convert is False
     assert source is None
 
-    # Same source and target
-    should_convert, source = _should_convert_file("file.txt.gz", "gz", None)
-    assert should_convert is False
-    assert source is None
-
-    # Valid conversion
-    should_convert, source = _should_convert_file("file.txt.bz2", "gz", None)
+    # bz2 -> gz: should convert, source auto-detected
+    should_convert, source = _should_convert_compression("file.txt.bz2", "gz")
     assert should_convert is True
     assert source == "bz2"
 
-    # With convert_from filter matching
-    should_convert, source = _should_convert_file("file.txt.bz2", "gz", "bz2")
+    # xz -> gz: should convert regardless of source format (no filter)
+    should_convert, source = _should_convert_compression("file.txt.xz", "gz")
     assert should_convert is True
-    assert source == "bz2"
+    assert source == "xz"
 
-    # With convert_from filter not matching
-    should_convert, source = _should_convert_file("file.txt.bz2", "gz", "xz")
-    assert should_convert is False
-    assert source is None
+    # gz -> bz2: should convert
+    should_convert, source = _should_convert_compression("file.txt.gz", "bz2")
+    assert should_convert is True
+    assert source == "gz"
 
 
 def test_get_converted_filename():
@@ -193,6 +198,43 @@ def test_corrupted_file_handling():
         # Verify target file was cleaned up
         assert not os.path.exists(target_file)
 
+def test_should_convert_compression_none_on_compressed():
+    """--compression none on a compressed file: should convert, source detected."""
+    should_convert, source = _should_convert_compression("file.txt.bz2", "none")
+    assert should_convert is True
+    assert source == "bz2"
+
+
+def test_should_convert_compression_none_on_uncompressed():
+    """--compression none on an uncompressed file: nothing to do."""
+    should_convert, source = _should_convert_compression("file.txt", "none")
+    assert should_convert is False
+    assert source is None
+
+
+def test_get_converted_filename_none_strips_extension():
+    """--compression none: strips compression extension, adds nothing."""
+    assert _get_converted_filename("data.txt.bz2", "bz2", "none") == "data.txt"
+    assert _get_converted_filename("data.txt.gz", "gz", "none") == "data.txt"
+    assert _get_converted_filename("data.txt.xz", "xz", "none") == "data.txt"
+
+
+def test_decompress_bz2_to_plain():
+    """--compression none on bz2 file decompresses to plain file via _convert_compression_format."""
+    with tempfile.TemporaryDirectory() as tmpdir:
+        test_data = b"Decompression test data" * 50
+
+        bz2_file = os.path.join(tmpdir, "test.txt.bz2")
+        with bz2.open(bz2_file, "wb") as f:
+            f.write(test_data)
+
+        plain_file = os.path.join(tmpdir, "test.txt")
+        _convert_compression_format(bz2_file, plain_file, "bz2", "none")
+
+        assert not os.path.exists(bz2_file)
+        assert os.path.exists(plain_file)
+        with open(plain_file, "rb") as f:
+            assert f.read() == test_data
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

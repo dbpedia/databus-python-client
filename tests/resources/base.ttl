@@ -1,0 +1,8 @@
+@prefix dbo: <http://dbpedia.org/ontology/> .
+@prefix dbr: <http://dbpedia.org/resource/> .
+@prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
+
+dbr:Leipzig rdfs:label "Leipzig"@en .
+dbr:Leipzig dbo:country dbr:Germany .
+dbr:Leipzig dbo:populationTotal "593145"^^<http://www.w3.org/2001/XMLSchema#integer> .
+dbr:Germany rdfs:label "Germany"@en .

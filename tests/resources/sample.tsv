@@ -1,0 +1,11 @@
+subject	predicate	object	graph
+https://example.org/data/alice	http://xmlns.com/foaf/0.1/name	Alice	https://example.org/graph/people
+https://example.org/data/alice	https://example.org/vocab/age	29	https://example.org/graph/people
+https://example.org/data/alice	https://example.org/vocab/livesAt	_:address1	https://example.org/graph/people
+_:address1	https://example.org/vocab/city	Leipzig	https://example.org/graph/people
+_:address1	https://example.org/vocab/country	Germany	https://example.org/graph/people
+https://example.org/data/bob	http://xmlns.com/foaf/0.1/name	Bob	https://example.org/graph/people
+https://example.org/data/bob	https://example.org/vocab/age	34	https://example.org/graph/people
+https://example.org/data/bob	https://example.org/vocab/knows	https://example.org/data/alice	https://example.org/graph/people
+https://example.org/data/project1	https://example.org/vocab/title	Databus Example Project	https://example.org/graph/projects
+https://example.org/data/project1	https://example.org/vocab/member	https://example.org/data/alice	https://example.org/graph/projects

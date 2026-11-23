@@ -1,0 +1,7 @@
+manifest: ./manifests/research-download.jsonld
+steps:
+  - name: fetch_research_data
+    command: download
+    uri: https://databus.dbpedia.org/DhanashreeP/test-group/workflow-source-data/1.0
+    localdir: ./workflow-output/research-download
+    validate_checksum: true
