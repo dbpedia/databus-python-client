@@ -411,7 +411,7 @@ class TSDHandler:
                 f"Supported: {list(TABULAR_FORMATS)}"
             )
         delimiter = TABULAR_FORMATS[input_format]
-        with open(source, "r", newline="", encoding="utf-8") as f:
+        with open(source, "r", newline="", encoding="utf-8-sig") as f:
             reader = csv.reader(f, delimiter=delimiter)
             return list(reader)
 
