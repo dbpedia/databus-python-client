@@ -42,6 +42,8 @@ databusclient download $DOWNLOADTARGET
   - Validates the checksums of downloaded files against the checksums provided by the Databus. If a checksum does not match, an error is raised and the file is deleted.
 - `--user-agent`
   - Overrides the HTTP User-Agent header for file download requests. Default: `databus-python-client/<version> (https://github.com/dbpedia/databus-python-client)`. Example: `--user-agent "DatabusDownloadBot/1.0 (mailto:you@example.org)"`.
+- `-c, --resume`
+  - Resumes interrupted downloads if partial files already exist on disk using HTTP `Range` request headers. If the remote host supports byte ranges (returns `206 Partial Content`), only the missing bytes are downloaded and appended to the existing file. If the remote host does not support range requests (returns `200 OK`), the download safely restarts from scratch. If the local file is already fully downloaded, the download is skipped.
 
 **Help and further information on download command:**
 ```bash
@@ -53,6 +55,11 @@ databusclient download --help
 **Download File**: download of a single file
 ```bash
 databusclient download https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals/2022.12.01/mappingbased-literals_lang=az.ttl.bz2
+```
+
+**Resume Interrupted Download**: continue an interrupted file download without re-downloading existing bytes
+```bash
+databusclient download https://databus.dbpedia.org/debugi/my-group/my-artifact/2023-09-11/my-artifact.ttl --resume
 ```
 
 **Download Version**: download of all files of a specific version

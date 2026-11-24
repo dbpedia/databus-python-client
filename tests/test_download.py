@@ -649,3 +649,82 @@ def test_head_request_includes_accept_encoding_identity(monkeypatch, tmp_path):
     dl._download_file(url, localDir=str(tmp_path), resume=True)
 
     assert head_headers.get("Accept-Encoding") == "identity"
+
+
+def test_resume_mismatched_range_start_replacement_404_handled(monkeypatch, tmp_path):
+    import databusclient.api.download as dl
+    from databusclient.manifest.context import ManifestContext
+
+    url = "https://example.org/file.bin"
+    target_file = tmp_path / "file.bin"
+    target_file.write_bytes(b"hello ")
+
+    class MockHeadResp:
+        status_code = 200
+        headers = {"content-length": "12"}
+
+    class Mock206WrongStartResp:
+        status_code = 206
+        headers = {
+            "Content-Range": "bytes 0-5/12",
+            "content-length": "6",
+        }
+
+        def raise_for_status(self):
+            pass
+
+    class Mock404Resp:
+        status_code = 404
+        headers = {}
+
+        def raise_for_status(self):
+            import requests
+            raise requests.exceptions.HTTPError(response=self)
+
+    get_calls = []
+
+    def mock_get(req_url, *args, **kwargs):
+        get_calls.append(kwargs.get("headers", {}))
+        if len(get_calls) == 1:
+            return Mock206WrongStartResp()
+        return Mock404Resp()
+
+    monkeypatch.setattr("requests.head", lambda *a, **k: MockHeadResp())
+    monkeypatch.setattr("requests.get", mock_get)
+
+    ctx = ManifestContext(command="download")
+    # Should not raise an unhandled exception when replacement GET returns 404
+    dl._download_file(url, localDir=str(tmp_path), resume=True, manifest_context=ctx)
+    assert len(ctx.files) == 1
+    assert ctx.files[0]["status"] == "failed"
+
+
+def test_resume_server_ignores_range_returns_200(monkeypatch, tmp_path):
+    import databusclient.api.download as dl
+
+    url = "https://example.org/file.bin"
+    target_file = tmp_path / "file.bin"
+    target_file.write_bytes(b"old partial data")
+
+    class MockHeadResp:
+        status_code = 200
+        headers = {"content-length": "10"}
+
+    class Mock200GetResp:
+        status_code = 200
+        headers = {"content-length": "10"}
+
+        def iter_content(self, block_size):
+            yield b"0123456789"
+
+        def raise_for_status(self):
+            pass
+
+    monkeypatch.setattr("requests.head", lambda *a, **k: MockHeadResp())
+    monkeypatch.setattr("requests.get", lambda *a, **k: Mock200GetResp())
+
+    dl._download_file(url, localDir=str(tmp_path), resume=True)
+
+    # File must be overwritten cleanly with full 10 bytes, not appended
+    assert target_file.read_bytes() == b"0123456789"
+

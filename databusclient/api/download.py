@@ -483,6 +483,7 @@ def _download_file(
 
     # Check for existing partial file if resume requested
     existing_bytes = 0
+    total_size_in_bytes = 0
     if resume and os.path.isfile(filename):
         existing_bytes = os.path.getsize(filename)
 
@@ -533,6 +534,14 @@ def _download_file(
             response = requests.head(url, headers=headers, timeout=30)
 
     file_already_complete = False
+    if response.status_code == 200 and response.headers.get("content-length"):
+        try:
+            head_remote_total = int(response.headers.get("content-length"))
+            if head_remote_total > 0:
+                total_size_in_bytes = head_remote_total
+        except (ValueError, TypeError):
+            pass
+
     if (
         existing_bytes > 0
         and response.status_code == 200
@@ -691,6 +700,9 @@ def _download_file(
                         total_size_in_bytes = int(total_str)
                     elif content_len > 0:
                         total_size_in_bytes = existing_bytes + content_len
+                    elif total_size_in_bytes > 0:
+                        # Keep expected total size from earlier HEAD request
+                        pass
                     else:
                         total_size_in_bytes = 0
                     file_mode = "ab"
@@ -705,7 +717,19 @@ def _download_file(
                     response = requests.get(
                         url, headers=headers, stream=True, allow_redirects=True, timeout=30
                     )
-                    response.raise_for_status()
+                    try:
+                        response.raise_for_status()
+                    except requests.exceptions.HTTPError as e:
+                        if response.status_code == 404:
+                            print(f"WARNING: Skipping file {url} because it was not found (404).")
+                            if manifest_context is not None:
+                                manifest_context.record_file(
+                                    url=url,
+                                    status="failed",
+                                    error_message="404 Not Found",
+                                )
+                            return
+                        raise e
                     content_len = int(response.headers.get("content-length", 0))
                     file_mode = "wb"
                     total_size_in_bytes = content_len
