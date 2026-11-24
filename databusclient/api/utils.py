@@ -7,6 +7,50 @@ Contains small parsing helpers and HTTP helpers that are shared by
 from typing import Optional, Tuple
 import hashlib
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util import Retry
+
+
+def get_http_session(
+    retries: int = 3,
+    backoff_factor: float = 0.5,
+    status_forcelist: Tuple[int, ...] = (429, 500, 502, 503, 504),
+    allowed_methods: Optional[frozenset] = None,
+    backoff_jitter: float = 0.1,
+) -> requests.Session:
+    """Create and configure a requests Session with HTTP retry strategy and exponential backoff.
+
+    Args:
+        retries: Total number of retries to allow.
+        backoff_factor: Backoff factor to apply between attempts.
+        status_forcelist: Set of HTTP status codes to force retry on.
+        allowed_methods: Set of HTTP methods allowed for retry.
+        backoff_jitter: Jitter to add to backoff delay.
+
+    Returns:
+        Configured requests.Session object.
+    """
+    session = requests.Session()
+    kwargs = {
+        "total": retries,
+        "backoff_factor": backoff_factor,
+        "status_forcelist": status_forcelist,
+        "raise_on_status": False,
+    }
+    if allowed_methods is not None:
+        kwargs["allowed_methods"] = allowed_methods
+
+    try:
+        kwargs["backoff_jitter"] = backoff_jitter
+        retry_strategy = Retry(**kwargs)
+    except TypeError:
+        kwargs.pop("backoff_jitter", None)
+        retry_strategy = Retry(**kwargs)
+
+    adapter = HTTPAdapter(max_retries=retry_strategy)
+    session.mount("http://", adapter)
+    session.mount("https://", adapter)
+    return session
 
 
 def get_databus_id_parts_from_file_url(
@@ -28,33 +72,36 @@ def get_databus_id_parts_from_file_url(
         A tuple containing (host, accountId, groupId, artifactId, versionId, fileId).
         Each element is a string or None if not present.
     """
-    """Split a Databus URI into its six parts.
-
-    The returned tuple is (host, accountId, groupId, artifactId, versionId, fileId).
-    Missing parts are returned as ``None``.
-    """
-
     uri = uri.removeprefix("https://").removeprefix("http://")
     parts = uri.strip("/").split("/")
     parts += [None] * (6 - len(parts))  # pad with None if less than 6 parts
     return tuple(parts[:6])  # return only the first 6 parts
 
 
-def fetch_databus_jsonld(uri: str, databus_key: str | None = None) -> str:
+def fetch_databus_jsonld(
+    uri: str,
+    databus_key: str | None = None,
+    session: requests.Session | None = None,
+    timeout: int = 30,
+) -> str:
     """Fetch the JSON-LD representation of a Databus resource.
 
     Args:
         uri: Full Databus resource URI.
         databus_key: Optional API key for protected resources.
+        session: Optional HTTP session to use for requests.
+        timeout: Request timeout in seconds.
 
     Returns:
         The response body as a string containing JSON-LD.
     """
+    if session is None:
+        session = get_http_session()
 
     headers = {"Accept": "application/ld+json"}
     if databus_key is not None:
         headers["X-API-KEY"] = databus_key
-    response = requests.get(uri, headers=headers, timeout=30)
+    response = session.get(uri, headers=headers, timeout=timeout)
     response.raise_for_status()
 
     return response.text

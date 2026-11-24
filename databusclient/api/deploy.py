@@ -11,6 +11,7 @@ from enum import Enum
 from typing import Dict, List, Optional, Tuple, Union
 
 import requests
+from databusclient.api.utils import get_http_session
 
 _debug = False
 
@@ -176,14 +177,18 @@ def _get_file_stats(distribution_str: str) -> Tuple[Optional[str], Optional[int]
     return sha256sum, content_length
 
 
-def _load_file_stats(url: str) -> Tuple[str, int]:
+def _load_file_stats(
+    url: str, session: requests.Session | None = None, timeout: int = 30
+) -> Tuple[str, int]:
     """Download the file at ``url`` and compute its SHA-256 and length.
 
     This is used as a fallback when the caller did not supply checksum/size
     information in the CLI or metadata file.
     """
+    if session is None:
+        session = get_http_session()
 
-    resp = requests.get(url, timeout=30)
+    resp = session.get(url, timeout=timeout)
     if resp.status_code >= 400:
         raise requests.exceptions.RequestException(response=resp)
 
@@ -463,6 +468,8 @@ def deploy(
     verify_parts: bool = False,
     log_level: DeployLogLevel = DeployLogLevel.debug,
     debug: bool = False,
+    session: requests.Session | None = None,
+    timeout: int = 30,
 ) -> None:
     """Deploys a dataset to the databus. The endpoint is inferred from the DataID identifier.
     Parameters
@@ -487,11 +494,14 @@ def deploy(
     except (KeyError, IndexError, TypeError) as e:
         raise DeployError(f"Invalid dataid structure: {e}")
 
+    if session is None:
+        session = get_http_session()
+
     api_uri = (
         base
         + f"/api/publish?verify-parts={str(verify_parts).lower()}&log-level={log_level.name}"
     )
-    resp = requests.post(api_uri, data=data, headers=headers, timeout=30)
+    resp = session.post(api_uri, data=data, headers=headers, timeout=timeout)
 
     if debug or _debug:
         try:
@@ -517,6 +527,8 @@ def deploy_from_metadata(
     artifact_version_description: str,
     license_url: str,
     apikey: str,
+    session: requests.Session | None = None,
+    timeout: int = 30,
 ) -> None:
     """
     Deploy a dataset from metadata entries.
@@ -550,7 +562,7 @@ def deploy_from_metadata(
     )
 
     print(f"Deploying dataset version: {version_id}")
-    deploy(dataset, apikey)
+    deploy(dataset, apikey, session=session, timeout=timeout)
 
     print(f"Successfully deployed to {version_id}")
     print(f"Deployed {len(metadata)} file(s):")
