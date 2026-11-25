@@ -1022,7 +1022,7 @@ def __get_vault_access__(
     if not refresh_token:
         if not os.path.exists(token_file):
             raise FileNotFoundError(f"Vault token file not found: {token_file}")
-        with open(token_file, "r") as f:
+        with open(token_file, "r", encoding="utf-8-sig") as f:
             refresh_token = f.read().strip()
     if len(refresh_token) < 80:
         print(f"Warning: token from {token_file} is short (<80 chars)")

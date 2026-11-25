@@ -167,3 +167,28 @@ def test_403_reports_insufficient_permissions():
             dl._download_file(url, localDir=".", vault_token_file="/some/token/file")
 
         assert "permission" in str(exc.value) or "forbidden" in str(exc.value)
+
+
+@pytest.mark.parametrize("bom", [b"\xef\xbb\xbf", b""], ids=["utf8-bom", "no-bom"])
+def test_vault_token_file_is_read_without_bom(tmp_path, monkeypatch, bom):
+    # Windows PowerShell 5.1 `Set-Content -Encoding UTF8` writes a UTF-8 BOM
+    token = "t" * 90
+    token_file = tmp_path / "vault-token.dat"
+    token_file.write_bytes(bom + token.encode("utf-8") + b"\r\n")
+    monkeypatch.delenv("REFRESH_TOKEN", raising=False)
+
+    post_resp_1 = Mock()
+    post_resp_1.json.return_value = {"access_token": "ACCESS"}
+    post_resp_2 = Mock()
+    post_resp_2.json.return_value = {"access_token": "VAULT"}
+
+    with patch("requests.post", side_effect=[post_resp_1, post_resp_2]) as post:
+        vault_token = dl.__get_vault_access__(
+            "https://data.dbpedia.io/protected/file.ttl",
+            str(token_file),
+            "https://auth.example.org/token",
+            "vault-token-exchange",
+        )
+
+    assert vault_token == "VAULT"
+    assert post.call_args_list[0].kwargs["data"]["refresh_token"] == token
