@@ -82,6 +82,7 @@ def _build_download_kwargs(
         "graph_mode": replay_params.get("graph_mode"),
         "user_agent": replay_params.get("user_agent"),
         "validate_checksum": bool(replay_params.get("validate_checksum", False)),
+        "resume": bool(replay_params.get("resume", False)),
         "manifest_context": None,
     }
 
