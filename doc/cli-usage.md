@@ -59,7 +59,7 @@ databusclient download https://databus.dbpedia.org/dbpedia/mappings/mappingbased
 
 **Resume Interrupted Download**: continue an interrupted file download without re-downloading existing bytes
 ```bash
-databusclient download https://databus.dbpedia.org/debugi/my-group/my-artifact/2023-09-11/my-artifact.ttl --resume
+databusclient download https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals/2022.12.01/mappingbased-literals_lang=az.ttl.bz2 --resume
 ```
 
 **Download Version**: download of all files of a specific version
