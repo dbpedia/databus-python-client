@@ -12,7 +12,7 @@ databusclient [delete|deploy|download|manifest|workflow] --help
 <a id="cli-download"></a>
 ### Download
 
-With the download command, you can download datasets or parts thereof from the Databus. The download command expects one or more Databus URIs or a SPARQL query as arguments. The URIs can point to files, versions, artifacts, groups, or collections. If a SPARQL query is provided, the query must return download URLs from the Databus which will be downloaded.
+With the download command, you can download datasets or parts thereof from the Databus. The download command expects one or more Databus URIs or a SPARQL query as arguments. The URIs can point to files, versions, artifacts, groups, accounts, or collections. If a SPARQL query is provided, the query must return download URLs from the Databus which will be downloaded.
 
 ```bash
 databusclient download $DOWNLOADTARGET
@@ -63,6 +63,11 @@ databusclient download https://databus.dbpedia.org/dbpedia/mappings/mappingbased
 **Download Artifact**: download of all files with the latest version of an artifact
 ```bash
 databusclient download https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals
+```
+
+**Download Account**: download of all files with the latest version of all artifacts across all groups owned by an account
+```bash
+databusclient download https://databus.dbpedia.org/dbpedia
 ```
 
 **Download Group**: download of all files with the latest version of all artifacts of a group
