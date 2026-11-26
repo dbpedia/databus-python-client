@@ -80,3 +80,35 @@ deploy(dataset, "mysterious API key")
 ```
 
 The API key can be found or generated in the Databus account settings.
+
+<a id="module-download"></a>
+### Download
+
+You can also use the download function directly in Python:
+
+```python
+from databusclient.api.download import download
+
+# Download latest version of an artifact
+download(
+    localDir="./data",
+    endpoint=None,
+    databusURIs=["https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals"],
+)
+
+# Download a specific version of an artifact or group
+download(
+    localDir="./data",
+    endpoint=None,
+    databusURIs=["https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals"],
+    version="2022.12.01",
+)
+
+# Download all versions of an artifact or group
+download(
+    localDir="./data",
+    endpoint=None,
+    databusURIs=["https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals"],
+    version="all",
+)
+```

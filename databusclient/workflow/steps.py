@@ -76,6 +76,7 @@ class DownloadStep:
             token=resolved.get("vault_token"),
             databus_key=resolved.get("databus_key"),
             all_versions=resolved.get("all_versions", False),
+            version=resolved.get("version"),
             compression=resolved.get("convert_to") or resolved.get("compression"),
             convert_format=resolved.get("format"),
             graph_name=resolved.get("graph_name"),

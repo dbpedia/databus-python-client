@@ -1,4 +1,4 @@
-﻿## CLI Usage
+## CLI Usage
 
 To get started with the command-line interface (CLI) of the databus-python-client, you can use either the Python installation or the Docker image. The examples below show python installation method.
 
@@ -28,8 +28,13 @@ databusclient download $DOWNLOADTARGET
   Note: Vault tokens are only required for certain protected Databus hosts (for example: `data.dbpedia.io`, `data.dev.dbpedia.link`). The client now detects those hosts and will fail early with a clear message if a token is required but not provided. Do not pass `--vault-token` for public downloads.
 - `--databus-key`
   - If the databus is protected and needs API key authentication, you can provide the API key with `--databus-key YOUR_API_KEY`.
+- `--version`, `--target-version`
+  - Specifies which version(s) to download when downloading an artifact or group:
+    - `--version latest`: downloads only the latest version (default behavior).
+    - `--version all`: downloads all versions of artifacts (equivalent to `--all-versions`).
+    - `--version <version-id>`: downloads a specific version if available (e.g. `--version 2022.12.01`).
 - `--all-versions`
-  - When downloading artifacts, downloads all versions instead of only the latest.
+  - When downloading artifacts, downloads all versions instead of only the latest (equivalent to `--version all`).
 - `--compression`
   - Enables on-the-fly compression format conversion during download. Supported formats: `bz2`, `gz`, `xz`, `none`. The source compression is auto-detected from the file extension. Use `none` to decompress files without recompressing. Example: `--compression gz` converts all downloaded compressed files to gzip format.
 - `--format`
@@ -63,6 +68,16 @@ databusclient download https://databus.dbpedia.org/dbpedia/mappings/mappingbased
 **Download Artifact**: download of all files with the latest version of an artifact
 ```bash
 databusclient download https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals
+```
+
+**Download Specific Version of Artifact or Group**: download a specific version using `--version` (or `--target-version`)
+```bash
+databusclient download --version 2022.12.01 https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals
+```
+
+**Download All Versions of Artifact or Group**: download all historical versions using `--version all` or `--all-versions`
+```bash
+databusclient download --version all https://databus.dbpedia.org/dbpedia/mappings/mappingbased-literals
 ```
 
 **Download Group**: download of all files with the latest version of all artifacts of a group
