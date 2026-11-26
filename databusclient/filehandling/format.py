@@ -200,7 +200,7 @@ def get_converted_filename(original_filename: str, convert_format: str) -> str:
             break
 
     # strip existing format extension (longest first)
-    for old_ext in sorted(FORMAT_TO_EXTENSION.values(), key=len, reverse=True):
+    for old_ext in sorted(EXTENSION_TO_FORMAT.keys(), key=len, reverse=True):
         if name.lower().endswith(old_ext):
             name = name[: -len(old_ext)]
             break
@@ -524,7 +524,15 @@ def convert_file(
     if input_format == convert_format:
         # Input and target format are identical.
         # Copy input to output path so the caller always receives an output file.
-        if input_file != output_file:
+        same_file = (
+            os.path.exists(input_file)
+            and os.path.exists(output_file)
+            and os.path.samefile(input_file, output_file)
+        )
+        if not same_file:
+            parent = os.path.dirname(output_file)
+            if parent:
+                os.makedirs(parent, exist_ok=True)
             shutil.copy2(input_file, output_file)
             print(
                 f"Input and target format are both '{input_format}'. "

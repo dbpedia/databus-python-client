@@ -474,3 +474,31 @@ def test_mapping_quads_to_csv_and_back():
             f"Graph URIs in CSV do not match original. "
             f"Expected: {original_graph_uris}, got: {csv_graphs}"
         )
+
+
+
+def test_get_converted_filename_strips_all_recognized_extensions():
+    """Ensure .owl, .xml, and .json extensions are stripped just like primary ones."""
+    from databusclient.filehandling.format import get_converted_filename
+
+    assert get_converted_filename("ontology.owl", "turtle") == "ontology.ttl"
+    assert get_converted_filename("data.xml.gz", "ntriples") == "data.nt"
+    assert get_converted_filename("graph.json", "nquads") == "graph.nq"
+    assert get_converted_filename("graph.jsonld.bz2", "trig") == "graph.trig"
+
+
+def test_convert_file_same_format_creates_parent_dir_and_handles_same_path(
+    tmp_path, monkeypatch
+):
+    """Same-format copy creates missing parent dirs and skips equivalent paths."""
+    from databusclient.filehandling.format import convert_file
+
+    source = resource("sample.ttl")
+    nested_out = tmp_path / "nested" / "subdir" / "copy.ttl"
+    convert_file(source, str(nested_out), "turtle")
+    assert nested_out.exists()
+
+    # Equivalent path via relative reference should not raise SameFileError
+    monkeypatch.chdir(nested_out.parent)
+    convert_file("copy.ttl", os.path.join(".", "copy.ttl"), "ttl")
+    assert nested_out.exists()
