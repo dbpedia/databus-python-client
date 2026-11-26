@@ -524,7 +524,12 @@ def convert_file(
     if input_format == convert_format:
         # Input and target format are identical.
         # Copy input to output path so the caller always receives an output file.
-        if os.path.abspath(input_file) != os.path.abspath(output_file):
+        same_file = (
+            os.path.exists(input_file)
+            and os.path.exists(output_file)
+            and os.path.samefile(input_file, output_file)
+        )
+        if not same_file:
             parent = os.path.dirname(output_file)
             if parent:
                 os.makedirs(parent, exist_ok=True)
