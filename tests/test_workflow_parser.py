@@ -178,3 +178,52 @@ def test_empty_braces_pass_through_unchanged():
     })
     result = parse_workflow(path)
     assert result["steps"][0]["uri"] == "${}/data"
+
+
+def test_duplicate_names_after_substitution_raise(monkeypatch):
+    """Expanded names must not collide with another step's output key."""
+    monkeypatch.setenv("STEP_NAME", "fetch")
+    path = _write_yaml({
+        "steps": [
+            {"name": "fetch", "command": "download", "uri": "x"},
+            {"name": "${STEP_NAME}", "command": "download", "uri": "y"},
+        ]
+    })
+    with pytest.raises(WorkflowParseError, match="Duplicate step name 'fetch'"):
+        parse_workflow(path)
+
+
+def test_empty_name_after_substitution_raises(monkeypatch):
+    """An environment variable cannot resolve to an empty step name."""
+    monkeypatch.setenv("STEP_NAME", "")
+    path = _write_yaml({
+        "steps": [{"name": "${STEP_NAME}", "command": "download", "uri": "x"}]
+    })
+    with pytest.raises(WorkflowParseError, match="valid 'name'"):
+        parse_workflow(path)
+
+
+@pytest.mark.parametrize("command", ["download", "invalid"])
+def test_command_is_validated_after_substitution(monkeypatch, command):
+    """Resolved commands must satisfy the same allowlist as literal commands."""
+    monkeypatch.setenv("COMMAND", command)
+    path = _write_yaml({
+        "steps": [{"name": "fetch", "command": "${COMMAND}", "uri": "x"}]
+    })
+    if command == "download":
+        assert parse_workflow(path)["steps"][0]["command"] == "download"
+    else:
+        with pytest.raises(WorkflowParseError, match="invalid command 'invalid'"):
+            parse_workflow(path)
+
+
+def test_on_error_is_validated_after_substitution(monkeypatch):
+    """A supported error policy can be supplied through an environment variable."""
+    monkeypatch.setenv("ERROR_POLICY", "continue")
+    path = _write_yaml({
+        "steps": [{
+            "name": "fetch", "command": "download", "uri": "x",
+            "on_error": "${ERROR_POLICY}",
+        }]
+    })
+    assert parse_workflow(path)["steps"][0]["on_error"] == "continue"
